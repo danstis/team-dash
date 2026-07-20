@@ -34,7 +34,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [x] [BSOD-132] T004 [P] Configure `tsconfig.json`: strict mode, ES2022 target, path aliases matching the `src/` layout
 - [x] [BSOD-133] T005 [P] Configure `vite.config.ts` with `vite-plugin-pwa` (manifest, service-worker caching strategy placeholder for US2's offline requirement)
 - [x] [BSOD-134] T006 [P] Configure `eslint.config.js` (ESLint 10 flat config only) including the `eslint-plugin-boundaries` rule blocking `src/domain/**` from importing `src/features/**`, `react`, or `src/data/asana/**` (research.md §7)
-- [ ] [BSOD-135] T007 [P] Configure `.prettierrc` and `.prettierignore`
+- [x] [BSOD-135] T007 [P] Configure `.prettierrc` and `.prettierignore`
 - [x] [BSOD-136] T008 [P] Configure `vitest.config.ts` (jsdom environment) and `tests/setup.ts` (Testing Library matchers, MSW server lifecycle hooks)
 - [ ] [BSOD-137] T009 [P] Configure `playwright.config.ts` pointing at `tests/e2e/`
 - [ ] [BSOD-138] T010 [P] Create `index.html` and app entry point `src/main.tsx`

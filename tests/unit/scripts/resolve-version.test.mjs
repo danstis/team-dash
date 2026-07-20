@@ -93,7 +93,12 @@ describe("resolve-version CLI", () => {
   it("prints the resolved version from CLI arguments", () => {
     const output = execFileSync(
       process.execPath,
-      [scriptPath, "--ref-type=tag", "--ref-name=v2.3.4", "--latest-tag=v1.0.0"],
+      [
+        scriptPath,
+        "--ref-type=tag",
+        "--ref-name=v2.3.4",
+        "--latest-tag=v1.0.0",
+      ],
       { encoding: "utf8" },
     );
     expect(output).toBe("2.3.4\n");

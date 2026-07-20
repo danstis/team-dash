@@ -36,7 +36,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [x] [BSOD-134] T006 [P] Configure `eslint.config.js` (ESLint 10 flat config only) including the `eslint-plugin-boundaries` rule blocking `src/domain/**` from importing `src/features/**`, `react`, or `src/data/asana/**` (research.md §7)
 - [x] [BSOD-135] T007 [P] Configure `.prettierrc` and `.prettierignore`
 - [x] [BSOD-136] T008 [P] Configure `vitest.config.ts` (jsdom environment) and `tests/setup.ts` (Testing Library matchers, MSW server lifecycle hooks)
-- [ ] [BSOD-137] T009 [P] Configure `playwright.config.ts` pointing at `tests/e2e/`
+- [x] [BSOD-137] T009 [P] Configure `playwright.config.ts` pointing at `tests/e2e/`
 - [ ] [BSOD-138] T010 [P] Create `index.html` and app entry point `src/main.tsx`
 - [ ] [BSOD-139] T011 [P] Create `docker/Dockerfile` (multi-stage: `node:24` build stage → `nginx:1.30-alpine` runtime stage)
 - [ ] [BSOD-140] T012 [P] Create `docker/nginx.conf` (SPA fallback routing; service-worker file served `Cache-Control: no-cache`; hashed assets long-cache)

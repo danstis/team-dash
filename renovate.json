@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    "helpers:githubDigestChangelogs"
+  ],
+  "dependencyDashboard": true,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true
+  },
+  "labels": [
+    "dependencies"
+  ],
+  "separateMajorMinor": true,
+  "separateMultipleMajor": true
+}

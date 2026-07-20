@@ -29,7 +29,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 **Purpose**: Establish the runnable repository foundation per Constitution Principle I ("CI quality gates, local development workflow, production build, and Docker execution MUST be established before substantial dashboard functionality is added").
 
 - [x] [BSOD-129] T001 Create the source tree per plan.md Project Structure: `src/app/`, `src/features/{credentials,refresh,tasks,metrics,team-mapping,person-groups}/`, `src/domain/{metrics,filtering,dedup,datetime}/`, `src/data/{asana,db,crypto}/`, `src/shared/`, `tests/{unit,contract,integration,e2e}/`, `fixtures/{asana,generators}/`, `docker/`
-- [ ] [BSOD-130] T002 Initialize `package.json` (name, `"type": "module"`, `engines.node: "24.x"`) and `.nvmrc` pinned to Node 24
+- [x] [BSOD-130] T002 Initialize `package.json` (name, `"type": "module"`, `engines.node: "24.x"`) and `.nvmrc` pinned to Node 24
 - [ ] [BSOD-131] T003 Install all runtime and dev dependencies per research.md: `react@19.2`, `react-dom`, `react-router@7`, `dexie@4.4`, `dexie-react-hooks`, `recharts@3.9`, `zod@4.4`, `vite@8.1`, `vite-plugin-pwa@1.3`, `typescript@6.0`, `vitest@4.1`, `@testing-library/react`, `@testing-library/jest-dom`, `msw@2.15`, `@playwright/test@1.61`, `eslint@10.1`, `eslint-plugin-boundaries`, `prettier` — commits `package-lock.json`
 - [ ] [BSOD-132] T004 [P] Configure `tsconfig.json`: strict mode, ES2022 target, path aliases matching the `src/` layout
 - [ ] [BSOD-133] T005 [P] Configure `vite.config.ts` with `vite-plugin-pwa` (manifest, service-worker caching strategy placeholder for US2's offline requirement)

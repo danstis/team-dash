@@ -20,10 +20,10 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Run unit tests with coverage
-        run: npx vitest run --coverage --coverage.reporter=lcov tests/unit/
+        run: node_modules/.bin/vitest run --coverage --coverage.reporter=lcov tests/unit/
 
       - name: Resolve version
         id: version

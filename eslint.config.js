@@ -1,0 +1,67 @@
+import boundaries from "eslint-plugin-boundaries";
+
+const DOMAIN_BOUNDARY_MESSAGE =
+  "src/domain/** must stay presentation-free, browser-free, and network-free per Constitution Principle VI; importing from src/features/**, src/data/asana/**, or React is forbidden.";
+
+export default [
+  {
+    ignores: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/coverage/**",
+      "**/.gitnexus/**",
+      "**/playwright-report/**",
+      "**/test-results/**",
+    ],
+  },
+  {
+    files: [
+      "**/*.js",
+      "**/*.mjs",
+      "**/*.cjs",
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.jsx",
+    ],
+    plugins: {
+      boundaries,
+    },
+    settings: {
+      "boundaries/elements": [
+        { type: "domain", pattern: "**/src/domain/**" },
+        { type: "features", pattern: "**/src/features/**" },
+        { type: "data-asana", pattern: "**/src/data/asana/**" },
+        { type: "data", pattern: "**/src/data/**" },
+        { type: "app", pattern: "**/src/app/**" },
+        { type: "shared", pattern: "**/src/shared/**" },
+      ],
+    },
+    rules: {
+      "boundaries/dependencies": [
+        "error",
+        {
+          default: "allow",
+          checkAllOrigins: true,
+          policies: [
+            {
+              from: { element: { type: "domain" } },
+              disallow: {
+                to: [
+                  { element: { type: "features" } },
+                  { element: { type: "data-asana" } },
+                  {
+                    module: {
+                      origin: "external",
+                      source: ["react", "react-dom", "react/jsx-runtime"],
+                    },
+                  },
+                ],
+              },
+              message: DOMAIN_BOUNDARY_MESSAGE,
+            },
+          ],
+        },
+      ],
+    },
+  },
+];

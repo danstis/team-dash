@@ -1,0 +1,19 @@
+# Build and test outputs
+node_modules/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+
+# GitNexus analysis caches and regenerated wrappers
+.gitnexus/
+AGENTS.md
+CLAUDE.md
+
+# Lockfiles (never reformat)
+package-lock.json
+
+# Spec Kit artefacts (upstream documents, not project source)
+specs/
+.specify/

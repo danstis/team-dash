@@ -10,9 +10,7 @@
   "vulnerabilityAlerts": {
     "enabled": true
   },
-  "labels": [
-    "dependencies"
-  ],
+  "labels": ["dependencies"],
   "separateMajorMinor": true,
   "separateMultipleMajor": true
 }

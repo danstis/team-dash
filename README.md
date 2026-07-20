@@ -122,12 +122,12 @@ Team Dash versions are generated automatically by [release-please](https://githu
 
 The bump type follows the conventional-commit footer / type. While the project is below `1.0.0`, `bump-minor-pre-major: true` and `bump-patch-for-minor-pre-major: true` keep breaking changes at a minor bump and ordinary features at a patch bump:
 
-| Commit prefix              | Pre-1.0.0 bump | Post-1.0.0 bump |
-| -------------------------- | -------------- | --------------- |
-| `fix:`                     | patch          | patch           |
-| `feat:`                    | patch          | minor           |
-| `feat!:` or `BREAKING CHANGE:` | minor      | major           |
-| `chore:`, `docs:`, `refactor:`, `test:`, `build:`, `ci:`, `style:`, `perf:`, `revert:` | no release | no release (except `perf:` which bumps patch and `revert:` which inherits the reverted commit's bump) |
+| Commit prefix                                                                          | Pre-1.0.0 bump | Post-1.0.0 bump                                                                                       |
+| -------------------------------------------------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------- |
+| `fix:`                                                                                 | patch          | patch                                                                                                 |
+| `feat:`                                                                                | patch          | minor                                                                                                 |
+| `feat!:` or `BREAKING CHANGE:`                                                         | minor          | major                                                                                                 |
+| `chore:`, `docs:`, `refactor:`, `test:`, `build:`, `ci:`, `style:`, `perf:`, `revert:` | no release     | no release (except `perf:` which bumps patch and `revert:` which inherits the reverted commit's bump) |
 
 The first release is **`v0.1.0`**, set by `.release-please-manifest.json` and pushed as the initial git tag. Versions stay under `1.0.0` for the MVP; promotion to `1.0.0` happens deliberately via an override, not by accident from a breaking-change commit.
 

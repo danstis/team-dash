@@ -108,6 +108,48 @@ The container has no backend behaviour and no server-side Asana credentials. In 
 
 For a self-hosted deployment, place the container behind the operator's normal network and access controls. Use HTTPS and restrict who can reach the service, because anyone able to use the application may access the local browser data and any active session credential in that browser.
 
+## Releases
+
+Team Dash versions are generated automatically by [release-please](https://github.com/googleapis/release-please) on every push to `main`. The pipeline is conventional-commits driven: the version follows strictly from the commit history and does not require human edits.
+
+### How a release happens
+
+1. A push lands on `main`. The `.github/workflows/release-please.yml` workflow runs release-please against `release-please-config.json`.
+2. release-please scans the commits since the last release, groups them by [conventional commit](https://www.conventionalcommits.org/) type, and either opens a new Release PR or updates the existing one with a version bump and a changelog preview.
+3. Merging that Release PR cuts a `vX.Y.Z` git tag and publishes a GitHub Release with the generated changelog. The same tag is what the SonarQube scan and any downstream artefact (the Docker image, once [BSOD-258](https://github.com/danstis/team-dash/issues) lands) consume.
+
+### Bump rules
+
+The bump type follows the conventional-commit footer / type. While the project is below `1.0.0`, `bump-minor-pre-major: true` and `bump-patch-for-minor-pre-major: true` keep breaking changes at a minor bump and ordinary features at a patch bump:
+
+| Commit prefix              | Pre-1.0.0 bump | Post-1.0.0 bump |
+| -------------------------- | -------------- | --------------- |
+| `fix:`                     | patch          | patch           |
+| `feat:`                    | patch          | minor           |
+| `feat!:` or `BREAKING CHANGE:` | minor      | major           |
+| `chore:`, `docs:`, `refactor:`, `test:`, `build:`, `ci:`, `style:`, `perf:`, `revert:` | no release | no release (except `perf:` which bumps patch and `revert:` which inherits the reverted commit's bump) |
+
+The first release is **`v0.1.0`**, set by `.release-please-manifest.json` and pushed as the initial git tag. Versions stay under `1.0.0` for the MVP; promotion to `1.0.0` happens deliberately via an override, not by accident from a breaking-change commit.
+
+### Overriding the automatic version
+
+Routine flow is fully automatic. For genuine emergencies only, two escape hatches are supported on the Release PR — both are no-ops on a normal merge:
+
+- **Comment override** — comment `!Override 0.2.3` (or any semver) on the Release PR before merging. release-please uses that exact version and clears any pending autorelease label.
+- **Label override** — apply one of the labels `autorelease: major`, `autorelease: minor`, or `autorelease: patch` to the Release PR before merging. release-please forces that bump type, then clears the label after the release lands.
+
+Override history is visible in the merged Release PR's commit log and the resulting tag, so the audit trail is preserved without bypassing automation long-term.
+
+### Where the version is read
+
+- **GitHub Release** — created by release-please from the `vX.Y.Z` tag it cuts.
+- **SonarQube** — `.github/workflows/build.yml` resolves the version from the current ref or the latest reachable tag using `scripts/resolve-version.mjs` and passes it as `-Dsonar.projectVersion=<version>` to the SonarQube scan. CI logs print the resolved version before the scan runs.
+- **Docker image** — planned for a follow-up ([BSOD-258](https://github.com/danstis/team-dash/issues)) keyed off the published release tag. Until that lands, building the image with `docker build -f docker/Dockerfile` produces an untagged image.
+
+### Idempotency
+
+release-please will not retag or duplicate a release for the same commit SHA. Re-running the workflow on `main` after a release has already been cut opens a new Release PR only if new conventional commits have landed.
+
 ## Browser storage and privacy implications
 
 IndexedDB is the source of local persistence. Depending on the selected workspace, it may contain cached workspaces, projects, portfolios, teams, users, tasks, dependencies, snapshots, refresh state, team-mapping overrides, and named Person Groups. The cache is scoped by workspace; switching workspaces must not merge their data.

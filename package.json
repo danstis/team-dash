@@ -19,6 +19,7 @@
     "@playwright/test": "1.61",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@vitest/coverage-v8": "4.1.10",
     "eslint": "10.7",
     "eslint-plugin-boundaries": "^7.0.2",
     "msw": "2.15",

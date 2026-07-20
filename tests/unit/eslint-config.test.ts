@@ -172,6 +172,22 @@ describe("ESLint flat configuration", () => {
     expect(result.ruleIds).toContain(PLUGIN_RULE_ID);
   });
 
+  it("flags a domain module that imports from react-dom", async () => {
+    const result = await lintFixtureFile(
+      "domain/imports/domain-imports-react-dom.js",
+    );
+
+    expect(result.ruleIds).toContain(PLUGIN_RULE_ID);
+  });
+
+  it("flags a domain module that imports from react/jsx-runtime", async () => {
+    const result = await lintFixtureFile(
+      "domain/imports/domain-imports-react-jsx-runtime.js",
+    );
+
+    expect(result.ruleIds).toContain(PLUGIN_RULE_ID);
+  });
+
   it("flags a domain module that imports from src/data/asana/**", async () => {
     const result = await lintFixtureFile(
       "domain/imports/domain-imports-asana.js",
@@ -189,9 +205,7 @@ describe("ESLint flat configuration", () => {
   });
 
   it("allows src/data/** to import from src/domain/**", async () => {
-    const result = await lintFixtureFile(
-      "data/imports/data-imports-domain.js",
-    );
+    const result = await lintFixtureFile("data/imports/data-imports-domain.js");
 
     expect(result.ruleIds).not.toContain(PLUGIN_RULE_ID);
   });

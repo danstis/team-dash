@@ -132,6 +132,9 @@ lerna-debug.log*
 dist/
 dist-ssr/
 
+# Test coverage output (vitest --coverage, jest --coverage, nyc, etc.)
+coverage/
+
 # Environment
 .env.local
 .env.development.local

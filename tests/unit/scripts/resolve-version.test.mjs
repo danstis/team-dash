@@ -1,5 +1,15 @@
+import { execFileSync } from "node:child_process";
+import process from "node:process";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { resolveVersion } from "../../../scripts/resolve-version.mjs";
+import {
+  parseArgs,
+  resolveVersion,
+} from "../../../scripts/resolve-version.mjs";
+
+const testDir = dirname(fileURLToPath(import.meta.url));
+const scriptPath = resolve(testDir, "../../../scripts/resolve-version.mjs");
 
 describe("resolveVersion", () => {
   it("strips the v prefix from a tag ref", () => {
@@ -64,5 +74,28 @@ describe("resolveVersion", () => {
         latestTag: "v1.4.7",
       }),
     ).toBe("1.4.7");
+  });
+});
+
+describe("parseArgs", () => {
+  it("parses --key=value pairs and boolean flags", () => {
+    expect(
+      parseArgs(["--ref-type=tag", "--ref-name=v1.2.3", "--verbose", "main"]),
+    ).toEqual({
+      "ref-name": "v1.2.3",
+      "ref-type": "tag",
+      verbose: "true",
+    });
+  });
+});
+
+describe("resolve-version CLI", () => {
+  it("prints the resolved version from CLI arguments", () => {
+    const output = execFileSync(
+      process.execPath,
+      [scriptPath, "--ref-type=tag", "--ref-name=v2.3.4", "--latest-tag=v1.0.0"],
+      { encoding: "utf8" },
+    );
+    expect(output).toBe("2.3.4\n");
   });
 });

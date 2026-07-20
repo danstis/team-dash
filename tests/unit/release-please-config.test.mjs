@@ -17,8 +17,9 @@ describe("release-please config", () => {
     expect(config["package-name"]).toBe("team-dash");
   });
 
-  it("keeps versions under 1.0.0 by forcing patch bumps in 0.x", async () => {
+  it("keeps versions under 1.0.0 by forcing minor and patch bumps in 0.x", async () => {
     const config = await loadJson("release-please-config.json");
+    expect(config["bump-minor-pre-major"]).toBe(true);
     expect(config["bump-patch-for-minor-pre-major"]).toBe(true);
   });
 

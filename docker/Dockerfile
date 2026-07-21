@@ -34,10 +34,19 @@ COPY package.json package-lock.json ./
 # --no-fund keep the build output (and CI logs) free of network-noise.
 RUN npm ci --no-audit --no-fund
 
-# Copy the rest of the repository. The package.json/lockfile + npm ci
-# pattern above means the host's node_modules (if any) does not need to
-# be in the build context.
-COPY . .
+# Copy only the files the Vite production build actually needs. This
+# explicit, per-target list (rather than `COPY . .`) prevents the host's
+# `node_modules/` — present whenever a developer has run `npm install`
+# locally — from being dragged into the build context and silently
+# overwriting the just-`npm ci`'d `/app/node_modules` with binaries built
+# for the host OS/arch (esbuild/rollup/etc.), which can produce a
+# subtly wrong or broken image without any CI gate to catch it (T014's
+# docker-build gate is the first one). The list is intentionally narrow:
+# the entry HTML, the Vite + TypeScript configs, and the src/ tree.
+# Lint, test, fixture, spec-kit, CI, and docker files are not part of
+# the production bundle and are excluded.
+COPY tsconfig.json vite.config.ts index.html ./
+COPY src ./src
 
 # Standard Vite production build. The same `npm run build` that runs in
 # CI (T014) produces /app/dist, which the runtime stage copies verbatim.

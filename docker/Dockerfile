@@ -9,10 +9,9 @@
 #                    static build output from /usr/share/nginx/html as a
 #                    non-root user. nginx configuration (SPA fallback
 #                    routing, Cache-Control: no-cache for the service
-#                    worker, hashed-asset caching) is supplied
-#                    separately at docker/nginx.conf and is deliberately
-#                    not baked into this Dockerfile so the build/runtime
-#                    split can evolve independently.
+#                    worker, hashed-asset caching) is supplied at
+#                    docker/nginx.conf and copied into /etc/nginx/conf.d/default.conf
+#                    in the runtime stage.
 #
 # Build:   docker build -f docker/Dockerfile -t team-dash .
 # Run:     docker run --rm -p 8080:8080 team-dash

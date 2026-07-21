@@ -38,7 +38,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [x] [BSOD-136] T008 [P] Configure `vitest.config.ts` (jsdom environment) and `tests/setup.ts` (Testing Library matchers, MSW server lifecycle hooks)
 - [x] [BSOD-137] T009 [P] Configure `playwright.config.ts` pointing at `tests/e2e/`
 - [x] [BSOD-138] T010 [P] Create `index.html` and app entry point `src/main.tsx`
-- [ ] [BSOD-139] T011 [P] Create `docker/Dockerfile` (multi-stage: `node:24` build stage → `nginx:1.30-alpine` runtime stage)
+- [x] [BSOD-139] T011 [P] Create `docker/Dockerfile` (multi-stage: `node:24` build stage → `nginx:1.30-alpine` runtime stage)
 - [ ] [BSOD-140] T012 [P] Create `docker/nginx.conf` (SPA fallback routing; service-worker file served `Cache-Control: no-cache`; hashed assets long-cache)
 - [ ] [BSOD-141] T013 Add npm scripts to `package.json`: `dev`, `build`, `lint`, `format:check`, `typecheck`, `test:unit`, `test:contract`, `test:e2e`
 - [ ] [BSOD-142] T014 [P] Create `.github/workflows/ci.yml` running, per Principle III: install → lint → format:check → typecheck → test:unit → test:contract → build → PWA/service-worker output check → docker build → test:e2e

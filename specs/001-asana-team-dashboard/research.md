@@ -206,7 +206,7 @@ by Constitution principles, especially IV (local-first/no server DB), V
 ## 10. Docker/self-hosting
 
 - **Decision**: Multi-stage Dockerfile — a `node:24` build stage running
-  `npm ci && npm run build`, then an `nginx:1.30-alpine` runtime stage serving
+  `npm ci && npm run build`, then an `nginxinc/nginx-unprivileged:1.30-alpine` runtime stage serving
   the static `dist/` output with SPA fallback routing and correct
   service-worker/cache-control headers (service worker file served with
   `Cache-Control: no-cache` so PWA updates propagate; hashed asset files

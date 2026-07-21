@@ -99,10 +99,10 @@ Build and run the static production image from the repository root:
 
 ```bash
 docker build -f docker/Dockerfile -t team-dash .
-docker run --rm -p 8080:80 team-dash
+docker run --rm -p 8080:8080 team-dash
 ```
 
-Open `http://localhost:8080`. The image uses a Node.js 24 build stage and an nginx 1.30 Alpine runtime stage. nginx serves only the compiled static assets, provides SPA fallback routing, sends `Cache-Control: no-cache` for the service worker, and long-caches hashed assets.
+Open `http://localhost:8080`. The image uses a Node.js 24 build stage and an unprivileged nginx 1.30 Alpine runtime stage. nginx serves only the compiled static assets, provides SPA fallback routing, sends `Cache-Control: no-cache` for the service worker, and long-caches hashed assets.
 
 The container has no backend behaviour and no server-side Asana credentials. In a production build, the browser still needs a valid user-supplied PAT to call Asana. The fixture-backed mock development flow is not a substitute for production access, and the container must not be given a PAT through Docker arguments or environment variables.
 
@@ -226,7 +226,7 @@ Check whether site data was cleared, the browser changed profiles, private brows
 
 ### The Docker page returns a 404 on a client route
 
-Confirm that the image was built from the repository root with `docker build -f docker/Dockerfile -t team-dash .`, that port `8080` is mapped to container port `80`, and that the nginx configuration includes SPA fallback routing. Rebuild after changing frontend files so the new `dist/` output is copied into the image.
+Confirm that the image was built from the repository root with `docker build -f docker/Dockerfile -t team-dash .`, that port `8080` is mapped to container port `8080`, and that the nginx configuration includes SPA fallback routing. Rebuild after changing frontend files so the new `dist/` output is copied into the image.
 
 ### A security or credential-handling problem is suspected
 

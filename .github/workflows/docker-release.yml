@@ -1,0 +1,161 @@
+name: Docker Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Git tag name to publish (e.g. v0.1.0). Must already exist in the repository."
+        required: true
+        type: string
+      source_branch:
+        description: "Branch the tag was cut from. Set to 'main' to also push a `latest` alias; leave empty for non-main releases."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  docker:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve event inputs
+        id: inputs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          RELEASE_TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "release" ]; then
+            # `target_commitish` is the branch or commit the release-please
+            # tag was cut from. Treat only an explicit branch reference
+            # to `main` as "on main" so we never push `latest` from a
+            # hotfix or back-port branch. release-please with the default
+            # squash strategy reports `main` for normal releases.
+            if [ "$RELEASE_TARGET_COMMITISH" = "main" ]; then
+              ON_MAIN="true"
+            else
+              ON_MAIN="false"
+            fi
+            {
+              echo "tag_name=$RELEASE_TAG_NAME"
+              echo "prerelease=$RELEASE_PRERELEASE"
+              echo "on_main=$ON_MAIN"
+            } >> "$GITHUB_OUTPUT"
+          else
+            if [ "${{ inputs.source_branch }}" = "main" ]; then
+              ON_MAIN="true"
+            else
+              ON_MAIN="false"
+            fi
+            {
+              echo "tag_name=${{ inputs.tag_name }}"
+              echo "prerelease=false"
+              echo "on_main=$ON_MAIN"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log resolved inputs
+        run: |
+          echo "Resolved Docker image inputs:"
+          echo "  tag_name=${{ steps.inputs.outputs.tag_name }}"
+          echo "  prerelease=${{ steps.inputs.outputs.prerelease }}"
+          echo "  on_main=${{ steps.inputs.outputs.on_main }}"
+
+      - name: Check out the tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Check out the tag directly so the image is built from the
+          # exact commit release-please tagged, not from a re-fetched
+          # `main` HEAD (which may have moved past the release).
+          ref: ${{ steps.inputs.outputs.tag_name }}
+          fetch-depth: 1
+
+      - name: Resolve source commit SHA
+        id: source
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          echo "commit_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Source commit: $SHA"
+
+      - name: Resolve Docker tags
+        id: tags
+        run: |
+          set -euo pipefail
+          JSON=$(node scripts/resolve-docker-tags.mjs \
+            --tag-name="${{ steps.inputs.outputs.tag_name }}" \
+            --prerelease="${{ steps.inputs.outputs.prerelease }}" \
+            --on-main="${{ steps.inputs.outputs.on_main }}")
+          echo "Computed tags payload: $JSON"
+
+          IMAGE_OWNER="${{ github.repository_owner }}"
+          {
+            echo "Image refs to push:"
+            echo "$JSON" | jq -r --arg registry "ghcr.io" \
+              --arg owner "$IMAGE_OWNER" \
+              --arg name "team-dash" \
+              '.tags[] | "  " + "\($registry)/\($owner)/\($name):\(.)"'
+          }
+
+          {
+            echo "tags_json=$JSON"
+            echo "image_refs<<EOF"
+            echo "$JSON" | jq -r --arg registry "ghcr.io" \
+              --arg owner "$IMAGE_OWNER" \
+              --arg name "team-dash" \
+              '.tags[] | "\($registry)/\($owner)/\($name):\(.)"'
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check whether the version is already published (idempotent)
+        id: check
+        env:
+          VERSION: ${{ fromJSON(steps.tags.outputs.tags_json).version }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${OWNER}/team-dash:${VERSION}"
+          # `docker buildx imagetools inspect` reads from the same
+          # credential store the login-action populated. Exit 0 means the
+          # manifest exists; non-zero means the tag is not in the
+          # registry.
+          if docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "::notice::Image ${IMAGE} already published; skipping build/push (idempotent no-op)."
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build & push
+        if: steps.check.outputs.already_published != 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.image_refs }}
+          labels: |
+            org.opencontainers.image.title=team-dash
+            org.opencontainers.image.version=${{ fromJSON(steps.tags.outputs.tags_json).version }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.commit_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -169,6 +169,49 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     expect(source).not.toMatch(/amazonaws\.com/);
   });
 
+  it("never interpolates ${{ inputs.* }} directly into a `run:` block (script-injection guard)", () => {
+    // GitHub-Actions script-injection mitigation: any untrusted input
+    // (workflow_dispatch inputs, event payloads) must be threaded through
+    // `env:` and referenced as `$VAR`, not interpolated into the shell
+    // command itself. The release-event branch already follows this
+    // pattern; the workflow_dispatch branch must mirror it.
+    expect(source).not.toMatch(/run:[^\n]*\$\{\{\s*inputs\./);
+    // Same guard for the event payloads on the release branch — the
+    // existing code uses `env: RELEASE_TAG_NAME: ${{ ... }}` and then
+    // `$RELEASE_TAG_NAME` in shell, so we expect *no* `${{ github.event.* }}`
+    // tokens inside a `run:` block either.
+    expect(source).not.toMatch(/run:[^\n]*\$\{\{\s*github\.event\./);
+  });
+
+  it("threads the workflow_dispatch tag_name and source_branch inputs through env vars", () => {
+    expect(source).toMatch(
+      /DISPATCH_TAG_NAME:\s*\$\{\{\s*inputs\.tag_name\s*\}\}/,
+    );
+    expect(source).toMatch(
+      /DISPATCH_SOURCE_BRANCH:\s*\$\{\{\s*inputs\.source_branch\s*\}\}/,
+    );
+  });
+
+  it("sets a timeout-minutes on the docker job", () => {
+    expect(source).toMatch(/^\s{4}timeout-minutes:\s*\d+\s*$/m);
+  });
+
+  it("leaves prerelease empty on the workflow_dispatch branch so the script derives it from the semver", () => {
+    // Dispatch path emits `prerelease=` (empty) so the script's
+    // coerceBool returns undefined and resolveDockerTags falls back to
+    // checking the tag's `-` segment — which means a re-publish of a
+    // pre-release tag (e.g. `v1.0.0-rc.1`) does NOT push `latest` even
+    // when source_branch=main.
+    expect(source).toContain('echo "prerelease="');
+  });
+
+  it("does not hardcode `prerelease=false` on the workflow_dispatch branch", () => {
+    // AC4 regression guard: the original v1 hardcoded prerelease=false in
+    // the dispatch branch, which would have silently pushed `latest` for
+    // any pre-release tag re-dispatched with source_branch=main.
+    expect(source).not.toMatch(/prerelease=false/);
+  });
+
   it("uses the YAML keys expected by GitHub Actions at the top level", () => {
     expect(topLevelKeys(source).sort()).toEqual(
       ["jobs", "name", "on", "permissions"].sort(),

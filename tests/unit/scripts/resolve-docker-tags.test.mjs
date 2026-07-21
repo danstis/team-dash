@@ -170,6 +170,78 @@ describe("resolveDockerTags", () => {
       }).tags,
     ).not.toContain("latest");
   });
+
+  describe("prerelease derivation from semver (workflow_dispatch path)", () => {
+    it("derives prerelease=true when the tag has a `-` segment and prerelease is omitted", () => {
+      expect(
+        resolveDockerTags({ tagName: "v1.0.0-rc.1", onMain: true }),
+      ).toEqual({
+        version: "1.0.0-rc.1",
+        majorMinor: "1.0",
+        prerelease: true,
+        onMain: true,
+        tags: ["1.0.0-rc.1", "1.0"],
+      });
+    });
+
+    it("derives prerelease=false when the tag is stable and prerelease is omitted", () => {
+      expect(resolveDockerTags({ tagName: "v0.1.0", onMain: true })).toEqual({
+        version: "0.1.0",
+        majorMinor: "0.1",
+        prerelease: false,
+        onMain: true,
+        tags: ["0.1.0", "0.1", "latest"],
+      });
+    });
+
+    it("explicit prerelease=true overrides a stable semver (covers GitHub release.prerelease flag)", () => {
+      expect(
+        resolveDockerTags({
+          tagName: "v0.1.0",
+          prerelease: true,
+          onMain: true,
+        }),
+      ).toMatchObject({
+        version: "0.1.0",
+        prerelease: true,
+        tags: ["0.1.0", "0.1"],
+      });
+    });
+
+    it("explicit prerelease=false overrides a pre-release semver (the inverse override)", () => {
+      expect(
+        resolveDockerTags({
+          tagName: "v1.0.0-rc.1",
+          prerelease: false,
+          onMain: true,
+        }),
+      ).toMatchObject({
+        version: "1.0.0-rc.1",
+        prerelease: false,
+        tags: ["1.0.0-rc.1", "1.0", "latest"],
+      });
+    });
+
+    it("treats prerelease=undefined the same as omitting the key", () => {
+      expect(
+        resolveDockerTags({
+          tagName: "v1.0.0-rc.1",
+          prerelease: undefined,
+          onMain: true,
+        }).prerelease,
+      ).toBe(true);
+    });
+
+    it("treats prerelease=null the same as omitting the key", () => {
+      expect(
+        resolveDockerTags({
+          tagName: "v0.1.0",
+          prerelease: null,
+          onMain: true,
+        }).prerelease,
+      ).toBe(false);
+    });
+  });
 });
 
 describe("parseArgs (resolve-docker-tags)", () => {
@@ -230,5 +302,37 @@ describe("resolve-docker-tags CLI", () => {
         { encoding: "utf8", stdio: "pipe" },
       ),
     ).toThrow();
+  });
+
+  it("derives prerelease from the tag when --prerelease is omitted (workflow_dispatch path)", () => {
+    const output = execFileSync(
+      process.execPath,
+      [scriptPath, "--tag-name=v1.0.0-rc.1", "--on-main=true"],
+      { encoding: "utf8" },
+    );
+    const parsed = JSON.parse(output);
+    expect(parsed.prerelease).toBe(true);
+    expect(parsed.tags).toEqual(["1.0.0-rc.1", "1.0"]);
+  });
+
+  it("derives prerelease=false from a stable tag when --prerelease is omitted", () => {
+    const output = execFileSync(
+      process.execPath,
+      [scriptPath, "--tag-name=v0.1.0", "--on-main=true"],
+      { encoding: "utf8" },
+    );
+    const parsed = JSON.parse(output);
+    expect(parsed.prerelease).toBe(false);
+    expect(parsed.tags).toEqual(["0.1.0", "0.1", "latest"]);
+  });
+
+  it("treats an empty --prerelease as 'not provided' and derives from semver", () => {
+    const output = execFileSync(
+      process.execPath,
+      [scriptPath, "--tag-name=v1.0.0-rc.1", "--prerelease=", "--on-main=true"],
+      { encoding: "utf8" },
+    );
+    const parsed = JSON.parse(output);
+    expect(parsed.prerelease).toBe(true);
   });
 });

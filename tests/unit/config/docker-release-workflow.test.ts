@@ -183,6 +183,71 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     expect(source).not.toMatch(/run:[^\n]*\$\{\{\s*github\.event\./);
   });
 
+  it("never interpolates any ${{ ... }} expression into a `run:` block (broader script-injection guard)", () => {
+    // PR-Review follow-up: a token-specific denylist (inputs./github.event.)
+    // misses transitive-taint cases like steps.inputs.outputs.tag_name,
+    // which is set verbatim from the dispatch input upstream and would
+    // re-introduce the same injection class one hop downstream. The
+    // contract this workflow enforces is the broader one: nothing from
+    // a `${{ ... }}` expression ever lands in a `run:` shell string —
+    // every value, even repo metadata like `github.repository_owner`, is
+    // threaded through `env:` and referenced as `$VAR`. That makes the
+    // rule a structural invariant, not a regex over a denylist.
+    //
+    // We collect every `run:` block (block-scalar `|` / `>` / `|-` / `>+`
+    // / etc., and the less-common inline `run: <single-line>` form) by
+    // walking line-by-line, and assert none of the shell lines inside
+    // contains a `${{` opener.
+    const lines = source.split("\n");
+
+    type RunBlock = { startLine: number; body: string[] };
+    const blocks: RunBlock[] = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      const header = lines[i] ?? "";
+
+      // Inline form: `- run: <...>` on a single line (no block scalar).
+      const inline = /^\s*-\s*run:\s*(.+?)\s*$/.exec(header);
+      if (inline) {
+        blocks.push({ startLine: i + 1, body: [inline[1] ?? ""] });
+        continue;
+      }
+
+      // Block-scalar form: any indented line ending in `run: |` or
+      // `run: >` (with optional chomping indicator `-` / `+`).
+      const blockHeader = /^(\s*)run:\s*(?:\|[-+]?|>[-+]?)\s*$/.exec(header);
+      if (!blockHeader) continue;
+      const blockIndent = (blockHeader[1] ?? "") + "  ";
+      const body: string[] = [];
+      for (let j = i + 1; j < lines.length; j += 1) {
+        const line = lines[j] ?? "";
+        if (line.trim() === "") {
+          body.push(line);
+          continue;
+        }
+        if (line.startsWith(blockIndent)) {
+          body.push(line);
+          continue;
+        }
+        // Line is less indented than the block → block ended.
+        break;
+      }
+      blocks.push({ startLine: i + 1, body });
+    }
+
+    expect(
+      blocks.length,
+      "test setup error: expected at least one `run:` block in the workflow",
+    ).toBeGreaterThan(0);
+
+    for (const block of blocks) {
+      const joined = block.body.join("\n");
+      expect(
+        joined.includes("${{"),
+        `\`run:\` block starting on line ${block.startLine} contains a literal ${{}} interpolation:\n${joined}`,
+      ).toBe(false);
+    }
+  });
+
   it("threads the workflow_dispatch tag_name and source_branch inputs through env vars", () => {
     expect(source).toMatch(
       /DISPATCH_TAG_NAME:\s*\$\{\{\s*inputs\.tag_name\s*\}\}/,

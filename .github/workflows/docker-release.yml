@@ -83,11 +83,21 @@ jobs:
           fi
 
       - name: Log resolved inputs
+        env:
+          # Thread step outputs through env vars rather than interpolating
+          # them into the `run:` shell. `steps.inputs.outputs.tag_name` is
+          # set verbatim from the dispatch input one step earlier, so it
+          # is transitively untrusted — interpolating it here would
+          # reintroduce the script-injection vector the previous commit
+          # closed in the "Resolve event inputs" step.
+          LOG_TAG_NAME: ${{ steps.inputs.outputs.tag_name }}
+          LOG_PRERELEASE: ${{ steps.inputs.outputs.prerelease }}
+          LOG_ON_MAIN: ${{ steps.inputs.outputs.on_main }}
         run: |
           echo "Resolved Docker image inputs:"
-          echo "  tag_name=${{ steps.inputs.outputs.tag_name }}"
-          echo "  prerelease=${{ steps.inputs.outputs.prerelease }}"
-          echo "  on_main=${{ steps.inputs.outputs.on_main }}"
+          echo "  tag_name=$LOG_TAG_NAME"
+          echo "  prerelease=$LOG_PRERELEASE"
+          echo "  on_main=$LOG_ON_MAIN"
 
       - name: Check out the tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -112,6 +122,7 @@ jobs:
           TAG_NAME: ${{ steps.inputs.outputs.tag_name }}
           PRERELEASE: ${{ steps.inputs.outputs.prerelease }}
           ON_MAIN: ${{ steps.inputs.outputs.on_main }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
           JSON=$(node scripts/resolve-docker-tags.mjs \
@@ -120,7 +131,6 @@ jobs:
             --on-main="$ON_MAIN")
           echo "Computed tags payload: $JSON"
 
-          IMAGE_OWNER="${{ github.repository_owner }}"
           {
             echo "Image refs to push:"
             echo "$JSON" | jq -r --arg registry "ghcr.io" \

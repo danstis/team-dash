@@ -102,6 +102,16 @@ docker build -f docker/Dockerfile -t team-dash .
 docker run --rm -p 8080:8080 team-dash
 ```
 
+For released versions, pull the prebuilt image from the GitHub Container Registry instead of building locally. Image tags mirror the published [GitHub Releases](#releases) — see the [Docker image tags](#docker-image-tags) section for the tag policy:
+
+```bash
+docker run --rm -p 8080:8080 ghcr.io/danstis/team-dash:0.1.0
+# or pin to the latest stable release on main:
+docker run --rm -p 8080:8080 ghcr.io/danstis/team-dash:latest
+# or auto-update within the current minor line:
+docker run --rm -p 8080:8080 ghcr.io/danstis/team-dash:0.1
+```
+
 Open `http://localhost:8080`. The image uses a Node.js 24 build stage and an unprivileged nginx 1.30 Alpine runtime stage. nginx serves only the compiled static assets, provides SPA fallback routing, sends `Cache-Control: no-cache` for the service worker, and long-caches hashed assets.
 
 The container has no backend behaviour and no server-side Asana credentials. In a production build, the browser still needs a valid user-supplied PAT to call Asana. The fixture-backed mock development flow is not a substitute for production access, and the container must not be given a PAT through Docker arguments or environment variables.
@@ -116,7 +126,7 @@ Team Dash versions are generated automatically by [release-please](https://githu
 
 1. A push lands on `main`. The `.github/workflows/release-please.yml` workflow runs release-please against `release-please-config.json`.
 2. release-please scans the commits since the last release, groups them by [conventional commit](https://www.conventionalcommits.org/) type, and either opens a new Release PR or updates the existing one with a version bump and a changelog preview.
-3. Merging that Release PR cuts a `vX.Y.Z` git tag and publishes a GitHub Release with the generated changelog. The same tag is what the SonarQube scan and any downstream artefact (the Docker image, once [BSOD-258](https://github.com/danstis/team-dash/issues) lands) consume.
+3. Merging that Release PR cuts a `vX.Y.Z` git tag and publishes a GitHub Release with the generated changelog. The same tag is what the SonarQube scan and the Docker image publish (`.github/workflows/docker-release.yml`) consume.
 
 ### Repository setup
 
@@ -157,11 +167,25 @@ Override history is visible in the merged Release PR's commit log and the result
 
 - **GitHub Release** — created by release-please from the `vX.Y.Z` tag it cuts.
 - **SonarQube** — `.github/workflows/build.yml` resolves the version from the current ref or the latest reachable tag using `scripts/resolve-version.mjs` and passes it as `-Dsonar.projectVersion=<version>` to the SonarQube scan. CI logs print the resolved version before the scan runs.
-- **Docker image** — planned for a follow-up ([BSOD-258](https://github.com/danstis/team-dash/issues)) keyed off the published release tag. Until that lands, building the image with `docker build -f docker/Dockerfile` produces an untagged image.
+- **Docker image** — `.github/workflows/docker-release.yml` consumes `github.event.release.tag_name` (and the matching `target_commitish`) when a release is published, then builds the image from that exact commit and pushes it to `ghcr.io/danstis/team-dash` with the tags listed below. The same script (`scripts/resolve-docker-tags.mjs`) computes the tag set from the version, `release.prerelease`, and `target_commitish`. CI logs print the resolved tag set and the source commit SHA.
+
+#### Docker image tags
+
+For each published GitHub Release, the workflow pushes one OCI image manifest to `ghcr.io/danstis/team-dash` with up to three tags, in this order:
+
+| Tag               | When pushed                                                                                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<version>`       | Always (e.g. `0.1.0`, `1.0.0-rc.1`). Stripped of any leading `v` prefix.                                                                                                  |
+| `<major>.<minor>` | Always (e.g. `0.1`, `1.0`). Pin to this for auto-update within a minor line.                                                                                              |
+| `latest`          | Only when the release is **stable** (not pre-release) **and** the tag was cut from `main`. Hot-fix tags from other branches or pre-release tags never overwrite `latest`. |
+
+The image is built from `docker/Dockerfile` (BSOD-139) at the exact commit `release-please` tagged — `actions/checkout` uses `ref: ${{ github.event.release.tag_name }}` so the build does not silently drift onto a newer `main` HEAD. OCI labels (`org.opencontainers.image.{title,version,source,revision}`) are stamped onto the image for downstream tooling.
+
+The workflow is also re-runnable manually via **Actions → Docker Release → Run workflow** with `tag_name` and (optionally) `source_branch` inputs, for emergencies that need a re-publish without cutting a new release. Re-runs on an already-published version detect the existing tag with `docker buildx imagetools inspect` and skip the build/push as a no-op.
 
 ### Idempotency
 
-release-please will not retag or duplicate a release for the same commit SHA. Re-running the workflow on `main` after a release has already been cut opens a new Release PR only if new conventional commits have landed.
+release-please will not retag or duplicate a release for the same commit SHA. Re-running the workflow on `main` after a release has already been cut opens a new Release PR only if new conventional commits have landed. The Docker Release workflow skips the build/push entirely when the version tag is already present in `ghcr.io`, so re-running it on an already-published release is a clean no-op rather than a push conflict.
 
 ## Browser storage and privacy implications
 

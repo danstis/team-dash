@@ -1,0 +1,278 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  NODE_VERSION: 24
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Run ESLint
+        run: |
+          set +e
+          npm run lint -- --format json --output-file lint-report.json
+          json_status=$?
+          npm run lint -- --format stylish --output-file lint-report.txt
+          text_status=$?
+          set -e
+          if [ "$json_status" -ne 0 ]; then
+            exit "$json_status"
+          fi
+          exit "$text_status"
+      - name: Upload lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: |
+            lint-report.json
+            lint-report.txt
+          if-no-files-found: error
+
+  format-check:
+    name: Format check
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Run Prettier check
+        run: npm run format:check
+
+  typecheck:
+    name: Typecheck
+    needs: format-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Run TypeScript check
+        run: npm run typecheck
+
+  test-unit:
+    name: Unit tests
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Run unit tests with coverage and JUnit results
+        run: |
+          mkdir -p test-results
+          npm run test:unit -- --coverage --coverage.reporter=lcov --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+      - name: Upload unit-test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: |
+            coverage/lcov.info
+            test-results/unit.xml
+          if-no-files-found: error
+
+  test-contract:
+    name: Contract tests
+    needs: test-unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Run contract tests with coverage and JUnit results
+        run: |
+          mkdir -p test-results
+          npm run test:contract -- --passWithNoTests --coverage --coverage.reporter=lcov --reporter=default --reporter=junit --outputFile.junit=test-results/contract.xml
+      - name: Upload contract-test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-test-reports
+          path: |
+            coverage/lcov.info
+            test-results/contract.xml
+          if-no-files-found: error
+
+  build:
+    name: Build
+    needs: test-contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Build production bundle
+        run: npm run build
+      - name: Upload production bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-bundle
+          path: dist
+          if-no-files-found: error
+
+  pwa-check:
+    name: PWA and service-worker output check
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: production-bundle
+          path: dist
+      - name: Verify PWA output
+        run: |
+          test -f dist/sw.js
+          test -f dist/manifest.webmanifest
+          test -d dist/assets
+
+  docker-build:
+    name: Docker build
+    needs: pwa-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Build Docker image
+        run: docker build --file docker/Dockerfile --tag team-dash-ci:${{ github.sha }} .
+      - name: Export Docker image
+        run: docker save team-dash-ci:${{ github.sha }} --output team-dash-image.tar
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: team-dash-image.tar
+          if-no-files-found: error
+
+  test-e2e:
+    name: End-to-end tests
+    needs: docker-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+      - name: Start production container
+        run: |
+          docker load --input team-dash-image.tar
+          docker run --detach --name team-dash-e2e --publish 8080:8080 team-dash-ci:${{ github.sha }}
+      - name: Run end-to-end tests
+        run: npm run test:e2e -- --pass-with-no-tests
+      - name: Stop production container
+        if: always()
+        run: docker rm --force team-dash-e2e
+
+  sonar:
+    name: SonarQube scan
+    needs: test-e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: actions/download-artifact@v4
+        with:
+          name: lint-reports
+          path: artifacts/lint
+      - uses: actions/download-artifact@v4
+        with:
+          name: unit-test-reports
+          path: artifacts/unit
+      - uses: actions/download-artifact@v4
+        with:
+          name: contract-test-reports
+          path: artifacts/contract
+      - name: Resolve version
+        id: version
+        run: |
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          version=$(node scripts/resolve-version.mjs \
+            --ref-type="${{ github.ref_type }}" \
+            --ref-name="${{ github.ref_name }}" \
+            --latest-tag="$latest_tag")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        with:
+          args: >-
+            -Dsonar.projectVersion=${{ steps.version.outputs.version }}
+            -Dsonar.javascript.lcov.reportPaths=artifacts/unit/coverage/lcov.info,artifacts/contract/coverage/lcov.info
+            -Dsonar.eslint.reportPaths=artifacts/lint/lint-report.json
+            -Dsonar.testExecutionReportPaths=artifacts/unit/test-results/unit.xml,artifacts/contract/test-results/contract.xml
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: SonarQube Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@cf038b0bf7c8fc70378259d9946dbdf15a782990 # v1.2.0
+        with:
+          pollingTimeoutSec: 600
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io

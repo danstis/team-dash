@@ -5,19 +5,20 @@
 # Stage 1 (build): Node.js 24 produces the Vite 8.1 production bundle
 #                  into /app/dist using the committed package-lock.json
 #                  (npm ci) so the runtime artefact is reproducible.
-# Stage 2 (runtime): nginx 1.30-alpine serves the static build output
-#                   from /usr/share/nginx/html. nginx configuration
-#                   (SPA fallback routing, Cache-Control: no-cache for
-#                   the service worker, hashed-asset caching) is
-#                   supplied separately at docker/nginx.conf and is
-#                   deliberately not baked into this Dockerfile so the
-#                   build/runtime split can evolve independently.
+# Stage 2 (runtime): nginxinc/nginx-unprivileged:1.30-alpine serves the
+#                    static build output from /usr/share/nginx/html as a
+#                    non-root user. nginx configuration (SPA fallback
+#                    routing, Cache-Control: no-cache for the service
+#                    worker, hashed-asset caching) is supplied
+#                    separately at docker/nginx.conf and is deliberately
+#                    not baked into this Dockerfile so the build/runtime
+#                    split can evolve independently.
 #
 # Build:   docker build -f docker/Dockerfile -t team-dash .
-# Run:     docker run --rm -p 8080:80 team-dash
+# Run:     docker run --rm -p 8080:8080 team-dash
 
 ARG NODE_IMAGE=node:24
-ARG NGINX_IMAGE=nginx:1.30-alpine
+ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.30-alpine
 
 # ---------------------------------------------------------------------------
 # Stage 1 — build the static production bundle with Vite 8.1.
@@ -30,9 +31,11 @@ WORKDIR /app
 # builds that do not touch dependencies.
 COPY package.json package-lock.json ./
 
-# Reproducible install against the committed lockfile. --no-audit and
-# --no-fund keep the build output (and CI logs) free of network-noise.
-RUN npm ci --no-audit --no-fund
+# Reproducible install against the committed lockfile. --ignore-scripts
+# prevents install-time lifecycle hooks from executing in the image
+# build, and --no-audit / --no-fund keep the output free of
+# network-noise.
+RUN npm ci --ignore-scripts --no-audit --no-fund
 
 # Copy only the files the Vite production build actually needs. This
 # explicit, per-target list (rather than `COPY . .`) prevents the host's
@@ -53,13 +56,14 @@ COPY src ./src
 RUN npm run build
 
 # ---------------------------------------------------------------------------
-# Stage 2 — serve the static bundle with nginx 1.30-alpine.
+# Stage 2 — serve the static bundle with unprivileged nginx 1.30-alpine.
 # ---------------------------------------------------------------------------
 FROM ${NGINX_IMAGE} AS runtime
 
-# Drop the Vite build output into nginx's default document root. nginx
-# listens on port 80 by default and the inherited CMD
-# (`nginx -g "daemon off;"`) starts the server in the foreground.
+# Drop the Vite build output into nginx's default document root. The
+# unprivileged nginx image listens on port 8080 by default and the
+# inherited CMD (`nginx -g "daemon off;"`) starts the server in the
+# foreground as the image's non-root `nginx` user.
 COPY --from=build /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 8080

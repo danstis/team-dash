@@ -18,7 +18,7 @@
 # Run:     docker run --rm -p 8080:8080 team-dash
 
 ARG NODE_IMAGE=node:24
-ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.30-alpine
+ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31-alpine
 
 # ---------------------------------------------------------------------------
 # Stage 1 — build the static production bundle with Vite 8.1.

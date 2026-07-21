@@ -6,6 +6,16 @@
   "engines": {
     "node": "24.x"
   },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run tests/unit",
+    "test:contract": "vitest run tests/contract",
+    "test:e2e": "playwright test"
+  },
   "dependencies": {
     "dexie": "4.4",
     "dexie-react-hooks": "^4.4.0",

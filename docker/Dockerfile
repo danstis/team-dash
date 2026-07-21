@@ -9,10 +9,9 @@
 #                    static build output from /usr/share/nginx/html as a
 #                    non-root user. nginx configuration (SPA fallback
 #                    routing, Cache-Control: no-cache for the service
-#                    worker, hashed-asset caching) is supplied
-#                    separately at docker/nginx.conf and is deliberately
-#                    not baked into this Dockerfile so the build/runtime
-#                    split can evolve independently.
+#                    worker, hashed-asset caching) is supplied at
+#                    docker/nginx.conf and copied into /etc/nginx/conf.d/default.conf
+#                    in the runtime stage.
 #
 # Build:   docker build -f docker/Dockerfile -t team-dash .
 # Run:     docker run --rm -p 8080:8080 team-dash
@@ -65,5 +64,16 @@ FROM ${NGINX_IMAGE} AS runtime
 # inherited CMD (`nginx -g "daemon off;"`) starts the server in the
 # foreground as the image's non-root `nginx` user.
 COPY --from=build /app/dist /usr/share/nginx/html
+
+# Layer in the Team Dash nginx config (SPA fallback routing, the
+# `Cache-Control: no-cache` policy for the service-worker file and
+# the PWA manifest, and the long-cache policy for Vite's hashed
+# `/assets/*` output — see T012 / BSOD-140). The upstream image's
+# main `nginx.conf` `include`s everything under `/etc/nginx/conf.d/`,
+# so installing the file as `default.conf` both adds our rules and
+# replaces the image's stock default site (which listens on the same
+# port 8080 with a "Welcome to nginx!" stub that would otherwise
+# shadow Team Dash).
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 8080

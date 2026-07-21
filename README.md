@@ -118,6 +118,19 @@ Team Dash versions are generated automatically by [release-please](https://githu
 2. release-please scans the commits since the last release, groups them by [conventional commit](https://www.conventionalcommits.org/) type, and either opens a new Release PR or updates the existing one with a version bump and a changelog preview.
 3. Merging that Release PR cuts a `vX.Y.Z` git tag and publishes a GitHub Release with the generated changelog. The same tag is what the SonarQube scan and any downstream artefact (the Docker image, once [BSOD-258](https://github.com/danstis/team-dash/issues) lands) consume.
 
+### Repository setup
+
+To allow the workflow to open and update Release PRs, go to GitHub repository **Settings > Actions > General > Workflow permissions** and enable **Allow GitHub Actions to create and approve pull requests**. The workflow itself requests the necessary write permissions.
+
+### Merge strategies
+
+Both regular merge commits and squash merges are supported:
+
+- **Regular merge commits** preserve the conventional commits already present on the pull-request branch. release-please uses those commits to determine the release.
+- **Squash merges** produce one commit on `main`. Ensure that final squash commit title uses a conventional-commit prefix, such as `feat: add backlog export` or `fix: handle expired token`. When GitHub uses the pull-request title as the squash title, make the pull-request title conventional too.
+
+Commits without a release-worthy conventional prefix, such as `chore:` or `docs:`, do not create a release on their own.
+
 ### Bump rules
 
 The bump type follows the conventional-commit footer / type. While the project is below `1.0.0`, `bump-minor-pre-major: true` and `bump-patch-for-minor-pre-major: true` keep breaking changes at a minor bump and ordinary features at a patch bump:

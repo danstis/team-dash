@@ -99,10 +99,10 @@ Build and run the static production image from the repository root:
 
 ```bash
 docker build -f docker/Dockerfile -t team-dash .
-docker run --rm -p 8080:80 team-dash
+docker run --rm -p 8080:8080 team-dash
 ```
 
-Open `http://localhost:8080`. The image uses a Node.js 24 build stage and an nginx 1.30 Alpine runtime stage. nginx serves only the compiled static assets, provides SPA fallback routing, sends `Cache-Control: no-cache` for the service worker, and long-caches hashed assets.
+Open `http://localhost:8080`. The image uses a Node.js 24 build stage and an unprivileged nginx 1.30 Alpine runtime stage. nginx serves only the compiled static assets, provides SPA fallback routing, sends `Cache-Control: no-cache` for the service worker, and long-caches hashed assets.
 
 The container has no backend behaviour and no server-side Asana credentials. In a production build, the browser still needs a valid user-supplied PAT to call Asana. The fixture-backed mock development flow is not a substitute for production access, and the container must not be given a PAT through Docker arguments or environment variables.
 
@@ -117,6 +117,19 @@ Team Dash versions are generated automatically by [release-please](https://githu
 1. A push lands on `main`. The `.github/workflows/release-please.yml` workflow runs release-please against `release-please-config.json`.
 2. release-please scans the commits since the last release, groups them by [conventional commit](https://www.conventionalcommits.org/) type, and either opens a new Release PR or updates the existing one with a version bump and a changelog preview.
 3. Merging that Release PR cuts a `vX.Y.Z` git tag and publishes a GitHub Release with the generated changelog. The same tag is what the SonarQube scan and any downstream artefact (the Docker image, once [BSOD-258](https://github.com/danstis/team-dash/issues) lands) consume.
+
+### Repository setup
+
+To allow the workflow to open and update Release PRs, go to GitHub repository **Settings > Actions > General > Workflow permissions** and enable **Allow GitHub Actions to create and approve pull requests**. The workflow itself requests the necessary write permissions.
+
+### Merge strategies
+
+Both regular merge commits and squash merges are supported:
+
+- **Regular merge commits** preserve the conventional commits already present on the pull-request branch. release-please uses those commits to determine the release.
+- **Squash merges** produce one commit on `main`. Ensure that final squash commit title uses a conventional-commit prefix, such as `feat: add backlog export` or `fix: handle expired token`. When GitHub uses the pull-request title as the squash title, make the pull-request title conventional too.
+
+Commits without a release-worthy conventional prefix, such as `chore:` or `docs:`, do not create a release on their own.
 
 ### Bump rules
 
@@ -226,7 +239,7 @@ Check whether site data was cleared, the browser changed profiles, private brows
 
 ### The Docker page returns a 404 on a client route
 
-Confirm that the image was built from the repository root with `docker build -f docker/Dockerfile -t team-dash .`, that port `8080` is mapped to container port `80`, and that the nginx configuration includes SPA fallback routing. Rebuild after changing frontend files so the new `dist/` output is copied into the image.
+Confirm that the image was built from the repository root with `docker build -f docker/Dockerfile -t team-dash .`, that port `8080` is mapped to container port `8080`, and that the nginx configuration includes SPA fallback routing. Rebuild after changing frontend files so the new `dist/` output is copied into the image.
 
 ### A security or credential-handling problem is suspected
 

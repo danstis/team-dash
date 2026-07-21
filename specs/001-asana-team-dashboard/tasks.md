@@ -40,7 +40,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [x] [BSOD-138] T010 [P] Create `index.html` and app entry point `src/main.tsx`
 - [x] [BSOD-139] T011 [P] Create `docker/Dockerfile` (multi-stage: `node:24` build stage → `nginx:1.30-alpine` runtime stage)
 - [x] [BSOD-140] T012 [P] Create `docker/nginx.conf` (SPA fallback routing; service-worker file served `Cache-Control: no-cache`; hashed assets long-cache)
-- [ ] [BSOD-141] T013 Add npm scripts to `package.json`: `dev`, `build`, `lint`, `format:check`, `typecheck`, `test:unit`, `test:contract`, `test:e2e`
+- [x] [BSOD-141] T013 Add npm scripts to `package.json`: `dev`, `build`, `lint`, `format:check`, `typecheck`, `test:unit`, `test:contract`, `test:e2e`
 - [ ] [BSOD-142] T014 [P] Create `.github/workflows/ci.yml` running, per Principle III: install → lint → format:check → typecheck → test:unit → test:contract → build → PWA/service-worker output check → docker build → test:e2e
 - [x] [BSOD-143] T015 [P] Write `README.md` covering product boundary, prerequisites, PAT risks, local dev, testing, Docker deployment, browser-storage implications, offline limitations, data-clearing steps, and troubleshooting (Constitution Principle VIII)
 

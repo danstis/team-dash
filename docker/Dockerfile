@@ -66,4 +66,15 @@ FROM ${NGINX_IMAGE} AS runtime
 # foreground as the image's non-root `nginx` user.
 COPY --from=build /app/dist /usr/share/nginx/html
 
+# Layer in the Team Dash nginx config (SPA fallback routing, the
+# `Cache-Control: no-cache` policy for the service-worker file and
+# the PWA manifest, and the long-cache policy for Vite's hashed
+# `/assets/*` output — see T012 / BSOD-140). The upstream image's
+# main `nginx.conf` `include`s everything under `/etc/nginx/conf.d/`,
+# so installing the file as `default.conf` both adds our rules and
+# replaces the image's stock default site (which listens on the same
+# port 8080 with a "Welcome to nginx!" stub that would otherwise
+# shadow Team Dash).
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+
 EXPOSE 8080

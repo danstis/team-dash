@@ -98,7 +98,7 @@ values in a controlled fixture").
 
 ```bash
 docker build -f docker/Dockerfile -t team-dash .
-docker run --rm -p 8080:80 team-dash
+docker run --rm -p 8080:8080 team-dash
 ```
 
 Open `http://localhost:8080` — the same first-run → refresh → dashboard

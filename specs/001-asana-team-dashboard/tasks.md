@@ -57,7 +57,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [x] [BSOD-144] T016 [P] Define cross-cutting domain types (`FilterCriteria`, `MetricContext`, `MetricResult<T>`, `ViewState`, `DataQualityFlag`) per data-model.md in `src/domain/types.ts`
 - [x] [BSOD-145] T017 [P] Implement `dedupeByGid` helper in `src/domain/dedup/dedupeByGid.ts`
 - [ ] [BSOD-146] T018 [P] Implement datetime helpers (local/UTC timezone basis, Monday week-start, date-bucket width selection) in `src/domain/datetime/index.ts`
-- [ ] [BSOD-147] T019 [P] Unit tests for `dedupeByGid` in `tests/unit/domain/dedup/dedupeByGid.test.ts`
+- [x] [BSOD-147] T019 [P] Unit tests for `dedupeByGid` in `tests/unit/domain/dedup/dedupeByGid.test.ts`
 - [ ] [BSOD-148] T020 [P] Unit tests for datetime helpers (timezone switch recalculation, Monday week-start, bucket-width determinism) in `tests/unit/domain/datetime/index.test.ts`
 - [ ] [BSOD-149] T021 Define the full Dexie schema (`workspaces`, `projects`, `portfolios`, `asanaTeams`, `teamMappingOverrides`, `personGroups`, `users`, `priorityFields`, `dependencies`, `sections`, `tasks`, `snapshots`, `refreshSessions`, `credentials`) exactly per contracts/storage-repository.md in `src/data/db/schema.ts`
 - [ ] [BSOD-150] T022 [P] Contract test asserting the live Dexie schema matches contracts/storage-repository.md in `tests/contract/db-schema.test.ts`

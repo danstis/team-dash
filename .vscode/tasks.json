@@ -28,14 +28,7 @@
       "label": "Docker: build image",
       "type": "process",
       "command": "docker",
-      "args": [
-        "build",
-        "-f",
-        "docker/Dockerfile",
-        "-t",
-        "team-dash",
-        "."
-      ],
+      "args": ["build", "-f", "docker/Dockerfile", "-t", "team-dash", "."],
       "problemMatcher": []
     },
     {

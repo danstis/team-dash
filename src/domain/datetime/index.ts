@@ -54,7 +54,7 @@
 /* Re-exports                                                                 */
 /* -------------------------------------------------------------------------- */
 
-export type {
+import type {
   ISODate,
   ISODateTime,
   DateRange,
@@ -62,6 +62,15 @@ export type {
   TimezoneSetting,
   WeekStart,
 } from "../types";
+
+export type {
+  ISODate,
+  ISODateTime,
+  DateRange,
+  DateRangePreset,
+  TimezoneSetting,
+  WeekStart,
+};
 
 /* -------------------------------------------------------------------------- */
 /* Constants                                                                  */
@@ -414,9 +423,7 @@ export function isDateInRange(
   return candidate >= range.start && candidate <= range.end;
 }
 
-function toComparableDate(
-  value: ISODate | ISODateTime | Date,
-): Date {
+function toComparableDate(value: ISODate | ISODateTime | Date): Date {
   if (value instanceof Date) {
     return value;
   }

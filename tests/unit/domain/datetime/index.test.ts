@@ -30,7 +30,6 @@
  * assertions hold on every host. Vitest re-reads `process.env.TZ` per call
  * to `Intl.DateTimeFormat`, so changing it at module load time is enough.
  */
-/* eslint-disable @typescript-eslint/no-unused-expressions */
 
 process.env.TZ = "Australia/Sydney";
 
@@ -350,16 +349,10 @@ describe("T020 month/quarter boundaries (used by FR-032 presets)", () => {
   it("startOfQuarterInTimezone returns the first day of the calendar quarter", () => {
     // 2026-03-18 sits in Q1 → quarter start is January 1.
     expect(
-      startOfQuarterInTimezone(
-        new Date("2026-03-18T03:30:00.000Z"),
-        "local",
-      ),
+      startOfQuarterInTimezone(new Date("2026-03-18T03:30:00.000Z"), "local"),
     ).toBe(isoDate("2026-01-01"));
     expect(
-      startOfQuarterInTimezone(
-        new Date("2026-08-18T03:30:00.000Z"),
-        "local",
-      ),
+      startOfQuarterInTimezone(new Date("2026-08-18T03:30:00.000Z"), "local"),
     ).toBe(isoDate("2026-07-01"));
   });
 
@@ -402,36 +395,36 @@ describe("T020 date arithmetic", () => {
 
   describe("diffInDaysInclusive", () => {
     it("returns 1 for the same date", () => {
-      expect(diffInDaysInclusive(isoDate("2026-03-18"), isoDate("2026-03-18"))).toBe(
-        1,
-      );
+      expect(
+        diffInDaysInclusive(isoDate("2026-03-18"), isoDate("2026-03-18")),
+      ).toBe(1);
     });
 
     it("returns the inclusive day count between two dates", () => {
-      expect(diffInDaysInclusive(isoDate("2026-03-18"), isoDate("2026-03-19"))).toBe(
-        2,
-      );
-      expect(diffInDaysInclusive(isoDate("2026-03-18"), isoDate("2026-03-25"))).toBe(
-        8,
-      );
+      expect(
+        diffInDaysInclusive(isoDate("2026-03-18"), isoDate("2026-03-19")),
+      ).toBe(2);
+      expect(
+        diffInDaysInclusive(isoDate("2026-03-18"), isoDate("2026-03-25")),
+      ).toBe(8);
     });
 
     it("returns 0 when the interval is empty (end < start)", () => {
       // The function counts days in the closed interval [start, end];
       // an inverted range is an empty interval and yields 0 — the
       // caller is responsible for passing a valid (start <= end) range.
-      expect(diffInDaysInclusive(isoDate("2026-03-19"), isoDate("2026-03-18"))).toBe(
-        0,
-      );
+      expect(
+        diffInDaysInclusive(isoDate("2026-03-19"), isoDate("2026-03-18")),
+      ).toBe(0);
     });
 
     it("crosses month and year boundaries correctly", () => {
-      expect(diffInDaysInclusive(isoDate("2026-01-31"), isoDate("2026-02-01"))).toBe(
-        2,
-      );
-      expect(diffInDaysInclusive(isoDate("2025-12-31"), isoDate("2026-01-01"))).toBe(
-        2,
-      );
+      expect(
+        diffInDaysInclusive(isoDate("2026-01-31"), isoDate("2026-02-01")),
+      ).toBe(2);
+      expect(
+        diffInDaysInclusive(isoDate("2025-12-31"), isoDate("2026-01-01")),
+      ).toBe(2);
     });
   });
 
@@ -482,11 +475,7 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
     const timezone: TimezoneSetting = "local";
 
     it("this_week spans Monday..Sunday of the ISO week containing the anchor", () => {
-      const range = resolveDateRangePreset(
-        "this_week",
-        FIXED_NOW,
-        timezone,
-      );
+      const range = resolveDateRangePreset("this_week", FIXED_NOW, timezone);
       expect(range).toEqual({
         start: THIS_WEEK_START,
         end: THIS_WEEK_END,
@@ -494,11 +483,7 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
     });
 
     it("last_week spans Monday..Sunday of the prior ISO week", () => {
-      const range = resolveDateRangePreset(
-        "last_week",
-        FIXED_NOW,
-        timezone,
-      );
+      const range = resolveDateRangePreset("last_week", FIXED_NOW, timezone);
       expect(range).toEqual({
         start: LAST_WEEK_START,
         end: LAST_WEEK_END,
@@ -506,11 +491,7 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
     });
 
     it("last_30_days spans exactly the 30 calendar days ending on the anchor's local date", () => {
-      const range = resolveDateRangePreset(
-        "last_30_days",
-        FIXED_NOW,
-        timezone,
-      );
+      const range = resolveDateRangePreset("last_30_days", FIXED_NOW, timezone);
       expect(range.start).toBe(isoDate("2026-02-17"));
       expect(range.end).toBe(isoDate("2026-03-18"));
       // Inclusive day count: 30 days.
@@ -518,11 +499,7 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
     });
 
     it("this_month spans the first..last day of the anchor's local month", () => {
-      const range = resolveDateRangePreset(
-        "this_month",
-        FIXED_NOW,
-        timezone,
-      );
+      const range = resolveDateRangePreset("this_month", FIXED_NOW, timezone);
       expect(range).toEqual({
         start: isoDate("2026-03-01"),
         end: isoDate("2026-03-31"),
@@ -530,11 +507,7 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
     });
 
     it("last_month spans the first..last day of the prior local month", () => {
-      const range = resolveDateRangePreset(
-        "last_month",
-        FIXED_NOW,
-        timezone,
-      );
+      const range = resolveDateRangePreset("last_month", FIXED_NOW, timezone);
       expect(range).toEqual({
         start: isoDate("2026-02-01"),
         end: isoDate("2026-02-28"),
@@ -542,11 +515,7 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
     });
 
     it("this_quarter spans the first..last day of the anchor's local calendar quarter (Q1)", () => {
-      const range = resolveDateRangePreset(
-        "this_quarter",
-        FIXED_NOW,
-        timezone,
-      );
+      const range = resolveDateRangePreset("this_quarter", FIXED_NOW, timezone);
       expect(range).toEqual({
         start: isoDate("2026-01-01"),
         end: isoDate("2026-03-31"),
@@ -560,11 +529,7 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
     it("this_week uses the UTC calendar week", () => {
       // FIXED_NOW at 14:30Z on 2026-03-18 (Wednesday) → week 2026-W12
       // (Mon 2026-03-16 .. Sun 2026-03-22).
-      const range = resolveDateRangePreset(
-        "this_week",
-        FIXED_NOW,
-        timezone,
-      );
+      const range = resolveDateRangePreset("this_week", FIXED_NOW, timezone);
       expect(range).toEqual({
         start: isoDate("2026-03-16"),
         end: isoDate("2026-03-22"),
@@ -572,11 +537,7 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
     });
 
     it("this_month uses the UTC calendar month", () => {
-      const range = resolveDateRangePreset(
-        "this_month",
-        FIXED_NOW,
-        timezone,
-      );
+      const range = resolveDateRangePreset("this_month", FIXED_NOW, timezone);
       expect(range).toEqual({
         start: isoDate("2026-03-01"),
         end: isoDate("2026-03-31"),
@@ -584,11 +545,7 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
     });
 
     it("last_30_days ends on the UTC calendar date of the anchor", () => {
-      const range = resolveDateRangePreset(
-        "last_30_days",
-        FIXED_NOW,
-        timezone,
-      );
+      const range = resolveDateRangePreset("last_30_days", FIXED_NOW, timezone);
       expect(range.end).toBe(isoDate("2026-03-18"));
       expect(diffInDaysInclusive(range.start, range.end)).toBe(30);
     });
@@ -630,11 +587,7 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
         instant,
         "local",
       );
-      const utcRange = resolveDateRangePreset(
-        "last_30_days",
-        instant,
-        "utc",
-      );
+      const utcRange = resolveDateRangePreset("last_30_days", instant, "utc");
 
       expect(localRange.end).toBe(isoDate("2026-03-19"));
       expect(utcRange.end).toBe(isoDate("2026-03-18"));

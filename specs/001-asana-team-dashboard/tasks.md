@@ -60,9 +60,15 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [x] [BSOD-147] T019 [P] Unit tests for `dedupeByGid` in `tests/unit/domain/dedup/dedupeByGid.test.ts`
 - [x] [BSOD-148] T020 [P] Unit tests for datetime helpers (timezone switch recalculation, Monday week-start, bucket-width determinism) in `tests/unit/domain/datetime/index.test.ts`
 - [x] [BSOD-149] T021 Define the full Dexie schema (`workspaces`, `projects`, `portfolios`, `asanaTeams`, `teamMappingOverrides`, `personGroups`, `users`, `priorityFields`, `dependencies`, `sections`, `tasks`, `snapshots`, `refreshSessions`, `credentials`) exactly per contracts/storage-repository.md in `src/data/db/schema.ts`
+<<<<<<< HEAD
 - [x] [BSOD-150] T022 [P] Contract test asserting the live Dexie schema matches contracts/storage-repository.md in `tests/contract/db-schema.test.ts`
 - [ ] [BSOD-151] T023 [P] Define Asana Zod resource schemas (workspace, project, portfolio, team, task incl. custom fields, user, section, dependency) in `src/data/asana/schemas.ts`
 - [x] [BSOD-152] T024 [P] Define the `AsanaClientResult<T>` outcome union in `src/data/asana/types.ts`
+=======
+- [ ] [BSOD-150] T022 [P] Contract test asserting the live Dexie schema matches contracts/storage-repository.md in `tests/contract/db-schema.test.ts`
+- [x] [BSOD-151] T023 [P] Define Asana Zod resource schemas (workspace, project, portfolio, team, task incl. custom fields, user, section, dependency) in `src/data/asana/schemas.ts`
+- [ ] [BSOD-152] T024 [P] Define the `AsanaClientResult<T>` outcome union in `src/data/asana/types.ts`
+>>>>>>> f7339ef (feat(asana): define Zod resource schemas (BSOD-151))
 - [ ] [BSOD-153] T025 Implement the base Asana HTTP client (per-call token parameter, `Authorization: Bearer` header only, Zod validation boundary before returning `ok`, `429`→`rate_limited` with parsed `Retry-After`, offset-pagination passthrough) in `src/data/asana/client.ts`
 - [ ] [BSOD-154] T026 [P] Contract test asserting no exported client function issues `POST`/`PUT`/`PATCH`/`DELETE` (static export scan + MSW request-log inspection) in `tests/contract/asana-client.readonly.test.ts`
 - [ ] [BSOD-155] T027 [P] Implement token encrypt/decrypt via Web Crypto AES-GCM with a non-extractable `generateKey` in `src/data/crypto/token-crypto.ts`

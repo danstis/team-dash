@@ -19,7 +19,7 @@ import {
   type DataQualityFlagKind,
   type DateRange,
   type DateRangePreset,
-  type ExcludedPopulationReason,
+  type ExcludedPopulationEntry,
   type FilterCriteria,
   type ISODate,
   type ISODateTime,
@@ -79,8 +79,14 @@ describe("T016 cross-cutting domain types", () => {
     });
 
     it("WeekStart is fixed to 'monday' (FR-031)", () => {
+      // The literal-union assignment IS the assertion: any drift in the
+      // declared `WeekStart` union surfaces here as a `tsc --noEmit`
+      // failure rather than a runtime one, per Constitution Principle III.
+      // `void weekStart` keeps `noUnusedLocals` happy without re-introducing
+      // the tautological `expect(weekStart).toBe("monday")` that Sonar
+      // S5914 flagged.
       const weekStart: WeekStart = "monday";
-      expect(weekStart).toBe("monday");
+      void weekStart;
     });
   });
 
@@ -216,13 +222,36 @@ describe("T016 cross-cutting domain types", () => {
     });
 
     it("forces dedupApplied to be the literal `true` marker (FR-036 lint-visible reminder)", () => {
+      // The typed const is the lint-visible FR-036 reminder on its own:
+      // assigning anything other than `true` would surface as a `tsc`
+      // failure here. `void literal` keeps `noUnusedLocals` happy without
+      // re-introducing the tautological `expect(literal).toBe(true)` that
+      // Sonar S5914 flagged.
       const literal: MetricResult<DemoSeries>["dedupApplied"] = true;
-      expect(literal).toBe(true);
+      void literal;
     });
 
-    it("ExcludedPopulationReason is a free-form string label (FR-058, FR-049)", () => {
-      const reason: ExcludedPopulationReason = "no_estimate";
-      expect(typeof reason).toBe("string");
+    it("ExcludedPopulationEntry.reason is a free-form string (FR-058, FR-049)", () => {
+      // FR-058 / FR-049 require metrics to disclose excluded populations
+      // with a free-form reason label whose vocabulary the metric itself
+      // owns. The contract is: any string is a valid `reason`. We exercise
+      // it by constructing an `ExcludedPopulationEntry` with two distinct
+      // domain-specific labels and asserting both round-trip through the
+      // shape unchanged, rather than asserting `typeof reason === "string"`
+      // (which is tautological once the field is typed as `string`).
+      const first: ExcludedPopulationEntry = {
+        reason: "no_estimate",
+        count: 3,
+      };
+      const second: ExcludedPopulationEntry = {
+        reason: "time_tracking_unavailable",
+        count: 12,
+      };
+
+      expect(first.reason).toBe("no_estimate");
+      expect(second.reason).toBe("time_tracking_unavailable");
+      expect(first.count).toBe(3);
+      expect(second.count).toBe(12);
     });
   });
 

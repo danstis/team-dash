@@ -180,20 +180,14 @@ export interface MetricContext {
  * short label so a metric can declare its own domain-specific exclusion
  * categories (e.g. `'no_estimate'`, `'milestone_excluded'`,
  * `'time_tracking_unavailable'`) without forcing every consumer to
- * pre-declare them.
+ * pre-declare them; the metric's own vocabulary drives the disclosure
+ * and the UI renders `reason` verbatim per the Principle II "no hidden
+ * composite" rule.
  */
 export interface ExcludedPopulationEntry {
-  reason: ExcludedPopulationReason;
+  reason: string;
   count: number;
 }
-
-/**
- * The reason label a metric attaches to a `MetricResult.population.excluded`
- * row. Free-form string so the metric's own vocabulary drives the disclosure
- * (the UI renders `reason` verbatim per the Principle II "no hidden
- * composite" rule).
- */
-export type ExcludedPopulationReason = string;
 
 /**
  * The population summary at the top of every `MetricResult`. `total` is the

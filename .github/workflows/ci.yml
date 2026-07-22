@@ -40,7 +40,7 @@ jobs:
           exit "$text_status"
       - name: Upload lint reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: lint-reports
           path: |
@@ -111,7 +111,7 @@ jobs:
           node scripts/junit-to-sonar.mjs --input=test-results/unit.xml --output=test-results/unit-sonar.xml
       - name: Upload unit-test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: unit-test-reports
           path: |
@@ -149,7 +149,7 @@ jobs:
           fi
       - name: Upload contract-test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: contract-test-reports
           path: |
@@ -177,7 +177,7 @@ jobs:
       - name: Build production bundle
         run: npm run build
       - name: Upload production bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: production-bundle
           path: dist
@@ -190,7 +190,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: production-bundle
           path: dist
@@ -215,7 +215,7 @@ jobs:
       - name: Export Docker image
         run: docker save team-dash-ci:${{ github.sha }} --output team-dash-image.tar
       - name: Upload Docker image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: docker-image
           path: team-dash-image.tar
@@ -239,7 +239,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Install Playwright browsers
         run: npx --no-install playwright install --with-deps chromium
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: docker-image
       - name: Start production container
@@ -267,15 +267,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: lint-reports
           path: artifacts/lint
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: unit-test-reports
           path: artifacts/unit
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: contract-test-reports
           path: artifacts/contract

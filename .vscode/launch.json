@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch npm dev server",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "npm: dev",
+      "presentation": {
+        "order": 1
+      }
+    },
+    {
+      "name": "Launch Docker container",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "url": "http://localhost:8080",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "Docker: build and run",
+      "postDebugTask": "Docker: stop container",
+      "presentation": {
+        "order": 2
+      }
+    }
+  ]
+}

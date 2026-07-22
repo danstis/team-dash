@@ -1,0 +1,74 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "npm: dev",
+      "type": "npm",
+      "script": "dev",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*",
+          "endsPattern": "Local:"
+        }
+      }
+    },
+    {
+      "label": "Docker: stop existing container",
+      "type": "shell",
+      "command": "$container = docker ps -aq --filter \"name=^/team-dash-vscode$\"; if ($container) { docker stop team-dash-vscode | Out-Null }",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: build image",
+      "type": "process",
+      "command": "docker",
+      "args": [
+        "build",
+        "-f",
+        "docker/Dockerfile",
+        "-t",
+        "team-dash",
+        "."
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: run container",
+      "type": "process",
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-d",
+        "--name",
+        "team-dash-vscode",
+        "-p",
+        "8080:8080",
+        "team-dash"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: build and run",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Docker: stop existing container",
+        "Docker: build image",
+        "Docker: run container"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: stop container",
+      "type": "shell",
+      "command": "$container = docker ps -aq --filter \"name=^/team-dash-vscode$\"; if ($container) { docker stop team-dash-vscode | Out-Null }",
+      "problemMatcher": []
+    }
+  ]
+}

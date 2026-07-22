@@ -10,7 +10,9 @@ Thumbs.db
 Desktop.ini
 
 .idea/
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
 *.sublime-project
 *.sublime-workspace
 *.swp
@@ -183,5 +185,7 @@ secrets/
 # AI Agent Artifacts
 # =============================================================================
 .omc/
+.omo/
 .claude/
 .emdash.json
+.agents/

@@ -28,6 +28,7 @@ import {
   type AsanaClientOk,
   type AsanaClientResult,
   type AsanaClientResultOutcome,
+  ASANA_CLIENT_RESULT_EXHAUSTIVENESS_MAP,
   ASANA_CLIENT_RESULT_OUTCOMES,
   isAsanaClientResult,
 } from "../../../../src/data/asana/types";
@@ -50,15 +51,44 @@ const sampleData = { gid: "1200", name: "Sample workspace" };
 
 describe("T024 AsanaClientResult<T> outcome union (contracts/asana-client.md)", () => {
   describe("ASANA_CLIENT_RESULT_OUTCOMES discriminant", () => {
-    it("exposes exactly the six outcomes mandated by the contract", () => {
-      expect(ASANA_CLIENT_RESULT_OUTCOMES).toEqual([
+    it("derives ASANA_CLIENT_RESULT_OUTCOMES from the exhaustiveness map keys (no hand-written duplicate)", () => {
+      // Deriving the runtime array from the exhaustiveness map means the
+      // test no longer maintains a hand-written duplicate of the contract's
+      // outcome list — adding a new outcome to the literal union without
+      // touching either the map or the array will fail tsc on the
+      // `as const satisfies Record<AsanaClientResultOutcome, true>`
+      // annotation in src/data/asana/types.ts.
+      expect(ASANA_CLIENT_RESULT_OUTCOMES).toEqual(
+        Object.keys(ASANA_CLIENT_RESULT_EXHAUSTIVENESS_MAP),
+      );
+    });
+
+    it("the exhaustiveness map covers every AsanaClientResultOutcome member at both compile time and run time", () => {
+      // Compile-time exhaustiveness is enforced by the
+      // `as const satisfies Record<AsanaClientResultOutcome, true>`
+      // annotation on ASANA_CLIENT_RESULT_EXHAUSTIVENESS_MAP — if a future
+      // contributor adds an outcome to the literal union without adding
+      // it here, tsc fails the build. The runtime assertions below mirror
+      // that compile-time guarantee so the test fails immediately when
+      // the map is empty, missing entries, or has values other than
+      // `true`, even when the type annotation is bypassed by an unknown
+      // build configuration.
+      const expectedOutcomes: readonly AsanaClientResultOutcome[] = [
         "ok",
         "auth_failure",
         "permission_failure",
         "rate_limited",
         "network_error",
         "validation_error",
+      ];
+
+      expect(Object.keys(ASANA_CLIENT_RESULT_EXHAUSTIVENESS_MAP)).toEqual([
+        ...expectedOutcomes,
       ]);
+
+      for (const outcome of expectedOutcomes) {
+        expect(ASANA_CLIENT_RESULT_EXHAUSTIVENESS_MAP[outcome]).toBe(true);
+      }
     });
 
     it("AsanaClientResultOutcome is the closed 'ok' | 'auth_failure' | 'permission_failure' | 'rate_limited' | 'network_error' | 'validation_error' literal union", () => {

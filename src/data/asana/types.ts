@@ -73,12 +73,16 @@ import type { ZodIssue } from "zod";
  * the FR-084 data-quality summary) can refer to the discriminant alone
  * without dragging the full per-variant payload into a generic parameter.
  *
- * The runtime array `ASANA_CLIENT_RESULT_OUTCOMES` below is the
- * authoritative source for the iteration order used by `isAsanaClientResult`
- * and by the FR-084 summary's per-outcome aggregation; a future outcome
- * MUST be added to BOTH the literal union AND the array in lockstep, and
- * the unit test in `tests/unit/data/asana/types.test.ts` will fail if the
- * two drift apart.
+ * The exhaustiveness map `ASANA_CLIENT_RESULT_EXHAUSTIVENESS_MAP` and the
+ * runtime array `ASANA_CLIENT_RESULT_OUTCOMES` (below) MUST stay in
+ * lockstep with this union. The compile-time half of that contract is
+ * enforced by the `as const satisfies Record<AsanaClientResultOutcome,
+ * true>` annotation on the map — adding a new outcome to the union
+ * without adding it to the map fails tsc immediately; the runtime half
+ * is enforced by deriving the array from the map's keys so the two
+ * cannot drift apart at run time either. A failing build on this
+ * annotation is the intended signal to a future contributor that a
+ * seventh outcome needs wiring through both halves.
  */
 export type AsanaClientResultOutcome =
   | "ok"
@@ -89,20 +93,53 @@ export type AsanaClientResultOutcome =
   | "validation_error";
 
 /**
+ * Compile-time exhaustiveness map for `AsanaClientResultOutcome`. The
+ * `as const satisfies Record<AsanaClientResultOutcome, true>` annotation
+ * is the binding half of the lockstep contract: structural object-literal
+ * assignment to `Record<K, true>` requires every member of `K` to appear
+ * as a key with a `true` value, so adding a new outcome to
+ * `AsanaClientResultOutcome` without adding it here fails tsc
+ * (`Property 'X' is missing in type '{ ... }' but required in type
+ * 'Record<AsanaClientResultOutcome, true>'`).
+ *
+ * The map is exported so the unit test
+ * `tests/unit/data/asana/types.test.ts` and any future per-outcome
+ * accounting code can derive both its keys (the iteration list) and its
+ * values (the membership predicate). Iteration order in `Object.keys` is
+ * the source-level insertion order for non-numeric keys, so the resulting
+ * `ASANA_CLIENT_RESULT_OUTCOMES` array below matches the contract's
+ * example block in `contracts/asana-client.md` § "Client function
+ * contract" verbatim.
+ */
+export const ASANA_CLIENT_RESULT_EXHAUSTIVENESS_MAP = {
+  ok: true,
+  auth_failure: true,
+  permission_failure: true,
+  rate_limited: true,
+  network_error: true,
+  validation_error: true,
+} as const satisfies Record<AsanaClientResultOutcome, true>;
+
+/**
  * Runtime enumeration of every supported `AsanaClientResultOutcome`,
- * ordered to match the contract's example above. Exposed for the
- * refresh orchestrator's per-outcome accounting and for the type-guard
- * below so neither hard-codes the literal union.
+ * derived from the exhaustiveness map's keys. Iteration order in
+ * `Object.keys` matches the source-level insertion order of the map's
+ * keys above (the contract's example block), which matches the order
+ * used in `isAsanaClientResult`'s switch statement below.
+ *
+ * The cast `as readonly AsanaClientResultOutcome[]` is safe at runtime
+ * because the exhaustiveness map's `as const satisfies Record<…>`
+ * annotation guarantees every key is a valid `AsanaClientResultOutcome`
+ * member — the cast is purely a structural annotation that lets callers
+ * iterate the values without re-asserting the literal union themselves.
+ *
+ * Exposed for the refresh orchestrator's per-outcome accounting and for
+ * the type-guard below so neither hard-codes the literal union.
  */
 export const ASANA_CLIENT_RESULT_OUTCOMES: readonly AsanaClientResultOutcome[] =
-  [
-    "ok",
-    "auth_failure",
-    "permission_failure",
-    "rate_limited",
-    "network_error",
-    "validation_error",
-  ] as const;
+  Object.keys(
+    ASANA_CLIENT_RESULT_EXHAUSTIVENESS_MAP,
+  ) as readonly AsanaClientResultOutcome[];
 
 /* -------------------------------------------------------------------------- */
 /* Per-variant shapes (named for ergonomics; the union is the contract)        */

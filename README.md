@@ -166,7 +166,7 @@ Override history is visible in the merged Release PR's commit log and the result
 ### Where the version is read
 
 - **GitHub Release** — created by release-please from the `vX.Y.Z` tag it cuts.
-- **SonarQube** — `.github/workflows/build.yml` resolves the version from the current ref or the latest reachable tag using `scripts/resolve-version.mjs` and passes it as `-Dsonar.projectVersion=<version>` to the SonarQube scan. CI logs print the resolved version before the scan runs.
+- **SonarQube** — `.github/workflows/ci.yml` resolves the version from the current ref or the latest reachable tag using `scripts/resolve-version.mjs` and passes it as `-Dsonar.projectVersion=<version>` to the SonarQube scan. CI logs print the resolved version before the scan runs.
 - **Docker image** — `.github/workflows/docker-release.yml` consumes `github.event.release.tag_name` (and the matching `target_commitish`) when a release is published, then builds the image from that exact commit and pushes it to `ghcr.io/danstis/team-dash` with the tags listed below. The same script (`scripts/resolve-docker-tags.mjs`) computes the tag set from the version, `release.prerelease`, and `target_commitish`. CI logs print the resolved tag set and the source commit SHA.
 
 #### Docker image tags

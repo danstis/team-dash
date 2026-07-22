@@ -7,9 +7,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
 const nginxConfPath = resolve(repoRoot, "docker/nginx.conf");
 const dockerfilePath = resolve(repoRoot, "docker/Dockerfile");
+const securityHeadersPath = resolve(repoRoot, "docker/security-headers.conf");
 
 const nginxConf = readFileSync(nginxConfPath, "utf8");
 const dockerfile = readFileSync(dockerfilePath, "utf8");
+const securityHeaders = readFileSync(securityHeadersPath, "utf8");
+
+const expectedContentSecurityPolicy =
+  "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; connect-src 'self' https://app.asana.com; script-src 'self'; style-src 'self'";
 
 function extractServerBlock(source: string): string {
   const start = source.indexOf("server {");
@@ -53,6 +58,12 @@ function extractLocationBlock(source: string, locationHeader: string): string {
   throw new Error(`Unterminated location block for ${locationHeader}`);
 }
 
+function expectSharedSecurityHeaders(block: string): void {
+  expect(block).toMatch(
+    /^\s*include\s+\/etc\/nginx\/security-headers\.conf\s*;/m,
+  );
+}
+
 describe("docker/nginx.conf (T012 nginx runtime config)", () => {
   it("exists at docker/nginx.conf and is non-empty", () => {
     expect(nginxConf.length).toBeGreaterThan(0);
@@ -91,7 +102,7 @@ describe("docker/nginx.conf (T012 nginx runtime config)", () => {
   });
 
   describe("(2) service-worker file served Cache-Control: no-cache", () => {
-    const swBlock = extractLocationBlock(nginxConf, "=\\s*/sw\\.js");
+    const swBlock = extractLocationBlock(nginxConf, "=\\s*\/sw\\.js");
 
     it("declares an exact-match location for /sw.js", () => {
       expect(swBlock).toBeTruthy();
@@ -106,12 +117,16 @@ describe("docker/nginx.conf (T012 nginx runtime config)", () => {
     it("falls through to a 404 if /sw.js is missing rather than the SPA shell", () => {
       expect(swBlock).toMatch(/try_files\s+\$uri\s+=404/);
     });
+
+    it("includes the shared hardening headers", () => {
+      expectSharedSecurityHeaders(swBlock);
+    });
   });
 
   describe("(2a) PWA manifest served Cache-Control: no-cache", () => {
     const manifestBlock = extractLocationBlock(
       nginxConf,
-      "=\\s*/manifest\\.webmanifest",
+      "=\\s*\/manifest\\.webmanifest",
     );
 
     it("declares an exact-match location for /manifest.webmanifest", () => {
@@ -128,6 +143,10 @@ describe("docker/nginx.conf (T012 nginx runtime config)", () => {
       expect(manifestBlock).toMatch(
         /types\s*\{[^}]*application\/manifest\+json[^}]*webmanifest[^}]*\}/,
       );
+    });
+
+    it("includes the shared hardening headers", () => {
+      expectSharedSecurityHeaders(manifestBlock);
     });
   });
 
@@ -147,6 +166,10 @@ describe("docker/nginx.conf (T012 nginx runtime config)", () => {
     it("returns a 404 (not the SPA shell) for an unknown /assets/* path", () => {
       expect(assetsBlock).toMatch(/try_files\s+\$uri\s+=404/);
     });
+
+    it("includes the shared hardening headers", () => {
+      expectSharedSecurityHeaders(assetsBlock);
+    });
   });
 
   describe("(5) SPA shell served Cache-Control: no-cache", () => {
@@ -157,11 +180,46 @@ describe("docker/nginx.conf (T012 nginx runtime config)", () => {
         /^\s*add_header\s+Cache-Control\s+"no-cache"\s+always\s*;/m,
       );
     });
+
+    it("includes the shared hardening headers", () => {
+      expectSharedSecurityHeaders(rootLocation);
+    });
+  });
+
+  describe("shared security hardening headers", () => {
+    it("declares a CSP that constrains script, style, frame, form, image, and Asana API connections", () => {
+      expect(securityHeaders).toMatch(
+        new RegExp(
+          `add_header\\s+Content-Security-Policy\\s+"${expectedContentSecurityPolicy.replace(
+            /[-/\\^$*+?.()|[\]{}]/g,
+            "\\$&",
+          )}"\\s+always\\s*;`,
+        ),
+      );
+    });
+
+    it("denies framing for clickjacking protection", () => {
+      expect(securityHeaders).toMatch(
+        /^\s*add_header\s+X-Frame-Options\s+"DENY"\s+always\s*;/m,
+      );
+    });
+
+    it("sets a strict referrer policy", () => {
+      expect(securityHeaders).toMatch(
+        /^\s*add_header\s+Referrer-Policy\s+"no-referrer"\s+always\s*;/m,
+      );
+    });
+
+    it("disables browser features the app does not need", () => {
+      expect(securityHeaders).toMatch(
+        /^\s*add_header\s+Permissions-Policy\s+"geolocation=\(\), camera=\(\), microphone=\(\)"\s+always\s*;/m,
+      );
+    });
   });
 
   describe("defensive defaults", () => {
     it("denies access to dotfile paths under the document root", () => {
-      const dotBlock = extractLocationBlock(nginxConf, "~\\s*/\\\\\\.");
+      const dotBlock = extractLocationBlock(nginxConf, "~\\s*\/\\\\\\.");
       expect(dotBlock).toMatch(/^\s*deny\s+all\s*;/m);
     });
   });
@@ -171,6 +229,12 @@ describe("docker/Dockerfile (T012 wiring)", () => {
   it("installs docker/nginx.conf into the runtime stage so it actually takes effect", () => {
     expect(dockerfile).toMatch(
       /COPY\s+docker\/nginx\.conf\s+\/etc\/nginx\/conf\.d\/default\.conf/,
+    );
+  });
+
+  it("installs the shared security-header snippet into the runtime stage", () => {
+    expect(dockerfile).toMatch(
+      /COPY\s+docker\/security-headers\.conf\s+\/etc\/nginx\/security-headers\.conf/,
     );
   });
 

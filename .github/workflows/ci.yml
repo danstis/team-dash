@@ -102,6 +102,9 @@ jobs:
         run: |
           mkdir -p test-results
           npm run test:unit -- --coverage --coverage.reporter=lcov --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+      - name: Convert JUnit to Sonar generic test execution report
+        run: |
+          node scripts/junit-to-sonar.mjs --input=test-results/unit.xml --output=test-results/unit-sonar.xml
       - name: Upload unit-test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -110,6 +113,7 @@ jobs:
           path: |
             coverage/lcov.info
             test-results/unit.xml
+            test-results/unit-sonar.xml
           if-no-files-found: error
 
   test-contract:
@@ -130,6 +134,13 @@ jobs:
         run: |
           mkdir -p test-results
           npm run test:contract -- --passWithNoTests --coverage --coverage.reporter=lcov --reporter=default --reporter=junit --outputFile.junit=test-results/contract.xml
+      - name: Convert JUnit to Sonar generic test execution report
+        run: |
+          if [ -s test-results/contract.xml ]; then
+            node scripts/junit-to-sonar.mjs --input=test-results/contract.xml --output=test-results/contract-sonar.xml
+          else
+            : > test-results/contract-sonar.xml
+          fi
       - name: Upload contract-test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -138,6 +149,7 @@ jobs:
           path: |
             coverage/lcov.info
             test-results/contract.xml
+            test-results/contract-sonar.xml
           if-no-files-found: error
 
   build:
@@ -266,7 +278,7 @@ jobs:
             -Dsonar.projectVersion=${{ steps.version.outputs.version }}
             -Dsonar.javascript.lcov.reportPaths=artifacts/unit/coverage/lcov.info,artifacts/contract/coverage/lcov.info
             -Dsonar.eslint.reportPaths=artifacts/lint/lint-report.json
-            -Dsonar.testExecutionReportPaths=artifacts/unit/test-results/unit.xml,artifacts/contract/test-results/contract.xml
+            -Dsonar.testExecutionReportPaths=artifacts/unit/test-results/unit-sonar.xml,artifacts/contract/test-results/contract-sonar.xml
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       - name: SonarQube Quality Gate

@@ -54,7 +54,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] [BSOD-144] T016 [P] Define cross-cutting domain types (`FilterCriteria`, `MetricContext`, `MetricResult<T>`, `ViewState`, `DataQualityFlag`) per data-model.md in `src/domain/types.ts`
+- [x] [BSOD-144] T016 [P] Define cross-cutting domain types (`FilterCriteria`, `MetricContext`, `MetricResult<T>`, `ViewState`, `DataQualityFlag`) per data-model.md in `src/domain/types.ts`
 - [ ] [BSOD-145] T017 [P] Implement `dedupeByGid` helper in `src/domain/dedup/dedupeByGid.ts`
 - [ ] [BSOD-146] T018 [P] Implement datetime helpers (local/UTC timezone basis, Monday week-start, date-bucket width selection) in `src/domain/datetime/index.ts`
 - [ ] [BSOD-147] T019 [P] Unit tests for `dedupeByGid` in `tests/unit/domain/dedup/dedupeByGid.test.ts`

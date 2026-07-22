@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 env:
   NODE_VERSION: 24
@@ -224,7 +223,7 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx --no-install playwright install --with-deps chromium
       - uses: actions/download-artifact@v4
         with:
           name: docker-image
@@ -242,6 +241,9 @@ jobs:
     name: SonarQube scan
     needs: test-e2e
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

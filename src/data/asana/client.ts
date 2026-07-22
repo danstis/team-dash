@@ -3,16 +3,22 @@
  *
  * This module is the app's *only* outbound network boundary to Asana
  * (FR-009, NFR-004, `specs/001-asana-team-dashboard/contracts/asana-client.md`).
- * Every export is read-only by construction: the module exposes a single
- * generic GET plumbing function (`asanaGet`) plus a small set of
- * resource-specific convenience wrappers (`testToken`, `listWorkspaces`,
- * `fetchProjectsPage`, `fetchTasksPage`, `fetchTaskDetail`,
- * `fetchEventsSince`) that the refresh orchestrator (US2), credential
- * flow (US1), and incremental-sync path (FR-024) compose against. No
- * function in this module is capable of issuing a `POST`, `PUT`,
- * `PATCH`, or `DELETE`; the read-only guarantee is verified by the
- * static + runtime scan in `tests/contract/asana-client.readonly.test.ts`
+ * It exports a single generic GET plumbing function (`asanaGet`) that
+ * every resource-specific client function in subsequent tasks (T039
+ * `testToken`/`listWorkspaces`, T054 `fetchProjectsPage`/
+ * `fetchTasksPage`/`fetchTaskDetail`/`fetchEventsSince`) composes
+ * against. No function in this module is capable of issuing a `POST`,
+ * `PUT`, `PATCH`, or `DELETE`; the read-only guarantee is verified by
+ * the static + runtime scan in `tests/contract/asana-client.readonly.test.ts`
  * (T026).
+ *
+ * Resource-specific wrappers intentionally do not live here. They are
+ * scoped to T039 (US1) and T054 (US2) in `specs/001-asana-team-dashboard/tasks.md`,
+ * each gated behind its own dedicated contract test (T034 and T048
+ * respectively). Splitting them out keeps T025's surface area small,
+ * the Red/Green/Refactor sequencing for each wrapper explicit, and
+ * `asanaGet` the single thing this module's contract tests need to
+ * exercise.
  *
  * Per-call token parameter
  * ------------------------
@@ -75,6 +81,15 @@
  * them escape as exceptions; the refresh orchestrator's
  * `outcome`-switching flow has no `try/catch` paths to scatter.
  *
+ * `412 Precondition Failed` (Asana's documented sync-token-expired
+ * signal — `contracts/asana-client.md` § "Incremental sync fallback
+ * contract") falls through to `outcome: 'network_error'` with
+ * `message: "Unexpected HTTP 412"`. The orchestrator is expected to
+ * substring-match on that status code (or be refactored later to a
+ * dedicated outcome) — the current shape keeps the outcome union
+ * stable for US2's incremental-sync fallback work without growing the
+ * base client's surface area for a single Asana-specific status.
+ *
  * Module boundary
  * ---------------
  * `src/data/asana/**` is the network-acquisition boundary the spec
@@ -85,7 +100,7 @@
  * boundary).
  */
 
-import { z, type ZodTypeAny } from "zod";
+import type { ZodTypeAny, z } from "zod";
 
 import type { AsanaClientResult } from "./types";
 
@@ -101,21 +116,15 @@ import type { AsanaClientResult } from "./types";
  */
 const ASANA_API_BASE = "https://app.asana.com/api/1.0";
 
-/**
- * The well-known `GET /users/me` path used by `testToken` (US1, FR-004).
- * Exposed as a constant so the credential flow doesn't hard-code the
- * literal in two places and so the URL appears in a single grep-able
- * location for the security review.
- */
-const ASANA_USERS_ME_PATH = "/users/me";
-
 /* -------------------------------------------------------------------------- */
 /* Public plumbing                                                             */
 /* -------------------------------------------------------------------------- */
 
 /**
  * The base read-only HTTP plumbing every resource-specific client
- * function in this module wraps. Takes a relative Asana API path
+ * function in subsequent tasks (`testToken`, `listWorkspaces`,
+ * `fetchProjectsPage`, `fetchTasksPage`, `fetchTaskDetail`,
+ * `fetchEventsSince`) wraps. Takes a relative Asana API path
  * (e.g. `"/users/me"`, `"/projects/123/tasks"`), a Zod schema that
  * the response body will be validated against, the caller's current
  * token (passed per call — never held in module state), and an
@@ -208,157 +217,17 @@ export async function asanaGet<Schema extends ZodTypeAny>(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Resource-specific wrappers                                                   */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Asana's documented "test the token" endpoint (`GET /users/me`,
- * FR-004). Returns the authenticated user record on success so the
- * credential flow can display the account name and confirm token
- * validity in a single round-trip.
- *
- * Higher-level US1 implementations (T039) build the "Test Token"
- * affordance on top of this; the base HTTP wrapper is what T025 ships.
- */
-export async function testToken(
-  token: string,
-  options?: Readonly<{ signal?: AbortSignal }>,
-): Promise<AsanaClientResult<z.infer<typeof asanaUserSchema>>> {
-  return asanaGet(
-    ASANA_USERS_ME_PATH,
-    asanaUserSchema,
-    token,
-    undefined,
-    options,
-  );
-}
-
-/**
- * List the workspaces the current token can access (`GET /workspaces`,
- * FR-011). Used by the workspace-selection step (T043).
- */
-export function listWorkspaces(
-  token: string,
-  options?: Readonly<{ signal?: AbortSignal }>,
-): Promise<
-  AsanaClientResult<z.infer<typeof asanaWorkspaceListResponseSchema>>
-> {
-  return asanaGet(
-    "/workspaces",
-    asanaWorkspaceListResponseSchema,
-    token,
-    undefined,
-    options,
-  );
-}
-
-/**
- * Page through the projects in a workspace (`GET /projects`,
- * FR-012). `archived=false` is requested explicitly per the contract;
- * the response is still re-validated for `archived` per-item by the
- * schema (the schema's required `archived` field enforces this).
- */
-export function fetchProjectsPage(
-  token: string,
-  params: Readonly<{ workspaceGid: string; offset?: string }>,
-  options?: Readonly<{ signal?: AbortSignal }>,
-): Promise<AsanaClientResult<z.infer<typeof asanaProjectListResponseSchema>>> {
-  return asanaGet(
-    "/projects",
-    asanaProjectListResponseSchema,
-    token,
-    {
-      workspace: params.workspaceGid,
-      archived: "false",
-      ...(params.offset !== undefined ? { offset: params.offset } : {}),
-    },
-    options,
-  );
-}
-
-/**
- * Page through the tasks of a project (`GET /projects/{gid}/tasks`,
- * FR-014). The orchestrator (US2) loops with `offset` from
- * `next_page` until exhaustion; the client itself does no looping
- * (the contract's "stateless per call" requirement).
- */
-export function fetchTasksPage(
-  token: string,
-  params: Readonly<{ projectGid: string; offset?: string; optFields?: string }>,
-  options?: Readonly<{ signal?: AbortSignal }>,
-): Promise<AsanaClientResult<z.infer<typeof asanaTaskListResponseSchema>>> {
-  return asanaGet(
-    `/projects/${encodeURIComponent(params.projectGid)}/tasks`,
-    asanaTaskListResponseSchema,
-    token,
-    {
-      ...(params.offset !== undefined ? { offset: params.offset } : {}),
-      ...(params.optFields !== undefined
-        ? { opt_fields: params.optFields }
-        : {}),
-    },
-    options,
-  );
-}
-
-/**
- * Fetch a single task's full detail (`GET /tasks/{gid}`, FR-014 /
- * FR-016). Used by the drill-down drawer (T074) and the refresh
- * orchestrator's "hydration of compact references" path.
- */
-export function fetchTaskDetail(
-  token: string,
-  params: Readonly<{ taskGid: string; optFields?: string }>,
-  options?: Readonly<{ signal?: AbortSignal }>,
-): Promise<AsanaClientResult<z.infer<typeof asanaTaskSchema>>> {
-  return asanaGet(
-    `/tasks/${encodeURIComponent(params.taskGid)}`,
-    asanaTaskSchema,
-    token,
-    params.optFields !== undefined
-      ? { opt_fields: params.optFields }
-      : undefined,
-    options,
-  );
-}
-
-/**
- * Asana's incremental-sync events endpoint (`GET /events`,
- * FR-024). Returns a `{ events, sync }` envelope; the orchestrator
- * treats a `validation_error` outcome, a documented `412`, or the
- * absence of any prior `sync` token as "stale incremental state,
- * fall back to full reconciliation" (see the contract's
- * "Incremental sync fallback contract" section).
- */
-export function fetchEventsSince(
-  token: string,
-  params: Readonly<{ resourceGid: string; syncToken: string }>,
-  options?: Readonly<{ signal?: AbortSignal }>,
-): Promise<AsanaClientResult<z.infer<typeof asanaEventsResponseSchema>>> {
-  return asanaGet(
-    "/events",
-    asanaEventsResponseSchema,
-    token,
-    {
-      resource: params.resourceGid,
-      sync: params.syncToken,
-    },
-    options,
-  );
-}
-
-/* -------------------------------------------------------------------------- */
 /* Internal helpers                                                            */
 /* -------------------------------------------------------------------------- */
 
 /**
  * Build a fully-qualified Asana API URL from a path and optional
  * query-string bag. Path components are not URL-encoded here because
- * the public wrappers compose paths from already-encoded `gid` values
- * (the callers `encodeURIComponent` interpolated `gid`s before
- * formatting). Query parameters are stringified via `URLSearchParams`,
- * which handles the encoding of `offset` tokens and other opaque
- * values correctly without any manual encoding.
+ * the wrappers in subsequent tasks compose paths from already-encoded
+ * `gid` values (callers `encodeURIComponent` interpolated `gid`s
+ * before formatting). Query parameters are stringified via
+ * `URLSearchParams`, which handles the encoding of `offset` tokens
+ * and other opaque values correctly without any manual encoding.
  */
 function buildAsanaUrl(
   path: string,
@@ -457,41 +326,3 @@ function scrubTokenFromMessage(message: string, token: string): string {
   }
   return message.split(token).join("[redacted]");
 }
-
-/* -------------------------------------------------------------------------- */
-/* Local resource schema aliases                                                */
-/* -------------------------------------------------------------------------- */
-
-/**
- * The user schema is reused for `testToken`; `asanaUserSchema` lives
- * in `schemas.ts` but is imported here by the workspace-list wrapper
- * below. The schemas are imported lazily (top of file) to avoid
- * pulling the whole schemas module into this file's eager imports
- * when only the type-level contract is needed; `asanaGet`'s generic
- * parameter constrains the runtime schema parameter at the call site.
- */
-import {
-  asanaProjectListResponseSchema,
-  asanaTaskListResponseSchema,
-  asanaTaskSchema,
-  asanaUserSchema,
-  asanaWorkspaceListResponseSchema,
-} from "./schemas";
-
-/**
- * Schema for Asana's incremental-sync Events API response. The events
- * array's per-event shape varies by event type, so the items are
- * treated as opaque at this layer; per-event validation (if any) is
- * the orchestrator's responsibility once it has decided to act on the
- * stream.
- *
- * Declared locally rather than in `schemas.ts` (T023) because the
- * envelope is part of the *transport* contract for T025 (the base HTTP
- * plumbing) rather than a first-class resource shape. Moving it to
- * `schemas.ts` later is a trivial relocation; keeping it here for now
- * avoids touching T023's settled schema surface.
- */
-const asanaEventsResponseSchema = z.object({
-  data: z.array(z.unknown()),
-  sync: z.string().min(1),
-});

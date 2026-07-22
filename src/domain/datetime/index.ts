@@ -57,20 +57,11 @@
 import type {
   ISODate,
   ISODateTime,
-  DateRange,
   DateRangePreset,
   TimezoneSetting,
-  WeekStart,
 } from "../types";
 
-export type {
-  ISODate,
-  ISODateTime,
-  DateRange,
-  DateRangePreset,
-  TimezoneSetting,
-  WeekStart,
-};
+export type { DateRange, DateRangePreset, WeekStart } from "../types";
 
 /* -------------------------------------------------------------------------- */
 /* Constants                                                                  */
@@ -115,6 +106,15 @@ export interface DateBucket {
   bucketStart: ISODate;
   bucketEnd: ISODate;
 }
+
+/**
+ * Any input shape the date-comparison helpers accept: a calendar
+ * `ISODate`, a full `ISODateTime` instant, or a native `Date`. Named as
+ * a type alias so the union surfaces in a single, documentable place
+ * rather than repeating `ISODate | ISODateTime | Date` at every
+ * declaration (Sonar typescript:S4323).
+ */
+export type ComparableDate = ISODate | ISODateTime | Date;
 
 /* -------------------------------------------------------------------------- */
 /* Internal: timezone-aware formatting                                         */
@@ -185,7 +185,7 @@ function getCalendarDateInTimezone(
     !Number.isFinite(month) ||
     !Number.isFinite(day)
   ) {
-    throw new Error(
+    throw new TypeError(
       `getCalendarDateInTimezone: invalid formatted parts for ${date.toISOString()} @ ${id}`,
     );
   }
@@ -415,7 +415,7 @@ export function diffInDaysInclusive(start: ISODate, end: ISODate): number {
  * a time-of-day difference does not affect membership (FR-030).
  */
 export function isDateInRange(
-  value: ISODate | ISODateTime | Date,
+  value: ComparableDate,
   range: { start: ISODate; end: ISODate },
   timezone: TimezoneSetting = "local",
 ): boolean {
@@ -423,7 +423,7 @@ export function isDateInRange(
   return candidate >= range.start && candidate <= range.end;
 }
 
-function toComparableDate(value: ISODate | ISODateTime | Date): Date {
+function toComparableDate(value: ComparableDate): Date {
   if (value instanceof Date) {
     return value;
   }
@@ -457,7 +457,7 @@ function buildIsoDate(year: number, month: number, day: number): ISODate {
  * date is extracted under `timezone` first.
  */
 export function startOfWeekInTimezone(
-  value: ISODate | ISODateTime | Date,
+  value: ComparableDate,
   timezone: TimezoneSetting,
 ): ISODate {
   const comparable = toComparableDate(value);
@@ -478,7 +478,7 @@ export function startOfWeekInTimezone(
  * Sunday of the ISO week containing `value` (FR-031).
  */
 export function endOfWeekInTimezone(
-  value: ISODate | ISODateTime | Date,
+  value: ComparableDate,
   timezone: TimezoneSetting,
 ): ISODate {
   const monday = startOfWeekInTimezone(value, timezone);
@@ -489,7 +489,7 @@ export function endOfWeekInTimezone(
  * First day of the calendar month containing `value` under `timezone`.
  */
 export function startOfMonthInTimezone(
-  value: ISODate | ISODateTime | Date,
+  value: ComparableDate,
   timezone: TimezoneSetting,
 ): ISODate {
   const comparable = toComparableDate(value);
@@ -501,7 +501,7 @@ export function startOfMonthInTimezone(
  * Last day of the calendar month containing `value` under `timezone`.
  */
 export function endOfMonthInTimezone(
-  value: ISODate | ISODateTime | Date,
+  value: ComparableDate,
   timezone: TimezoneSetting,
 ): ISODate {
   const start = startOfMonthInTimezone(value, timezone);
@@ -522,7 +522,7 @@ function daysInMonth(date: ISODate): number {
  * Apr–Jun, Q3 = Jul–Sep, Q4 = Oct–Dec.
  */
 export function startOfQuarterInTimezone(
-  value: ISODate | ISODateTime | Date,
+  value: ComparableDate,
   timezone: TimezoneSetting,
 ): ISODate {
   const comparable = toComparableDate(value);
@@ -536,7 +536,7 @@ export function startOfQuarterInTimezone(
  * `timezone`.
  */
 export function endOfQuarterInTimezone(
-  value: ISODate | ISODateTime | Date,
+  value: ComparableDate,
   timezone: TimezoneSetting,
 ): ISODate {
   const start = startOfQuarterInTimezone(value, timezone);
@@ -573,13 +573,7 @@ function daysInQuarter(date: ISODate): number {
  * newly selected basis, not blending).
  */
 export function resolveDateRangePreset(
-  preset:
-    | "this_week"
-    | "last_week"
-    | "last_30_days"
-    | "this_month"
-    | "last_month"
-    | "this_quarter",
+  preset: DateRangePreset,
   now: Date,
   timezone: TimezoneSetting,
 ): { start: ISODate; end: ISODate } {
@@ -642,7 +636,7 @@ export function resolveDateRangePreset(
  */
 export function selectBucketWidth(rangeDays: number): BucketWidth {
   if (!Number.isFinite(rangeDays)) {
-    throw new Error(
+    throw new TypeError(
       `selectBucketWidth: rangeDays must be a finite number, got ${String(rangeDays)}`,
     );
   }

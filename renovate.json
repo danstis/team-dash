@@ -11,6 +11,15 @@
     "enabled": true
   },
   "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "matchPackageNames": ["react", "react-dom"],
+      "groupName": "React packages",
+      "groupSlug": "react-packages",
+      "separateMajorMinor": false,
+      "separateMultipleMajor": false
+    }
+  ],
   "separateMajorMinor": true,
   "separateMultipleMajor": true
 }

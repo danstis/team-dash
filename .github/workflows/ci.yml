@@ -7,10 +7,6 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-permissions:
-  contents: read
-  pull-requests: read
-
 env:
   NODE_VERSION: 24
 
@@ -18,6 +14,8 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -54,6 +52,8 @@ jobs:
     name: Format check
     needs: lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,6 +71,8 @@ jobs:
     name: Typecheck
     needs: format-check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,6 +90,8 @@ jobs:
     name: Unit tests
     needs: typecheck
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -102,6 +106,9 @@ jobs:
         run: |
           mkdir -p test-results
           npm run test:unit -- --coverage --coverage.reporter=lcov --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+      - name: Convert JUnit to Sonar generic test execution report
+        run: |
+          node scripts/junit-to-sonar.mjs --input=test-results/unit.xml --output=test-results/unit-sonar.xml
       - name: Upload unit-test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -110,12 +117,15 @@ jobs:
           path: |
             coverage/lcov.info
             test-results/unit.xml
+            test-results/unit-sonar.xml
           if-no-files-found: error
 
   test-contract:
     name: Contract tests
     needs: test-unit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -130,6 +140,13 @@ jobs:
         run: |
           mkdir -p test-results
           npm run test:contract -- --passWithNoTests --coverage --coverage.reporter=lcov --reporter=default --reporter=junit --outputFile.junit=test-results/contract.xml
+      - name: Convert JUnit to Sonar generic test execution report
+        run: |
+          if [ -s test-results/contract.xml ]; then
+            node scripts/junit-to-sonar.mjs --input=test-results/contract.xml --output=test-results/contract-sonar.xml
+          else
+            : > test-results/contract-sonar.xml
+          fi
       - name: Upload contract-test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -138,12 +155,15 @@ jobs:
           path: |
             coverage/lcov.info
             test-results/contract.xml
+            test-results/contract-sonar.xml
           if-no-files-found: error
 
   build:
     name: Build
     needs: test-contract
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -167,6 +187,8 @@ jobs:
     name: PWA and service-worker output check
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -182,6 +204,8 @@ jobs:
     name: Docker build
     needs: pwa-check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -201,6 +225,8 @@ jobs:
     name: End-to-end tests
     needs: docker-build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -212,7 +238,7 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx --no-install playwright install --with-deps chromium
       - uses: actions/download-artifact@v4
         with:
           name: docker-image
@@ -230,6 +256,9 @@ jobs:
     name: SonarQube scan
     needs: test-e2e
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -266,11 +295,11 @@ jobs:
             -Dsonar.projectVersion=${{ steps.version.outputs.version }}
             -Dsonar.javascript.lcov.reportPaths=artifacts/unit/coverage/lcov.info,artifacts/contract/coverage/lcov.info
             -Dsonar.eslint.reportPaths=artifacts/lint/lint-report.json
-            -Dsonar.testExecutionReportPaths=artifacts/unit/test-results/unit.xml,artifacts/contract/test-results/contract.xml
+            -Dsonar.testExecutionReportPaths=artifacts/unit/test-results/unit-sonar.xml,artifacts/contract/test-results/contract-sonar.xml
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       - name: SonarQube Quality Gate
-        uses: SonarSource/sonarqube-quality-gate-action@cf038b0bf7c8fc70378259d9946dbdf15a782990 # v1.2.0
+        uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
         with:
           pollingTimeoutSec: 600
         env:

@@ -1,4 +1,5 @@
 import boundaries from "eslint-plugin-boundaries";
+import tsParser from "@typescript-eslint/parser";
 
 const DOMAIN_BOUNDARY_MESSAGE =
   "src/domain/** must stay presentation-free, browser-free, and network-free per Constitution Principle VI; importing from src/features/**, src/data/asana/**, or React is forbidden.";
@@ -13,6 +14,19 @@ export default [
       "**/playwright-report/**",
       "**/test-results/**",
     ],
+  },
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+        ecmaFeatures: {
+          jsx: true,
+        },
+      },
+    },
   },
   {
     files: [

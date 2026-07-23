@@ -69,8 +69,12 @@ export const asanaHandlers = [
     if (url.searchParams.get("mockFailure") === "network-mid-refresh") {
       return new Response(null, { status: 503 });
     }
-    const dashboardTask = smallDataset.tasks.find((t) => t.name === "Launch dashboard");
-    const webAppProject = smallDataset.projects.find((p) => p.name === "Web App");
+    const dashboardTask = smallDataset.tasks.find(
+      (t) => t.name === "Launch dashboard",
+    );
+    const webAppProject = smallDataset.projects.find(
+      (p) => p.name === "Web App",
+    );
     const tasks = smallDataset.tasks.filter(
       (task) =>
         task.projects.some((project) => project.gid === params.projectGid) ||

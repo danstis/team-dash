@@ -302,6 +302,21 @@ describe("T027 token-crypto (AES-GCM, non-extractable key)", () => {
       });
     });
 
+    it("classifies malformed persisted ciphertext for first-run fallback", async () => {
+      const key = await generateTokenKey();
+      const iv = new ArrayBuffer(AES_GCM_IV_LENGTH_BYTES);
+
+      await expect(
+        decryptToken(new ArrayBuffer(AES_GCM_TAG_LENGTH_BITS / 8 - 1), iv, key),
+      ).rejects.toSatisfy((err: unknown) => {
+        expect(isTokenCryptoError(err)).toBe(true);
+        expect((err as { reason: TokenCryptoErrorReason }).reason).toBe(
+          "invalid_input",
+        );
+        return true;
+      });
+    });
+
     it("throws when ciphertext and IV do not match in declared length", async () => {
       const key = await generateTokenKey();
       const wrongIv = new ArrayBuffer(AES_GCM_IV_LENGTH_BYTES);

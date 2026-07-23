@@ -66,7 +66,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [x] [BSOD-153] T025 Implement the base Asana HTTP client (per-call token parameter, `Authorization: Bearer` header only, Zod validation boundary before returning `ok`, `429`→`rate_limited` with parsed `Retry-After`, offset-pagination passthrough) in `src/data/asana/client.ts`
 - [x] [BSOD-154] T026 [P] Contract test asserting no exported client function issues `POST`/`PUT`/`PATCH`/`DELETE` (static export scan + MSW request-log inspection) in `tests/contract/asana-client.readonly.test.ts`
 - [x] [BSOD-155] T027 [P] Implement token encrypt/decrypt via Web Crypto AES-GCM with a non-extractable `generateKey` in `src/data/crypto/token-crypto.ts`
-- [ ] [BSOD-156] T028 [P] Unit tests for token-crypto round-trip and decrypt-failure fallback behaviour in `tests/unit/data/crypto/token-crypto.test.ts`
+- [x] [BSOD-156] T028 [P] Unit tests for token-crypto round-trip and decrypt-failure fallback behaviour in `tests/unit/data/crypto/token-crypto.test.ts`
 - [ ] [BSOD-157] T029 [P] Create MSW request handlers and the small fixture dataset (workspaces, projects, tasks incl. a multi-project task, a subtask, and tasks with/without estimates) in `fixtures/asana/small-dataset/`
 - [ ] [BSOD-158] T030 [P] Wire the MSW server for dev and tests in `src/mocks/browser.ts`, `src/mocks/server.ts`
 - [ ] [BSOD-159] T031 Implement the app shell: routing, layout, and top-level credential/workspace context providers in `src/app/App.tsx`, `src/app/router.tsx`

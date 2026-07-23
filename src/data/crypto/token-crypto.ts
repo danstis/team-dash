@@ -251,7 +251,6 @@ function assertKeyUsable(
   }
 }
 
-
 function assertInputShape(ciphertext: ArrayBuffer, iv: ArrayBuffer): void {
   // Test environments (vitest+jsdom) and some browsers deliver
   // `ArrayBuffer`-shaped values whose `[[Prototype]]` differs from the

@@ -214,32 +214,43 @@ function assertKeyUsable(
   key: CryptoKey,
   requiredUsages: ReadonlyArray<"encrypt" | "decrypt">,
 ): void {
-  if (!(key instanceof CryptoKey)) {
-    throw new TokenCryptoError(
-      "invalid_key",
-      "token crypto requires a CryptoKey handle",
-    );
-  }
-  if (
-    !(key.algorithm as { name?: string }).name ||
-    !String((key.algorithm as { name: string }).name)
-      .toUpperCase()
-      .endsWith("AES-GCM")
-  ) {
-    throw new TokenCryptoError(
-      "invalid_key",
-      "token crypto requires an AES-GCM key",
-    );
-  }
-  for (const usage of requiredUsages) {
-    if (!key.usages.includes(usage)) {
+  try {
+    if (!(key instanceof CryptoKey)) {
       throw new TokenCryptoError(
         "invalid_key",
-        "token key is not authorised for " + usage,
+        "token crypto requires a CryptoKey handle",
       );
     }
+    if (
+      !(key.algorithm as { name?: string }).name ||
+      !String((key.algorithm as { name: string }).name)
+        .toUpperCase()
+        .endsWith("AES-GCM")
+    ) {
+      throw new TokenCryptoError(
+        "invalid_key",
+        "token crypto requires an AES-GCM key",
+      );
+    }
+    for (const usage of requiredUsages) {
+      if (!key.usages.includes(usage)) {
+        throw new TokenCryptoError(
+          "invalid_key",
+          "token key is not authorised for " + usage,
+        );
+      }
+    }
+  } catch (err) {
+    if (err instanceof TokenCryptoError) {
+      throw err;
+    }
+    throw new TokenCryptoError(
+      "invalid_key",
+      "token key validation failed: " + describeError(err),
+    );
   }
 }
+
 
 function assertInputShape(ciphertext: ArrayBuffer, iv: ArrayBuffer): void {
   // Test environments (vitest+jsdom) and some browsers deliver

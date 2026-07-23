@@ -1,6 +1,15 @@
 import "@testing-library/jest-dom/vitest";
+import { webcrypto } from "node:crypto";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll } from "vitest";
+
+if (typeof globalThis.crypto === "undefined" || !globalThis.crypto.subtle) {
+  Object.defineProperty(globalThis, "crypto", {
+    value: webcrypto,
+    writable: true,
+    configurable: true,
+  });
+}
 
 export const server = setupServer();
 

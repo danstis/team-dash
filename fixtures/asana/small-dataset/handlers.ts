@@ -1,6 +1,8 @@
 import { http, HttpResponse } from "msw";
 
-import { smallDataset, smallDatasetWorkspaceGid } from "./data";
+import { smallDataset } from "./data";
+
+export { smallDatasetWorkspaceGid } from "./data";
 
 const API_BASE = "https://app.asana.com/api/1.0";
 
@@ -165,4 +167,4 @@ export const asanaHandlers = [
   }),
 ];
 
-export { smallDatasetWorkspaceGid };
+export const smallDatasetHandlers = asanaHandlers;

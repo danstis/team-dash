@@ -117,7 +117,7 @@ describe("T027 token-crypto (AES-GCM, non-extractable key)", () => {
     it("returns an AES-GCM key of the documented length", async () => {
       const key = await generateTokenKey();
       expect(key.algorithm.name).toBe("AES-GCM");
-      expect((key.algorithm as { length?: number }).length).toBe(
+      expect(key.algorithm as { length?: number }).toHaveLength(
         AES_GCM_KEY_LENGTH_BITS,
       );
     });

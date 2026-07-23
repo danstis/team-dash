@@ -202,7 +202,7 @@ export async function decryptToken(
     );
     return new TextDecoder().decode(plaintext);
   } catch (err) {
-    throw await classifyDecryptFailure(err, key, ciphertext, iv);
+    throw await classifyDecryptFailure(err, key, ciphertext);
   }
 }
 
@@ -335,7 +335,6 @@ async function classifyDecryptFailure(
   err: unknown,
   key: CryptoKey,
   ciphertext: ArrayBuffer,
-  iv: ArrayBuffer,
 ): Promise<TokenCryptoError> {
   // If the ciphertext is too short to contain the AES-GCM tag, this is
   // structurally invalid input rather than a tag mismatch. We don't
@@ -362,7 +361,6 @@ async function classifyDecryptFailure(
   // ciphertext/IV pair is therefore the failing piece. Surface as
   // tampered_ciphertext because SubtleCrypto gives no IV-vs-ciphertext
   // signal (see TokenCryptoErrorReason docstring).
-  void iv;
   return new TokenCryptoError(
     "tampered_ciphertext",
     "AES-GCM authentication failed: " + describeError(err),

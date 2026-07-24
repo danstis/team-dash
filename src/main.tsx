@@ -1,25 +1,28 @@
 /// <reference types="vite/client" />
-import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-export function TeamDashShell() {
-  return (
-    <main className="team-dash-shell" lang="en-AU">
-      <h1>Team Dash</h1>
-      <p>
-        The application shell is bootstrapping. The credential entry screen will
-        be implemented in Phase 2.
-      </p>
-    </main>
-  );
-}
+import { App } from "./app/App";
+
+/**
+ * T031 — entry point.
+ *
+ * The application entry point boots the Vite app. Its job is small:
+ *
+ * 1. Optionally start the MSW dev worker (T030) so the deterministic
+ *    fixture dataset is reachable from the dev server.
+ * 2. Mount the T031 `<App />` shell (provider tree + router) into the
+ *    `#root` element declared in `index.html`.
+ *
+ * The MSW wiring stays in `main.tsx` (not in `<App />`) because the
+ * worker must register before React mounts — a race here would
+ * briefly let a real network call escape the dev server. The
+ * `bootstrapDevMocks` helper is intentionally separate from
+ * `<App />` so it can run on every build without dragging React into
+ * the worker-startup path.
+ */
 
 export function renderApp(rootElement: Element): void {
-  createRoot(rootElement).render(
-    <StrictMode>
-      <TeamDashShell />
-    </StrictMode>,
-  );
+  createRoot(rootElement).render(<App />);
 }
 
 /**

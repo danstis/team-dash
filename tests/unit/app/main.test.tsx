@@ -2,9 +2,12 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { act } from "react";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { renderApp, TeamDashShell } from "../../../src/main";
+
+import { App } from "../../../src/app/App";
+import { db } from "../../../src/data/db/schema";
+import { renderApp } from "../../../src/main";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
@@ -48,41 +51,45 @@ describe("T010 index.html (Vite entry document)", () => {
   });
 });
 
-describe("T010 TeamDashShell (Phase 1 placeholder)", () => {
-  afterEach(() => {
-    document.body.innerHTML = "";
+describe("T031 <App /> (T031 mounts the T010 placeholder content)", () => {
+  afterEach(async () => {
+    cleanup();
+    await db.credentials.clear();
+    await db.workspaces.clear();
   });
 
   it("renders without crashing", () => {
-    expect(() => render(<TeamDashShell />)).not.toThrow();
+    expect(() => render(<App />)).not.toThrow();
   });
 
-  it("renders a top-level heading announcing the product", () => {
-    render(<TeamDashShell />);
+  it("renders the top-level product heading (T010 placeholder retained)", () => {
+    render(<App />);
     expect(
       screen.getByRole("heading", { level: 1, name: /team dash/i }),
     ).toBeInTheDocument();
   });
 
   it("uses Australian English on the rendered main region", () => {
-    const { container } = render(<TeamDashShell />);
+    const { container } = render(<App />);
     const main = container.querySelector("main");
     expect(main).not.toBeNull();
     expect(main?.getAttribute("lang")).toBe("en-AU");
   });
 
-  it("explains that the application is bootstrapping and credential entry is upcoming", () => {
-    render(<TeamDashShell />);
+  it("explains that the credential entry screen is upcoming (T010 placeholder copy)", () => {
+    render(<App />);
     expect(screen.getByText(/credential entry screen/i)).toBeInTheDocument();
   });
 });
 
-describe("T010 renderApp (bootstrap helper)", () => {
-  afterEach(() => {
-    document.body.innerHTML = "";
+describe("T010 renderApp (bootstrap helper, T031 wires it to <App />)", () => {
+  afterEach(async () => {
+    cleanup();
+    await db.credentials.clear();
+    await db.workspaces.clear();
   });
 
-  it("mounts TeamDashShell into the provided container", () => {
+  it("mounts <App /> into the provided container", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
 

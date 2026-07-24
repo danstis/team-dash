@@ -1,0 +1,251 @@
+export const smallDatasetWorkspaceGid = "1200000000000001";
+export const secondWorkspaceGid = "1200000000000002";
+
+export const smallDataset = {
+  workspaces: [
+    {
+      gid: smallDatasetWorkspaceGid,
+      name: "Team Dash Workspace",
+      resource_type: "workspace" as const,
+      is_organization: true,
+    },
+    {
+      gid: secondWorkspaceGid,
+      name: "Personal Sandbox",
+      resource_type: "workspace" as const,
+      is_organization: false,
+    },
+  ],
+  teams: [
+    {
+      gid: "1200000000000010",
+      name: "Product Engineering",
+      resource_type: "team" as const,
+    },
+    {
+      gid: "1200000000000011",
+      name: "Customer Success",
+      resource_type: "team" as const,
+    },
+  ],
+  users: [
+    {
+      gid: "1200000000000020",
+      name: "Alex Kim",
+      email: "alex@example.com",
+      resource_type: "user" as const,
+    },
+    {
+      gid: "1200000000000021",
+      name: "Morgan Lee",
+      email: null,
+      resource_type: "user" as const,
+    },
+  ],
+  portfolios: [
+    {
+      gid: "1200000000000030",
+      name: "Customer Platform",
+      resource_type: "portfolio" as const,
+      workspace: { gid: smallDatasetWorkspaceGid, resource_type: "workspace" },
+    },
+  ],
+  projects: [
+    {
+      gid: "1200000000000100",
+      name: "Web App",
+      resource_type: "project" as const,
+      archived: false,
+      workspace: { gid: smallDatasetWorkspaceGid, resource_type: "workspace" },
+      team: {
+        gid: "1200000000000010",
+        name: "Product Engineering",
+        resource_type: "team",
+      },
+    },
+    {
+      gid: "1200000000000101",
+      name: "Mobile App",
+      resource_type: "project" as const,
+      archived: false,
+      workspace: { gid: smallDatasetWorkspaceGid, resource_type: "workspace" },
+      team: {
+        gid: "1200000000000011",
+        name: "Customer Success",
+        resource_type: "team",
+      },
+    },
+    {
+      gid: "1200000000000102",
+      name: "Archived Legacy",
+      resource_type: "project" as const,
+      archived: true,
+      workspace: { gid: smallDatasetWorkspaceGid, resource_type: "workspace" },
+      team: null,
+    },
+  ],
+  tasks: [
+    {
+      gid: "1200000000000200",
+      name: "Launch dashboard",
+      resource_type: "task" as const,
+      resource_subtype: "default_task" as const,
+      assignee: {
+        gid: "1200000000000020",
+        name: "Alex Kim",
+        resource_type: "user",
+      },
+      projects: [
+        { gid: "1200000000000100", name: "Web App", resource_type: "project" },
+        {
+          gid: "1200000000000101",
+          name: "Mobile App",
+          resource_type: "project",
+        },
+      ],
+      parent: null,
+      created_at: "2026-07-01T09:00:00.000Z",
+      modified_at: "2026-07-20T09:00:00.000Z",
+      completed_at: null,
+      completed: false,
+      due_at: "2026-07-31T17:00:00.000Z",
+      due_on: null,
+      custom_fields: [
+        {
+          gid: "1200000000000300",
+          name: "Estimated Time",
+          type: "number",
+          number_value: 480,
+        },
+        {
+          gid: "1200000000000301",
+          name: "Priority",
+          type: "enum",
+          enum_value: { gid: "high", name: "High" },
+        },
+      ],
+      dependencies: [],
+    },
+    {
+      gid: "1200000000000201",
+      name: "Review onboarding copy",
+      resource_type: "task" as const,
+      resource_subtype: "default_task" as const,
+      assignee: {
+        gid: "1200000000000021",
+        name: "Morgan Lee",
+        resource_type: "user",
+      },
+      projects: [
+        { gid: "1200000000000100", name: "Web App", resource_type: "project" },
+      ],
+      parent: null,
+      created_at: "2026-07-05T09:00:00.000Z",
+      modified_at: "2026-07-21T09:00:00.000Z",
+      completed_at: "2026-07-22T15:00:00.000Z",
+      completed: true,
+      due_at: null,
+      due_on: null,
+      custom_fields: [
+        {
+          gid: "1200000000000302",
+          name: "Estimated Time",
+          type: "number",
+          number_value: null,
+        },
+        {
+          gid: "1200000000000303",
+          name: "Priority",
+          type: "enum",
+          enum_value: null,
+        },
+      ],
+      dependencies: [],
+    },
+    {
+      gid: "1200000000000202",
+      name: "Write API contract",
+      resource_type: "task" as const,
+      resource_subtype: "default_task" as const,
+      assignee: null,
+      projects: [
+        {
+          gid: "1200000000000101",
+          name: "Mobile App",
+          resource_type: "project",
+        },
+      ],
+      parent: null,
+      created_at: "2026-07-10T09:00:00.000Z",
+      modified_at: "2026-07-18T09:00:00.000Z",
+      completed_at: null,
+      completed: false,
+      due_at: null,
+      due_on: "2026-08-05",
+      custom_fields: [
+        {
+          gid: "1200000000000304",
+          name: "Estimated Time",
+          type: "number",
+          number_value: 120,
+        },
+      ],
+      dependencies: [],
+    },
+    {
+      gid: "1200000000000203",
+      name: "Add acceptance tests",
+      resource_type: "task" as const,
+      resource_subtype: "default_task" as const,
+      assignee: {
+        gid: "1200000000000020",
+        name: "Alex Kim",
+        resource_type: "user",
+      },
+      projects: [],
+      parent: {
+        gid: "1200000000000200",
+        name: "Launch dashboard",
+        resource_type: "task",
+      },
+      created_at: "2026-07-12T09:00:00.000Z",
+      modified_at: "2026-07-19T09:00:00.000Z",
+      completed_at: null,
+      completed: false,
+      due_at: null,
+      due_on: null,
+      custom_fields: [
+        {
+          gid: "1200000000000305",
+          name: "Estimated Time",
+          type: "number",
+          number_value: 60,
+        },
+      ],
+      dependencies: [],
+    },
+    {
+      gid: "1200000000000204",
+      name: "Legacy milestone",
+      resource_type: "task" as const,
+      resource_subtype: "milestone" as const,
+      assignee: null,
+      projects: [
+        {
+          gid: "1200000000000102",
+          name: "Archived Legacy",
+          resource_type: "project",
+        },
+      ],
+      parent: null,
+      created_at: "2026-06-01T09:00:00.000Z",
+      modified_at: "2026-06-01T09:00:00.000Z",
+      completed_at: null,
+      completed: false,
+      due_at: null,
+      due_on: null,
+      custom_fields: [],
+      dependencies: [],
+    },
+  ],
+} as const;

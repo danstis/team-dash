@@ -1,7 +1,9 @@
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import config from "../../../vitest.config";
+
+import { asanaHandlers } from "../../../fixtures/asana/small-dataset/handlers";
 import { server } from "../../setup";
+import config from "../../../vitest.config";
 
 describe("Vitest configuration", () => {
   it("uses jsdom and loads the shared test setup", () => {
@@ -24,6 +26,8 @@ describe("Vitest configuration", () => {
   });
 
   it("serves requests through the shared MSW server", async () => {
+    const baselineHandlers = server.listHandlers().length;
+
     server.use(
       http.get("https://example.test/fixture", () =>
         HttpResponse.json({ ok: true }),
@@ -34,10 +38,10 @@ describe("Vitest configuration", () => {
 
     expect(response.ok).toBe(true);
     await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(server.listHandlers()).toHaveLength(1);
+    expect(server.listHandlers()).toHaveLength(baselineHandlers + 1);
   });
 
-  it("resets request handlers after each test", () => {
-    expect(server.listHandlers()).toHaveLength(0);
+  it("resets request handlers after each test back to the canonical fixture baseline", () => {
+    expect(server.listHandlers()).toHaveLength(asanaHandlers.length);
   });
 });

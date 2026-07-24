@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -21,7 +22,32 @@ export function renderApp(rootElement: Element): void {
   );
 }
 
+/**
+ * Boot the MSW browser worker before mounting React in development
+ * builds (T030). The worker MUST NOT run in production — see
+ * `src/mocks/browser.ts` for the contract rationale. A failed MSW
+ * start logs and continues so the app shell still renders during local
+ * debugging when the `mockServiceWorker.js` is missing or the browser
+ * refuses Service-Worker registration.
+ */
+export async function bootstrapDevMocks(): Promise<void> {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+  try {
+    const { startDevWorker } = await import("./mocks/browser");
+    await startDevWorker();
+  } catch (error) {
+    console.warn(
+      "[team-dash] MSW dev worker failed to start; falling back to live network. " +
+        "This is expected in production builds and during unit tests.",
+      error,
+    );
+  }
+}
+
 const rootElement = document.getElementById("root");
 if (rootElement) {
+  await bootstrapDevMocks();
   renderApp(rootElement);
 }

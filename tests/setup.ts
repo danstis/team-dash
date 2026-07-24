@@ -1,9 +1,16 @@
 import "@testing-library/jest-dom/vitest";
 import { webcrypto } from "node:crypto";
-import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
-export const server = setupServer();
+import {
+  resetServer,
+  server,
+  startServer,
+  stopServer,
+} from "../src/mocks/server";
+
+export { server };
+
 if (typeof globalThis.crypto === "undefined" || !globalThis.crypto.subtle) {
   Object.defineProperty(globalThis, "crypto", {
     value: webcrypto,
@@ -13,13 +20,13 @@ if (typeof globalThis.crypto === "undefined" || !globalThis.crypto.subtle) {
 }
 
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: "error" });
+  startServer();
 });
 
 afterEach(() => {
-  server.resetHandlers();
+  resetServer();
 });
 
 afterAll(() => {
-  server.close();
+  stopServer();
 });

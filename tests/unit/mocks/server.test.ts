@@ -32,28 +32,17 @@
  * scenarios); this file is the wiring's own Red/Green/Refactor gate.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { server, startServer, stopServer } from "../../../src/mocks/server";
+import { server } from "../../../src/mocks/server";
 import { smallDatasetWorkspaceGid } from "../../../fixtures/asana/small-dataset/data";
 import { asanaHandlers } from "../../../fixtures/asana/small-dataset/handlers";
 
 describe("T030 src/mocks/server.ts — canonical MSW Node server wiring", () => {
-  beforeAll(() => {
-    // The canonical server uses `{ onUnhandledRequest: "error" }` so a
-    // test that forgets to register a handler fails loudly rather than
-    // silently hitting the real network. Boot it once for the suite.
-    startServer();
-  });
-
   afterEach(() => {
     // Reset to the canonical fixture handlers so a per-test `server.use(...)`
     // override doesn't leak into the next assertion.
     server.resetHandlers(...asanaHandlers);
-  });
-
-  afterAll(() => {
-    stopServer();
   });
 
   it("exports an MSW Node server instance with the lifecycle methods the contract depends on", () => {
@@ -65,9 +54,9 @@ describe("T030 src/mocks/server.ts — canonical MSW Node server wiring", () => 
   });
 
   it("intercepts an Asana endpoint using the small-dataset fixture handlers without per-test `server.use(...)`", async () => {
-    // The canonical server's initial handler list is `asanaHandlers` —
-    // no per-test `server.use(...)` is needed for the fixture's
-    // documented endpoints (`contracts/asana-client.md`).
+    // The shared test setup already booted the canonical server with
+    // `{ onUnhandledRequest: "error" }`, so this test asserts the
+    // module's handler baseline rather than re-listening a second time.
     const response = await fetch("https://app.asana.com/api/1.0/workspaces", {
       headers: { Authorization: "Bearer synthetic-fixture-token" },
     });
@@ -106,7 +95,7 @@ describe("T030 src/mocks/server.ts — canonical MSW Node server wiring", () => 
     };
     expect(overriddenBody.gid).toBe("override");
 
-    // 2. After `resetServer()` the next request goes back to the fixture.
+    // 2. After `resetHandlers(...asanaHandlers)` the next request goes back to the fixture.
     server.resetHandlers(...asanaHandlers);
     const restored = await fetch("https://app.asana.com/api/1.0/users/me", {
       headers: { Authorization: "Bearer synthetic-fixture-token" },

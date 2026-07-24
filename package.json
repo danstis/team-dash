@@ -33,7 +33,7 @@
     "@types/react-dom": "^19.2.3",
     "@typescript-eslint/parser": "8.65.0",
     "@vitest/coverage-v8": "4.1.10",
-    "eslint": "10.7",
+    "eslint": "10.8",
     "eslint-plugin-boundaries": "^7.0.2",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",

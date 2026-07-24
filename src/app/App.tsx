@@ -25,6 +25,12 @@
  * rule is: the shell mounts providers and a router; features mount
  * under the router.
  *
+ * This "shell does not import features" discipline is architectural
+ * convention, not lint-enforced; the `eslint-plugin-boundaries`
+ * configuration in `eslint.config.js` constrains `src/domain/**`
+ * only. The convention is what every existing feature test relies
+ * on to render a single feature in isolation.
+ *
  * ## Provider order
  *
  * `CredentialsProvider` is mounted outside `WorkspaceProvider` so the

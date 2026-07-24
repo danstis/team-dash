@@ -55,12 +55,20 @@
  *
  * ## Boundary
  *
- * This module lives under `src/app/**`. The ESLint boundary in
- * `eslint.config.js` allows it to import from `src/data/**` and
- * `src/shared/**`; it MUST NOT import from `src/domain/**`
- * (presentation-free domain logic is the wrong direction for a shell
- * provider) or `src/features/**` (would invert the dependency — the
- * shell mounts features, not the other way around).
+ * This module lives under `src/app/**`. It imports from
+ * `src/data/**` (the Dexie schema and the token-crypto module) and
+ * from `src/domain/**` only for type imports (`ViewState`). It does
+ * not import from `src/features/**` — the shell mounts features,
+ * not the other way around, so a feature dependency here would
+ * invert the dependency direction.
+ *
+ * The `eslint-plugin-boundaries` configuration in `eslint.config.js`
+ * currently constrains `src/domain/**` only (Constitution Principle
+ * VI's lint-enforced half of the boundary); the "no feature import
+ * from app" rule is enforced by architectural convention and code
+ * review, not by lint. A future contributor may choose to tighten
+ * the rule by adding a `boundaries/dependencies` policy on
+ * `src/app/**` so this convention becomes lint-enforced too.
  */
 import {
   createContext,

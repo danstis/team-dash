@@ -32,12 +32,14 @@
  *   guard wiring is added in US1.
  *
  * - Feature components (`features/credentials/*`, `features/tasks/*`,
- *   …) are NOT imported here. The boundary rule in `eslint.config.js`
- *   allows `src/app/**` to import from `src/features/**`, but the
- *   cleaner discipline is "routes import the feature, the shell
- *   imports nothing but the router and the providers". Future
- *   stories extend the `routes` array; this module never grows
- *   beyond the placeholder route.
+ *   …) are NOT imported here. By architectural convention the shell
+ *   mounts providers and a router; features mount under the router.
+ *   The `eslint-plugin-boundaries` configuration in `eslint.config.js`
+ *   constrains `src/domain/**` only (Constitution Principle VI's
+ *   lint-enforced half of the boundary); the "shell does not import
+ *   features" rule is enforced by convention and code review, not by
+ *   lint. Future stories extend the `routes` array; this module never
+ *   grows beyond the placeholder route.
  */
 import {
   createMemoryRouter,

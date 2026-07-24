@@ -33,10 +33,19 @@
  *
  * ## Boundary
  *
- * This module lives under `src/app/**`. It is allowed to import from
- * `src/data/**` (Dexie schema) and `src/domain/**` types
- * (`ViewState`) but NOT from `src/features/**` — the shell mounts
- * features, not the other way around.
+ * This module lives under `src/app/**`. It imports from `src/data/**`
+ * (the Dexie schema) and from `src/domain/**` only for type imports
+ * (`ViewState`, `ISODateTime`). It does not import from
+ * `src/features/**` — the shell mounts features, not the other way
+ * around.
+ *
+ * The `eslint-plugin-boundaries` configuration in `eslint.config.js`
+ * currently constrains `src/domain/**` only (Constitution Principle
+ * VI's lint-enforced half of the boundary); the "no feature import
+ * from app" rule is enforced by architectural convention and code
+ * review, not by lint. A future contributor may choose to tighten
+ * the rule by adding a `boundaries/dependencies` policy on
+ * `src/app/**` so this convention becomes lint-enforced too.
  */
 import {
   createContext,

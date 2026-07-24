@@ -13,7 +13,7 @@ describe("T030 bootstrapDevMocks", () => {
   });
 
   it("starts the MSW browser worker in development", async () => {
-    vi.stubEnv("DEV", "true");
+    vi.stubEnv("DEV", true);
 
     const startDevWorker = vi.fn().mockResolvedValue(undefined);
     vi.doMock("../../../src/mocks/browser", () => ({
@@ -28,7 +28,7 @@ describe("T030 bootstrapDevMocks", () => {
   });
 
   it("returns early outside development builds", async () => {
-    vi.stubEnv("DEV", "");
+    vi.stubEnv("DEV", false);
 
     const startDevWorker = vi.fn();
     vi.doMock("../../../src/mocks/browser", () => ({
@@ -43,7 +43,7 @@ describe("T030 bootstrapDevMocks", () => {
   });
 
   it("warns and falls back to the live network when the worker fails to start", async () => {
-    vi.stubEnv("DEV", "true");
+    vi.stubEnv("DEV", true);
 
     const failure = new Error("service worker registration failed");
     const startDevWorker = vi.fn().mockRejectedValue(failure);

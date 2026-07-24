@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
 
       - id: release
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1f5860e934307cf7 # v5.0.0
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
@@ -37,26 +37,48 @@ jobs:
       # input that we can use for this (release-please has no option for either
       # bullet character or heading spacing, and `.prettierignore` would silently
       # drop the whole changelog from format coverage). This step is a no-op when
-      # release-please did not open a PR (no `${{ steps.release.outputs.release_pr }}`)
-      # or when the CHANGELOG is already prettier-clean (no leftover release-please
-      # diff), so re-running the workflow on the same `main` tip is idempotent.
+      # release-please did not create or update a PR (the `prs_created` output
+      # is falsy) or when the CHANGELOG is already prettier-clean (no leftover
+      # release-please diff), so re-running the workflow on the same `main` tip
+      # is idempotent.
+      #
+      # release-please's documented outputs (v5.0.0) include `prs_created`
+      # (boolean string) and `pr` (a JSON-encoded PullRequest object with a
+      # `number` and `headRefName`). There is no `release_pr` output, so the
+      # PR number has to be extracted from `pr` with `jq` rather than
+      # interpolated as a plain string.
+      - name: Set up Node
+        if: steps.release.outputs.prs_created == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.release.outputs.prs_created == 'true'
+        run: npm ci --ignore-scripts
+
       - name: Format CHANGELOG.md with Prettier
-        if: steps.release.outputs.release_pr
+        if: steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.release.outputs.release_pr }}
+          # `pr` is a JSON-encoded PullRequest object (see action README,
+          # v5.0.0 "Outputs" section). Threading it via env keeps the shell
+          # interpolation explicit and avoids accidental stringification of
+          # a non-existent output (which used to make the step a silent no-op
+          # before the `pr` output was used).
+          PR_JSON: ${{ steps.release.outputs.pr }}
         run: |
           set -euo pipefail
 
-          # Resolve the PR's head branch (release-please pushes to a managed
-          # branch such as `release-please--branches--main--components--team-dash`
-          # and creates/updates the PR against `main`). Threading the PR number
-          # via env avoids script-injection if a non-default release PR is ever
-          # created.
-          BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName --jq .headRefName)
+          # `pr` is a JSON string of the PullRequest object. Extract the PR
+          # number and the head branch with `jq` rather than treating the
+          # output as a plain string.
+          PR_NUMBER=$(jq -r '.number // empty' <<<"$PR_JSON")
+          BRANCH=$(jq -r '.headRefName // empty' <<<"$PR_JSON")
 
-          if [ -z "$BRANCH" ]; then
-            echo "::error::Could not resolve head branch for release PR #$PR_NUMBER; aborting."
+          if [ -z "$PR_NUMBER" ] || [ -z "$BRANCH" ]; then
+            echo "::error::Could not extract PR number / head branch from release-please 'pr' output; aborting."
             exit 1
           fi
 

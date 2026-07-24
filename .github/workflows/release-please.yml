@@ -26,3 +26,89 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Release-please generates `CHANGELOG.md` entries with `*` bullets and an
+      # extra blank line after each version heading; Prettier's default markdown
+      # config requires `-` bullets and a single blank line. Without this step
+      # the first CI run on the release PR fails `format-check`, which blocks
+      # the release.
+      #
+      # Rewriting `CHANGELOG.md` after release-please is the only release-please
+      # input that we can use for this (release-please has no option for either
+      # bullet character or heading spacing, and `.prettierignore` would silently
+      # drop the whole changelog from format coverage). This step is a no-op when
+      # release-please did not create or update a PR (the `prs_created` output
+      # is falsy) or when the CHANGELOG is already prettier-clean (no leftover
+      # release-please diff), so re-running the workflow on the same `main` tip
+      # is idempotent.
+      #
+      # release-please's documented outputs (v5.0.0) include `prs_created`
+      # (boolean string) and `pr` (a JSON-encoded PullRequest object — the
+      # action's `outputPRs` calls `core.setOutput('pr', prs[0])` on
+      # release-please's `PullRequest` interface). There is no `release_pr`
+      # output, so the PR number has to be extracted from `pr` with `jq`
+      # rather than interpolated as a plain string.
+      #
+      # The `PullRequest` interface (release-please `src/pull-request.ts`)
+      # exposes `headBranchName` / `baseBranchName`, not `headRefName` /
+      # `baseRefName` — `headRefName` would always resolve to empty and
+      # trigger the `::error::` abort on every real release.
+      - name: Set up Node
+        if: steps.release.outputs.prs_created == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.release.outputs.prs_created == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Format CHANGELOG.md with Prettier
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # `pr` is a JSON-encoded PullRequest object (see action README,
+          # v5.0.0 "Outputs" section). Threading it via env keeps the shell
+          # interpolation explicit and avoids accidental stringification of
+          # a non-existent output (which used to make the step a silent no-op
+          # before the `pr` output was used).
+          PR_JSON: ${{ steps.release.outputs.pr }}
+        run: |
+          set -euo pipefail
+
+          # `pr` is a JSON string of the PullRequest object. Extract the PR
+          # number and the head branch with `jq` rather than treating the
+          # output as a plain string.
+          PR_NUMBER=$(jq -r '.number // empty' <<<"$PR_JSON")
+          BRANCH=$(jq -r '.headBranchName // empty' <<<"$PR_JSON")
+
+          if [ -z "$PR_NUMBER" ] || [ -z "$BRANCH" ]; then
+            echo "::error::Could not extract PR number / head branch from release-please 'pr' output; aborting."
+            exit 1
+          fi
+
+          echo "Formatting CHANGELOG.md on branch '$BRANCH' (PR #$PR_NUMBER)."
+
+          # Fetch the PR branch and check it out so `prettier --write` and the
+          # follow-up commit land on the release-please branch, not `main`.
+          git fetch origin "$BRANCH"
+          git checkout "$BRANCH"
+
+          # Use the project's pinned Prettier so the formatting matches the
+          # local `npm run format:check` job exactly.
+          npx --no-install prettier --write CHANGELOG.md
+
+          # If prettier produced no diff, the CHANGELOG was already clean (e.g.
+          # because a previous run of this workflow already formatted it).
+          # Skip the empty commit so the workflow remains idempotent.
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md is already prettier-clean; no follow-up commit needed."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit --message "chore(release): format CHANGELOG.md with prettier (BSOD-269)"
+          git push

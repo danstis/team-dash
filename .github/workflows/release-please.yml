@@ -43,10 +43,16 @@ jobs:
       # is idempotent.
       #
       # release-please's documented outputs (v5.0.0) include `prs_created`
-      # (boolean string) and `pr` (a JSON-encoded PullRequest object with a
-      # `number` and `headRefName`). There is no `release_pr` output, so the
-      # PR number has to be extracted from `pr` with `jq` rather than
-      # interpolated as a plain string.
+      # (boolean string) and `pr` (a JSON-encoded PullRequest object — the
+      # action's `outputPRs` calls `core.setOutput('pr', prs[0])` on
+      # release-please's `PullRequest` interface). There is no `release_pr`
+      # output, so the PR number has to be extracted from `pr` with `jq`
+      # rather than interpolated as a plain string.
+      #
+      # The `PullRequest` interface (release-please `src/pull-request.ts`)
+      # exposes `headBranchName` / `baseBranchName`, not `headRefName` /
+      # `baseRefName` — `headRefName` would always resolve to empty and
+      # trigger the `::error::` abort on every real release.
       - name: Set up Node
         if: steps.release.outputs.prs_created == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -75,7 +81,7 @@ jobs:
           # number and the head branch with `jq` rather than treating the
           # output as a plain string.
           PR_NUMBER=$(jq -r '.number // empty' <<<"$PR_JSON")
-          BRANCH=$(jq -r '.headRefName // empty' <<<"$PR_JSON")
+          BRANCH=$(jq -r '.headBranchName // empty' <<<"$PR_JSON")
 
           if [ -z "$PR_NUMBER" ] || [ -z "$BRANCH" ]; then
             echo "::error::Could not extract PR number / head branch from release-please 'pr' output; aborting."

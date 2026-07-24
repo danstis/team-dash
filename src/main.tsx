@@ -30,7 +30,7 @@ export function renderApp(rootElement: Element): void {
  * debugging when the `mockServiceWorker.js` is missing or the browser
  * refuses Service-Worker registration.
  */
-async function bootstrapDevMocks(): Promise<void> {
+export async function bootstrapDevMocks(): Promise<void> {
   if (!import.meta.env.DEV) {
     return;
   }

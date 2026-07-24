@@ -48,7 +48,6 @@ export async function bootstrapDevMocks(): Promise<void> {
 
 const rootElement = document.getElementById("root");
 if (rootElement) {
-  void bootstrapDevMocks().finally(() => {
-    renderApp(rootElement);
-  });
+  await bootstrapDevMocks();
+  renderApp(rootElement);
 }

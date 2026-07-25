@@ -616,10 +616,20 @@ export function resolveDateRangePreset(
       };
     default: {
       // Exhaustiveness check: a future preset added to the union will
-      // surface here at compile time, never at runtime.
+      // surface here at compile time, never at runtime. The `_exhaustive:
+      // never` assignment is what fails `tsc` when a new preset is added
+      // without a matching case above — `preset` itself is *not* used in
+      // the message because the `never` narrowing makes the value
+      // invisible to JavaScript at runtime (`String(_exhaustive)` is
+      // always `"undefined"`). Surface `preset` instead so a future
+      // caller that bypasses the type system (an unsafe cast, a runtime-
+      // built string) gets an actionable message naming the offending
+      // value, and `void` the exhaustiveness binding to keep `noUnusedLocals`
+      // happy.
       const _exhaustive: never = preset;
+      void _exhaustive;
       throw new Error(
-        `resolveDateRangePreset: unhandled preset "${String(_exhaustive)}"`,
+        `resolveDateRangePreset: unhandled preset "${String(preset)}"`,
       );
     }
   }

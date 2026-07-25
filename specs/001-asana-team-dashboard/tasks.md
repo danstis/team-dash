@@ -71,7 +71,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [x] [BSOD-158] T030 [P] Wire the MSW server for dev and tests in `src/mocks/browser.ts`, `src/mocks/server.ts`
 - [x] [BSOD-159] T031 Implement the app shell: routing, layout, and top-level credential/workspace context providers in `src/app/App.tsx`, `src/app/router.tsx`
 - [x] [BSOD-160] T032 [P] Implement shared `ViewState`-driven UI primitives (loading/empty/first-run/no-results/stale/offline/invalid-token/insufficient-permission/rate-limited/partial-data) in `src/shared/states/`
-- [ ] [BSOD-161] T033 [P] Implement shared formatting helpers (duration → human-friendly units retaining internal precision, date formatting) in `src/shared/format/`
+- [x] [BSOD-161] T033 [P] Implement shared formatting helpers (duration → human-friendly units retaining internal precision, date formatting) in `src/shared/format/`
 
 **Checkpoint**: Foundation ready — user story implementation can now begin.
 

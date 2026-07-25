@@ -30,7 +30,7 @@ or shared database, per Constitution Principle IV (NFR-003).
 
 **Testing**: Vitest 4.1 + React Testing Library (unit and component tests, domain/metric logic isolated from React per Principle VI), Vitest + MSW fixture suites (Asana-client and storage "contract" tests), Playwright 1.61 (browser-based smoke tests: offline mode, PWA install/service-worker behaviour, credential flows) — all deterministic, none requiring a live Asana workspace or real token (Principle III, NFR-005).
 
-**Target Platform**: Evergreen desktop browsers (Chrome/Edge/Firefox current) as the primary target, installable as a PWA; usable on tablet/narrow viewports as a secondary target (FR-089). Deployed via a local dev server or a self-hosted Docker container (nginx 1.30 stable-branch base image) that serves the static production build (NFR-006).
+**Target Platform**: Evergreen desktop browsers (Chrome/Edge/Firefox current) as the primary target, installable as a PWA; usable on tablet/narrow viewports as a secondary target (FR-089). Deployed via a local dev server or a self-hosted Docker container (nginx 1.31 stable-branch base image) that serves the static production build (NFR-006).
 
 **Project Type**: Single-page web application (frontend-only PWA). There is no backend service — the browser calls the Asana API directly and owns all persistence; the Docker image is a static file server only.
 

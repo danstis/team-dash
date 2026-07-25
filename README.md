@@ -112,7 +112,7 @@ docker run --rm -p 8080:8080 ghcr.io/danstis/team-dash:latest
 docker run --rm -p 8080:8080 ghcr.io/danstis/team-dash:0.1
 ```
 
-Open `http://localhost:8080`. The image uses a Node.js 24 build stage and an unprivileged nginx 1.30 Alpine runtime stage. nginx serves only the compiled static assets, provides SPA fallback routing, sends `Cache-Control: no-cache` for the service worker, and long-caches hashed assets.
+Open `http://localhost:8080`. The image uses a Node.js 24 build stage and an unprivileged nginx 1.31 Alpine runtime stage. nginx serves only the compiled static assets, provides SPA fallback routing, sends `Cache-Control: no-cache` for the service worker, and long-caches hashed assets.
 
 The container has no backend behaviour and no server-side Asana credentials. In a production build, the browser still needs a valid user-supplied PAT to call Asana. The fixture-backed mock development flow is not a substitute for production access, and the container must not be given a PAT through Docker arguments or environment variables.
 

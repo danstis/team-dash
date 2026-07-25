@@ -5,7 +5,7 @@
 # Stage 1 (build): Node.js 24 produces the Vite 8.1 production bundle
 #                  into /app/dist using the committed package-lock.json
 #                  (npm ci) so the runtime artefact is reproducible.
-# Stage 2 (runtime): nginxinc/nginx-unprivileged:1.30-alpine serves the
+# Stage 2 (runtime): nginxinc/nginx-unprivileged:1.31-alpine serves the
 #                    static build output from /usr/share/nginx/html as a
 #                    non-root user. nginx configuration (SPA fallback
 #                    routing, Cache-Control: no-cache for the service
@@ -55,7 +55,7 @@ COPY src ./src
 RUN npm run build
 
 # ---------------------------------------------------------------------------
-# Stage 2 — serve the static bundle with unprivileged nginx 1.30-alpine.
+# Stage 2 — serve the static bundle with unprivileged nginx 1.31-alpine.
 # ---------------------------------------------------------------------------
 FROM ${NGINX_IMAGE} AS runtime
 

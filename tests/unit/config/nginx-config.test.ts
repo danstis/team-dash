@@ -69,7 +69,7 @@ describe("docker/nginx.conf (T012 nginx runtime config)", () => {
     expect(nginxConf.length).toBeGreaterThan(0);
   });
 
-  describe("server block basics (nginxinc/nginx-unprivileged 1.30-alpine)", () => {
+  describe("server block basics (nginxinc/nginx-unprivileged 1.31-alpine)", () => {
     const serverBlock = extractServerBlock(nginxConf);
 
     it("listens on port 8080 (the unprivileged nginx default)", () => {

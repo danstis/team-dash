@@ -30,15 +30,10 @@ describe("T033 formatDuration", () => {
 
   it("keeps fractional-minute precision configurable at the display boundary", () => {
     const minutes = 90.1234;
-    const snapshot = minutes;
-
     expect(formatDuration(minutes)).toBe("1 h 30.12 min");
     expect(formatDuration(minutes, { maximumFractionDigits: 3 })).toBe(
       "1 h 30.123 min",
     );
-    // Non-mutation guarantee (spec.md:600 "retaining internal precision"):
-    // the caller-supplied minute count must be unchanged after formatting.
-    expect(minutes === snapshot).toBe(true);
   });
 
   it("normalises display rounding across an hour boundary", () => {

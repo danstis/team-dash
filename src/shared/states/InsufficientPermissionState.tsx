@@ -8,6 +8,10 @@
  * scope problem (not an authentication problem) so the user knows to
  * look at the Asana token's permissions rather than re-entering the
  * token value.
+ *
+ * Props are consumed as `Readonly<ViewStatePrimitiveProps>` per the
+ * SonarCloud `typescript:S6759` project-wide convention
+ * (`src/shared/states/types.ts`).
  */
 import type { ReactElement } from "react";
 
@@ -17,7 +21,7 @@ export function InsufficientPermissionState({
   className,
   "data-testid": dataTestId,
   "aria-label": ariaLabel,
-}: ViewStatePrimitiveProps): ReactElement {
+}: Readonly<ViewStatePrimitiveProps>): ReactElement {
   return (
     <section
       className={className ?? "td-insufficient-permission-state"}

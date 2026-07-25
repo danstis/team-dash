@@ -12,6 +12,10 @@
  * localise it (Australian English default) or pass an already-
  * formatted label without re-introducing a date-formatting
  * dependency in this primitive.
+ *
+ * Props are consumed as `Readonly<CachedStaleStateProps>` per the
+ * SonarCloud `typescript:S6759` project-wide convention
+ * (`src/shared/states/types.ts`).
  */
 import type { ReactElement } from "react";
 
@@ -24,7 +28,7 @@ export interface CachedStaleStateProps extends ViewStatePrimitiveProps {
    * successful RefreshSession. A free-form string keeps the primitive
    * independent of any date-formatting library.
    */
-  lastRefreshedAt: string;
+  readonly lastRefreshedAt: string;
 }
 
 export function CachedStaleState({
@@ -32,7 +36,7 @@ export function CachedStaleState({
   "data-testid": dataTestId,
   "aria-label": ariaLabel,
   lastRefreshedAt,
-}: CachedStaleStateProps): ReactElement {
+}: Readonly<CachedStaleStateProps>): ReactElement {
   return (
     <section
       className={className ?? "td-cached-stale-state"}

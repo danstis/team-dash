@@ -13,6 +13,10 @@
  * (`contracts/asana-client.md`) is responsible for parsing the
  * `Retry-After` header into milliseconds; this primitive renders the
  * value verbatim rather than re-parsing it.
+ *
+ * Props are consumed as `Readonly<RateLimitedStateProps>` per the
+ * SonarCloud `typescript:S6759` project-wide convention
+ * (`src/shared/states/types.ts`).
  */
 import type { ReactElement } from "react";
 
@@ -24,7 +28,7 @@ export interface RateLimitedStateProps extends ViewStatePrimitiveProps {
    * The primitive formats it into the most natural unit so the user
    * sees "wait 60 seconds" rather than "wait 60000 ms".
    */
-  retryAfterMs?: number;
+  readonly retryAfterMs?: number;
 }
 
 /**
@@ -53,7 +57,7 @@ export function RateLimitedState({
   "data-testid": dataTestId,
   "aria-label": ariaLabel,
   retryAfterMs,
-}: RateLimitedStateProps): ReactElement {
+}: Readonly<RateLimitedStateProps>): ReactElement {
   const waitLabel =
     typeof retryAfterMs === "number" ? formatRetryAfter(retryAfterMs) : null;
   return (

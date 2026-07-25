@@ -12,6 +12,10 @@
  * chrome (settings menu, layout), and the primitive stays reusable
  * across first-run, post-clear-data, and decrypt-failure flows that
  * all converge on the same landing screen.
+ *
+ * Props are consumed as `Readonly<ViewStatePrimitiveProps>` per the
+ * SonarCloud `typescript:S6759` project-wide convention
+ * (`src/shared/states/types.ts`).
  */
 import type { ReactElement } from "react";
 
@@ -21,7 +25,7 @@ export function FirstRunState({
   className,
   "data-testid": dataTestId,
   "aria-label": ariaLabel,
-}: ViewStatePrimitiveProps): ReactElement {
+}: Readonly<ViewStatePrimitiveProps>): ReactElement {
   return (
     <section
       className={className ?? "td-first-run-state"}

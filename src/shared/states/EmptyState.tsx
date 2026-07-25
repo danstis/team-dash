@@ -7,6 +7,10 @@
  * directs the user to run a refresh — a blank dashboard would be
  * misleading; an empty cache means "we haven't loaded anything yet",
  * not "your workspace has no tasks".
+ *
+ * Props are consumed as `Readonly<ViewStatePrimitiveProps>` per the
+ * SonarCloud `typescript:S6759` project-wide convention
+ * (`src/shared/states/types.ts`).
  */
 import type { ReactElement } from "react";
 
@@ -16,7 +20,7 @@ export function EmptyState({
   className,
   "data-testid": dataTestId,
   "aria-label": ariaLabel,
-}: ViewStatePrimitiveProps): ReactElement {
+}: Readonly<ViewStatePrimitiveProps>): ReactElement {
   return (
     <section
       className={className ?? "td-empty-state"}

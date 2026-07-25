@@ -8,6 +8,10 @@
  * spec's offline rule is "the last cached dashboard is viewable, and
  * the Refresh action is visibly disabled", not "the dashboard is
  * inaccessible offline".
+ *
+ * Props are consumed as `Readonly<ViewStatePrimitiveProps>` per the
+ * SonarCloud `typescript:S6759` project-wide convention
+ * (`src/shared/states/types.ts`).
  */
 import type { ReactElement } from "react";
 
@@ -17,7 +21,7 @@ export function OfflineState({
   className,
   "data-testid": dataTestId,
   "aria-label": ariaLabel,
-}: ViewStatePrimitiveProps): ReactElement {
+}: Readonly<ViewStatePrimitiveProps>): ReactElement {
   return (
     <section
       className={className ?? "td-offline-state"}

@@ -16,6 +16,10 @@
  * (the token never appears in logs/UI) is honoured by the Asana
  * client contract — `errorDetail` arrives here already scrubbed of
  * any token value.
+ *
+ * Props are consumed as `Readonly<PartialDataStateProps>` per the
+ * SonarCloud `typescript:S6759` project-wide convention
+ * (`src/shared/states/types.ts`).
  */
 import type { ReactElement } from "react";
 
@@ -28,11 +32,11 @@ export interface PartialDataStateProps extends ViewStatePrimitiveProps {
    * three pages"). The Asana client contract guarantees this string
    * does not contain the personal access token.
    */
-  errorDetail: string;
+  readonly errorDetail: string;
   /** How many items the refresh retrieved before the partial failure. */
-  itemsRetrieved: number;
+  readonly itemsRetrieved: number;
   /** The total number of items the refresh attempted to retrieve. */
-  totalExpected: number;
+  readonly totalExpected: number;
 }
 
 export function PartialDataState({
@@ -42,7 +46,7 @@ export function PartialDataState({
   errorDetail,
   itemsRetrieved,
   totalExpected,
-}: PartialDataStateProps): ReactElement {
+}: Readonly<PartialDataStateProps>): ReactElement {
   return (
     <section
       className={className ?? "td-partial-data-state"}

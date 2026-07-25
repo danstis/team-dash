@@ -25,6 +25,10 @@
  *   own UI stays inside its own `<main>` / chrome, and the dispatcher
  *   does not insert an extra wrapping element when there's nothing to
  *   disclose.
+ *
+ * Props are consumed as `Readonly<ViewStateViewProps>` per the
+ * SonarCloud `typescript:S6759` project-wide convention
+ * (`src/shared/states/types.ts`).
  */
 import { type ReactElement, type ReactNode } from "react";
 
@@ -43,22 +47,22 @@ import { RateLimitedState } from "./RateLimitedState";
 
 export interface ViewStateViewProps {
   /** The current `ViewState` literal. */
-  state: ViewState;
+  readonly state: ViewState;
   /**
    * The 'ready' slot. Rendered verbatim for `state === 'ready'`;
    * ignored for every other state (the matching primitive supplies
    * the content).
    */
-  children?: ReactNode;
+  readonly children?: ReactNode;
   /**
    * Forwarded to the matching primitive's root element. Optional;
    * useful for styling the region from the feature's CSS layer.
    */
-  className?: string;
+  readonly className?: string;
   /** Forwarded for test queries. */
-  "data-testid"?: string;
+  readonly "data-testid"?: string;
   /** Forwarded for accessibility labels. */
-  "aria-label"?: string;
+  readonly "aria-label"?: string;
   /**
    * Optional context forwarded to specific primitives:
    *
@@ -67,12 +71,12 @@ export interface ViewStateViewProps {
    * - `partial` — required by `'partial_data'` (`{ errorDetail,
    *   itemsRetrieved, totalExpected }`)
    */
-  lastRefreshedAt?: string;
-  retryAfterMs?: number;
-  partial?: {
-    errorDetail: string;
-    itemsRetrieved: number;
-    totalExpected: number;
+  readonly lastRefreshedAt?: string;
+  readonly retryAfterMs?: number;
+  readonly partial?: {
+    readonly errorDetail: string;
+    readonly itemsRetrieved: number;
+    readonly totalExpected: number;
   };
 }
 
@@ -102,7 +106,7 @@ export function ViewStateView({
   lastRefreshedAt,
   retryAfterMs,
   partial,
-}: ViewStateViewProps): ReactElement {
+}: Readonly<ViewStateViewProps>): ReactElement {
   switch (state) {
     case "ready":
       return (

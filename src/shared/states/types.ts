@@ -7,6 +7,17 @@
  * is forwarded through `data-*` and `aria-*` so a feature component
  * can decorate the primitive without each primitive knowing about its
  * caller.
+ *
+ * ## Read-only props (SonarCloud `typescript:S6759`)
+ *
+ * Every field on `ViewStatePrimitiveProps` is declared `readonly` and
+ * every primitive consumes its props via `Readonly<Props>` in its
+ * function signature. SonarCloud rule `typescript:S6759` flags any
+ * React component whose props parameter is mutable; the read-only
+ * convention here is the project-wide baseline (Constitution
+ * Principle VI's "readable, conventional code MUST be preferred over
+ * cleverness") and is mirrored in every primitive's function
+ * signature, not just in this shared interface.
  */
 import type { ViewState } from "../../domain/types";
 
@@ -18,9 +29,9 @@ import type { ViewState } from "../../domain/types";
  * accidentally override the primitive's `role` or `data-view-state`).
  */
 export interface ViewStatePrimitiveProps {
-  className?: string;
-  "data-testid"?: string;
-  "aria-label"?: string;
+  readonly className?: string;
+  readonly "data-testid"?: string;
+  readonly "aria-label"?: string;
 }
 
 /**
@@ -29,5 +40,5 @@ export interface ViewStatePrimitiveProps {
  * rendered root.
  */
 export interface ViewStateDispatchContext {
-  state: ViewState;
+  readonly state: ViewState;
 }

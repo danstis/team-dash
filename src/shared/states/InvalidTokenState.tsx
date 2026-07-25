@@ -12,6 +12,10 @@
  * FR-002b's decrypt-failure fallback (T031 routes both flows to the
  * same UI so a corrupt-key recovery does not introduce a dedicated
  * error state).
+ *
+ * Props are consumed as `Readonly<ViewStatePrimitiveProps>` per the
+ * SonarCloud `typescript:S6759` project-wide convention
+ * (`src/shared/states/types.ts`).
  */
 import type { ReactElement } from "react";
 
@@ -21,7 +25,7 @@ export function InvalidTokenState({
   className,
   "data-testid": dataTestId,
   "aria-label": ariaLabel,
-}: ViewStatePrimitiveProps): ReactElement {
+}: Readonly<ViewStatePrimitiveProps>): ReactElement {
   return (
     <section
       className={className ?? "td-invalid-token-state"}

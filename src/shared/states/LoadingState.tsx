@@ -12,6 +12,10 @@
  * self-sufficient — a screen-reader user hears the same announcement
  * whether or not the spinner is visible, so the visual decoration is
  * non-essential.
+ *
+ * Props are consumed as `Readonly<ViewStatePrimitiveProps>` per the
+ * SonarCloud `typescript:S6759` project-wide convention
+ * (`src/shared/states/types.ts`).
  */
 import type { ReactElement } from "react";
 
@@ -28,7 +32,7 @@ export function LoadingState({
   className,
   "data-testid": dataTestId,
   "aria-label": ariaLabel,
-}: ViewStatePrimitiveProps): ReactElement {
+}: Readonly<ViewStatePrimitiveProps>): ReactElement {
   return (
     <section
       className={className ?? "td-loading-state"}

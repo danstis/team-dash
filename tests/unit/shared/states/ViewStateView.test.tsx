@@ -24,7 +24,7 @@
  *   new literal to `ViewState` forces an exhaustive switch update here
  *   (otherwise the test suite fails to compile in strict TypeScript).
  *
- * - Each primitive carries a stable `data-state="<view_state>"` attribute
+ * - Each primitive carries a stable `data-view-state="<view_state>"` attribute
  *   on its root element so a feature test can query the live state via
  *   a stable hook without coupling to the inner copy.
  *
@@ -148,7 +148,7 @@ describe("T032 shared ViewState-driven UI primitives", () => {
       ).toBeInTheDocument();
     });
 
-    it("exposes a stable data-state hook for feature-level queries", async () => {
+    it("exposes a stable data-view-state hook for feature-level queries", async () => {
       const { LoadingState } = await import("../../../../src/shared/states");
 
       render(<LoadingState data-testid="loading-root" />);

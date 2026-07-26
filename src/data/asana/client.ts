@@ -358,6 +358,13 @@ function buildAsanaUrl(
  */
 function parseRetryAfter(rawHeader: string | null): number {
   const DEFAULT_RETRY_AFTER_MS = 30_000;
+  /**
+   * Smallest positive delay surfaced when an HTTP-date `Retry-After`
+   * resolves to the past. A `Retry-After` already in the past means
+   * "retry now" — return a small positive floor so the orchestrator's
+   * backoff machinery doesn't interpret zero as "no retry needed".
+   */
+  const MIN_RETRY_AFTER_MS = 1_000;
 
   if (rawHeader === null || rawHeader.trim() === "") {
     return DEFAULT_RETRY_AFTER_MS;
@@ -381,10 +388,7 @@ function parseRetryAfter(rawHeader: string | null): number {
   }
   const delay = dateMs - Date.now();
   if (delay <= 0) {
-    // A `Retry-After` already in the past means "retry now" — surface
-    // a small positive delay so the orchestrator's backoff machinery
-    // doesn't interpret zero as "no retry needed".
-    return 1_000;
+    return MIN_RETRY_AFTER_MS;
   }
   return delay;
 }

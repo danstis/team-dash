@@ -149,29 +149,41 @@ const STATES = [
     label: "01-initial-first-run",
     title: "Initial state · no token",
     subtitle:
-      "CredentialsProvider reports ViewState='first_run'. The panel shows the four empty fieldsets; the Active credential input is empty; Storage mode reports 'none'; the Switch-to-* buttons are hidden (mode=null) so the user is guided toward the entry flow.",
+      "CredentialsProvider reports ViewState='first_run', mode=null. The panel shows four empty fieldsets with the Active credential input + Set token + Retest actions; storage-mode buttons hidden (mode=null); Clear-all button rendered for immediate destructive-action access.",
   },
   {
-    label: "02-session-after-set-token",
-    title: "Session mode · after Set token",
+    label: "02-retest-success",
+    title: "Retest outcome · token valid (FR-004)",
     subtitle:
-      "After typing a token and clicking Set token the provider transitions to mode='session', state='ready'. The Active credential input is cleared (FR-008: plaintext not echoed). The Storage mode fieldset displays the masked identifier '…aaaa' and a Switch to persistent button. Clear all remains reachable.",
+      "After Set token + Retest, the panel's retest-outcome element carries role='status' aria-live='polite' and surfaces 'Token valid. Authenticated as <name>.' The MSW /users/me fixture returns the canonical user; FR-004 says the panel must report success or a specific failure reason, and the success branch is what the user sees when their PAT is intact.",
   },
   {
-    label: "03-persistent-confirmation-dialog",
+    label: "03-retest-failure",
+    title: "Retest outcome · invalid token (401)",
+    subtitle:
+      "MSW override forces /users/me to return 401. The retest-outcome element renders 'Invalid token. Asana rejected the credential.' (FR-004's specific-failure-reason contract). The masked identifier in the Storage mode fieldset is unchanged; only the validity probe was invalidated.",
+  },
+  {
+    label: "04-replace-flow-after",
+    title: "Replace flow · post-replace masked identifier (FR-005 + FR-005a)",
+    subtitle:
+      "Replace is a single-step action (FR-005) — no confirmation dialog per spec (only the switch-to-persistent transition carries FR-003). The screenshot captures the post-replace panel: masked identifier updates to the replacement token's last-4 characters; mode stays session; if the prior mode had been persistent the FR-005a delete (provider's primary-key db.credentials.delete('persistent')) would have already removed the encrypted record before the session-mode state update.",
+  },
+  {
+    label: "05-persistent-confirmation-dialog",
     title: "FR-003 disclosure dialog · persistent storage",
     subtitle:
       "Clicking Switch to persistent surfaces the role=alertdialog confirmation. The copy names (a) the token is sensitive, (b) AES-GCM at rest, (c) the documented in-origin attacker limitation, and (d) the local browser-profile scope. Confirm triggers setPersistentToken; Decline closes without writing.",
   },
   {
-    label: "04-clear-all-confirmation-dialog",
+    label: "06-clear-all-confirmation-dialog",
     title: "FR-007 confirmation dialog · clear all data",
     subtitle:
       "Clicking Clear all surfaces the role=alertdialog confirmation. The copy states the encrypted token AND every piece of locally retained Asana data is wiped in a single Dexie transaction. Confirm Clear all invokes clearAll; Cancel closes without wiping.",
   },
   {
-    label: "05-persistent-mode-loaded",
-    title: "Persistent mode · loaded on mount",
+    label: "07-persistent-mode-loaded",
+    title: "Persistent mode · loaded on mount (FR-002a)",
     subtitle:
       "The CredentialsProvider decrypts the encrypted CredentialRecord on mount (FR-002a, AES-GCM non-extractable key), transitions to mode='persistent', and renders the Switch to session-only action. The Set token / Retest affordances are reachable but the actual credential backing the API calls is the decrypted plaintext held in the panel's local state.",
   },
@@ -228,7 +240,8 @@ async function main() {
             scripts/generate-visual-qa-pngs.mjs · T045 / BSOD-173.
             Captured DOM contract is verified by
             tests/integration/credentials/settings-panel.test.tsx (13/13
-            passing on PR #86 head SHA 22dd206).
+            passing on PR #86 at the time of the last merge-readiness
+            sweep).
           </p>
         `,
       });

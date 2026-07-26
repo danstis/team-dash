@@ -30,3 +30,8 @@ public/mockServiceWorker.js
 # no longer enforces style on this file in exchange for the release-please
 # workflow producing a green PR without a manual follow-up commit.
 CHANGELOG.md
+
+# Multica runtime artefacts (visual-QA captures written by
+# tests/visual-qa-dump.test.tsx; intentionally unformatted because
+# they are machine-generated evidence, not project source).
+.multica/

@@ -15,6 +15,8 @@ const repoRoot = resolve(here, "..", "..", "..");
 describe("T010 index.html (Vite entry document)", () => {
   const htmlPath = resolve(repoRoot, "index.html");
   const html = readFileSync(htmlPath, "utf8");
+  const expectedCsp =
+    "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data:; connect-src 'self' https://app.asana.com; script-src 'self'; style-src 'self'";
 
   it("declares the document as Australian English (Constitution Principle VIII style rule)", () => {
     expect(html).toMatch(/<html\s+lang="en-AU"/);
@@ -34,6 +36,11 @@ describe("T010 index.html (Vite entry document)", () => {
     expect(html).toMatch(
       /<meta\s+name="theme-color"\s+content="#0f172a"\s*\/?>/,
     );
+  });
+
+  it("declares a CSP meta fallback for static hosts that do not inject response headers", () => {
+    expect(html).toMatch(/http-equiv="Content-Security-Policy"/);
+    expect(html).toContain(expectedCsp);
   });
 
   it("sets the document title to the product name", () => {

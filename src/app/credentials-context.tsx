@@ -312,12 +312,7 @@ export function CredentialsProvider({
       // for the full FR-007 clear-data action. Dexie's primary-key
       // upsert on the `credentials` table guarantees there is at most
       // one persistent row, so `delete("persistent")` is sufficient.
-      void db.credentials.delete("persistent").catch(() => {
-        // Best-effort: a failure here means there was no prior
-        // persistent row to delete, which is the documented default
-        // (FR-002 "session-only is the default mode"). Swallow the
-        // Dexie rejection so the call site stays simple.
-      });
+      await db.credentials.delete("persistent");
       // FR-008: the plaintext token value is intentionally not echoed
       // back anywhere in this provider's state — only the masked
       // identifier. The caller (e.g. the Settings credentials panel,

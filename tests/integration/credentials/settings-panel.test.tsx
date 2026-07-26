@@ -61,7 +61,7 @@ import {
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { type ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   CredentialsProvider,
@@ -114,6 +114,20 @@ function lastFour(token: string): string {
   return token.slice(-4);
 }
 
+function createDeferredPromise<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 /**
  * A small probe component that exposes the live `useCredentials()`
  * value via `data-testid` slots so a test can read it without
@@ -135,6 +149,24 @@ function CredentialsProbe(): ReactNode {
  * Clears the credentials table beforehand so the previous test's
  * encrypted row cannot leak into the next.
  */
+async function setSessionTokenThroughPanel(token: string): Promise<void> {
+  fireEvent.change(screen.getByLabelText(/token/i), {
+    target: { value: token },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /set token/i }));
+  await waitFor(() =>
+    expect(screen.getByTestId("probe-state")).toHaveTextContent("ready"),
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId("probe-mode")).toHaveTextContent("session"),
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId("probe-masked")).toHaveTextContent(
+      lastFour(token),
+    ),
+  );
+}
+
 function renderPanel(): {
   stateProbe: () => string | null;
   modeProbe: () => string | null;
@@ -178,10 +210,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
       );
 
-      fireEvent.change(screen.getByLabelText(/token/i), {
-        target: { value: SESSION_TOKEN_A },
-      });
-      fireEvent.click(screen.getByRole("button", { name: /set token/i }));
+      await setSessionTokenThroughPanel(SESSION_TOKEN_A);
 
       fireEvent.click(screen.getByRole("button", { name: /retest/i }));
 
@@ -211,10 +240,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
       );
 
-      fireEvent.change(screen.getByLabelText(/token/i), {
-        target: { value: INVALID_TOKEN },
-      });
-      fireEvent.click(screen.getByRole("button", { name: /set token/i }));
+      await setSessionTokenThroughPanel(INVALID_TOKEN);
       fireEvent.click(screen.getByRole("button", { name: /retest/i }));
 
       await waitFor(() =>
@@ -238,10 +264,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
       );
 
-      fireEvent.change(screen.getByLabelText(/token/i), {
-        target: { value: SESSION_TOKEN_A },
-      });
-      fireEvent.click(screen.getByRole("button", { name: /set token/i }));
+      await setSessionTokenThroughPanel(SESSION_TOKEN_A);
       fireEvent.click(screen.getByRole("button", { name: /retest/i }));
 
       await waitFor(() =>
@@ -264,10 +287,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
       );
 
-      fireEvent.change(screen.getByLabelText(/token/i), {
-        target: { value: SESSION_TOKEN_A },
-      });
-      fireEvent.click(screen.getByRole("button", { name: /set token/i }));
+      await setSessionTokenThroughPanel(SESSION_TOKEN_A);
       fireEvent.click(screen.getByRole("button", { name: /retest/i }));
 
       await waitFor(() =>
@@ -284,10 +304,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
       );
 
-      fireEvent.change(screen.getByLabelText(/token/i), {
-        target: { value: SESSION_TOKEN_A },
-      });
-      fireEvent.click(screen.getByRole("button", { name: /set token/i }));
+      await setSessionTokenThroughPanel(SESSION_TOKEN_A);
       fireEvent.click(screen.getByRole("button", { name: /retest/i }));
 
       await waitFor(() =>
@@ -336,8 +353,9 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
     it("immediately deletes the prior encrypted record on replace (FR-005a)", async () => {
       // Seed a persistent record so the replace path goes through
       // the encrypted-row lifecycle (FR-005a). After Replace, the
-      // persistent row MUST be gone — not waiting for a later
-      // clear-all action.
+      // persistent row MUST be gone before the session-mode state
+      // update completes — not waiting for a later clear-all action
+      // or a background Dexie delete to catch up.
       const key = await generateTokenKey();
       const { ciphertext, iv } = await encryptToken(SESSION_TOKEN_A, key);
       await db.credentials.put({
@@ -347,33 +365,63 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         lastValidatedAt: null,
         lastValidationResult: null,
       });
-      const rowsBefore = await db.credentials.count();
-      expect(rowsBefore).toBe(1);
+      expect(await db.credentials.count()).toBe(1);
 
-      renderPanel();
+      const deleteBarrier = createDeferredPromise<void>();
+      const originalDelete = db.credentials.delete.bind(db.credentials);
+      const deleteSpy = vi
+        .spyOn(db.credentials, "delete")
+        .mockImplementationOnce((key) => {
+          expect(key).toBe("persistent");
+          return deleteBarrier.promise.then(() =>
+            originalDelete(key),
+          ) as ReturnType<typeof db.credentials.delete>;
+        });
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      try {
+        const panel = renderPanel();
 
-      fireEvent.change(screen.getByLabelText(/replacement/i), {
-        target: { value: REPLACEMENT_TOKEN },
-      });
-      fireEvent.click(screen.getByRole("button", { name: /replace/i }));
-
-      await waitFor(async () => {
-        // The replacement write either re-inserts under a different
-        // masked identifier or removes the row entirely until a
-        // subsequent setPersistentToken call. Either way, the
-        // pre-existing encrypted token for SESSION_TOKEN_A MUST be
-        // gone — a future contributor who defers the deletion to
-        // clear-all breaks FR-005a and fails this test.
-        const remaining = await db.credentials.toArray();
-        const stillCarriesPriorToken = remaining.some((row) =>
-          row.maskedIdentifier.endsWith(lastFour(SESSION_TOKEN_A)),
+        await waitFor(() =>
+          expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
         );
-        expect(stillCarriesPriorToken).toBe(false);
-      });
+        await waitFor(() => expect(panel.modeProbe()).toBe("persistent"));
+        await waitFor(() =>
+          expect(panel.maskedProbe()).toBe(lastFour(SESSION_TOKEN_A)),
+        );
+
+        const replacementInput = screen.getByLabelText(
+          /replacement/i,
+        ) as HTMLInputElement;
+        fireEvent.change(replacementInput, {
+          target: { value: REPLACEMENT_TOKEN },
+        });
+        fireEvent.click(screen.getByRole("button", { name: /replace/i }));
+
+        await waitFor(() =>
+          expect(deleteSpy).toHaveBeenCalledWith("persistent"),
+        );
+
+        // While the IndexedDB delete is still pending, Replace must
+        // not complete. The old persistent row is still present, the
+        // masked identifier still points at the prior token, and the
+        // replacement input has not been cleared yet.
+        expect(await db.credentials.count()).toBe(1);
+        expect(panel.modeProbe()).toBe("persistent");
+        expect(panel.maskedProbe()).toBe(lastFour(SESSION_TOKEN_A));
+        expect(replacementInput.value).toBe(REPLACEMENT_TOKEN);
+
+        deleteBarrier.resolve();
+
+        await waitFor(() => expect(panel.modeProbe()).toBe("session"));
+        await waitFor(() =>
+          expect(panel.maskedProbe()).toBe(lastFour(REPLACEMENT_TOKEN)),
+        );
+        await waitFor(async () => expect(await db.credentials.count()).toBe(0));
+        expect(replacementInput.value).toBe("");
+      } finally {
+        deleteBarrier.resolve();
+        deleteSpy.mockRestore();
+      }
     });
   });
 
@@ -385,10 +433,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
       );
 
-      fireEvent.change(screen.getByLabelText(/token/i), {
-        target: { value: SESSION_TOKEN_A },
-      });
-      fireEvent.click(screen.getByRole("button", { name: /set token/i }));
+      await setSessionTokenThroughPanel(SESSION_TOKEN_A);
 
       // The user opts into persistent mode. The panel MUST surface
       // a confirmation dialog that names the encryption-at-rest
@@ -423,10 +468,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
       );
 
-      fireEvent.change(screen.getByLabelText(/token/i), {
-        target: { value: SESSION_TOKEN_A },
-      });
-      fireEvent.click(screen.getByRole("button", { name: /set token/i }));
+      await setSessionTokenThroughPanel(SESSION_TOKEN_A);
 
       fireEvent.click(
         screen.getByRole("button", { name: /switch to persistent/i }),
@@ -656,10 +698,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
       );
 
-      fireEvent.change(screen.getByLabelText(/token/i), {
-        target: { value: SESSION_TOKEN_A },
-      });
-      fireEvent.click(screen.getByRole("button", { name: /set token/i }));
+      await setSessionTokenThroughPanel(SESSION_TOKEN_A);
 
       // After exercising every action that could plausibly produce a
       // link (Retest's "open in Asana" deep-link, Replace's
@@ -689,10 +728,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
       );
 
-      fireEvent.change(screen.getByLabelText(/token/i), {
-        target: { value: SESSION_TOKEN_A },
-      });
-      fireEvent.click(screen.getByRole("button", { name: /set token/i }));
+      await setSessionTokenThroughPanel(SESSION_TOKEN_A);
 
       // The probe value (see `<CredentialsProbe />` in `renderPanel`)
       // is the entire JSON-encoded surface of the credentials

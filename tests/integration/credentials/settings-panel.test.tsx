@@ -321,7 +321,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(panel.maskedProbe()).toBe(lastFour(SESSION_TOKEN_A)),
       );
 
-      fireEvent.change(screen.getByLabelText(/replacement token/i), {
+      fireEvent.change(screen.getByLabelText(/replacement/i), {
         target: { value: REPLACEMENT_TOKEN },
       });
       fireEvent.click(screen.getByRole("button", { name: /replace/i }));
@@ -356,7 +356,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
       );
 
-      fireEvent.change(screen.getByLabelText(/replacement token/i), {
+      fireEvent.change(screen.getByLabelText(/replacement/i), {
         target: { value: REPLACEMENT_TOKEN },
       });
       fireEvent.click(screen.getByRole("button", { name: /replace/i }));
@@ -460,9 +460,14 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
 
       const panel = renderPanel();
 
+      // Wait for the provider to decrypt the seeded persistent row
+      // before exercising the switch-to-session action — the
+      // "Switch to session-only" button only renders once the
+      // credentials context reports mode="persistent".
       await waitFor(() =>
         expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
       );
+      await waitFor(() => expect(panel.modeProbe()).toBe("persistent"));
 
       fireEvent.click(
         screen.getByRole("button", { name: /switch to session/i }),
@@ -664,8 +669,10 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
       await waitFor(() =>
         expect(screen.getByTestId("retest-outcome")).toBeInTheDocument(),
       );
+      // Opening the persistent-confirmation dialog exercises the
+      // disclosure copy as well, which also must not leak the token.
       fireEvent.click(
-        screen.getByRole("button", { name: /switch to session/i }),
+        screen.getByRole("button", { name: /switch to persistent/i }),
       );
 
       const html = container.innerHTML;

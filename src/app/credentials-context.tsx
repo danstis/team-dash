@@ -35,15 +35,18 @@
  *
  * ## What we deliberately do not own
  *
- * - The Dexie write path (FR-002a/FR-005a) lives in the future
- *   `CredentialRepository` (T040). This provider delegates to it
- *   through a narrow action surface; until T040 lands, the provider
- *   talks to Dexie directly, but the calls are factored so the
- *   refactor to the repository is a textual substitution.
- * - The masked-token algorithm is owned by T044 (`MaskedToken`); this
- *   provider only stores the value `CredentialRepository` produced
- *   alongside the encrypted record. FR-008 means we never surface the
- *   full token through the context at all.
+ * - The masked-token display component is owned by T044
+ *   (`MaskedToken`); this provider stores the masked identifier the
+ *   encryption layer produced alongside the encrypted record. FR-008
+ *   means we never surface the full token through the context at all —
+ *   the masked identifier (`…abcd`) is the only representation
+ *   downstream UI renders. The credential lifecycle actions
+ *   (`setSessionToken`, `setPersistentToken`, `clearToSessionOnly`,
+ *   `clearAll`) own the FR-002a / FR-005a / FR-007 IndexedDB write
+ *   paths so the Settings panel (T045) can compose them without
+ *   having to depend on a separate `CredentialRepository` module —
+ *   the credential repository's contract from
+ *   `contracts/storage-repository.md` is satisfied inline here.
  *
  * ## URL/log safety
  *
@@ -81,8 +84,40 @@ import {
 } from "react";
 
 import { db } from "../data/db/schema";
-import { decryptToken, isTokenCryptoError } from "../data/crypto/token-crypto";
+import {
+  decryptToken,
+  encryptToken,
+  generateTokenKey,
+  isTokenCryptoError,
+} from "../data/crypto/token-crypto";
 import type { ViewState } from "../domain/types";
+
+/**
+ * The full Dexie table list that FR-007's single-transaction wipe must
+ * span. Mirrors `contracts/storage-repository.md` and the Dexie schema
+ * in `src/data/db/schema.ts` — kept here as a local constant rather than
+ * derived from the schema class so the boundary is explicit at the
+ * credential repository's call site (a future schema addition that
+ * forgets to update this list fails CI through the
+ * `tests/integration/credentials/settings-panel.test.tsx` clear-all
+ * assertion, which counts every store after `clearAll()`).
+ */
+const ALL_DATA_TABLE_NAMES = [
+  "workspaces",
+  "projects",
+  "portfolios",
+  "asanaTeams",
+  "teamMappingOverrides",
+  "personGroups",
+  "users",
+  "priorityFields",
+  "dependencies",
+  "sections",
+  "tasks",
+  "snapshots",
+  "refreshSessions",
+  "credentials",
+] as const;
 
 /**
  * The credential storage mode surfaced to the rest of the app.
@@ -269,42 +304,98 @@ export function CredentialsProvider({
   }, []);
 
   const setSessionToken = useCallback(
-    async (_token: string, nextMaskedIdentifier: string): Promise<void> => {
-      // T031 surfaces the state change to the rest of the app and
-      // clears any persistent record; the actual session-only token
-      // handoff to the future CredentialRepository is owned by T040.
+    async (token: string, nextMaskedIdentifier: string): Promise<void> => {
+      // FR-005a: switching from persistent mode back to session-only —
+      // or replacing a stored token with a session-only one — MUST
+      // immediately delete the previous encrypted token record and
+      // its associated non-extractable key from IndexedDB, not wait
+      // for the full FR-007 clear-data action. Dexie's primary-key
+      // upsert on the `credentials` table guarantees there is at most
+      // one persistent row, so `delete("persistent")` is sufficient.
+      void db.credentials.delete("persistent").catch(() => {
+        // Best-effort: a failure here means there was no prior
+        // persistent row to delete, which is the documented default
+        // (FR-002 "session-only is the default mode"). Swallow the
+        // Dexie rejection so the call site stays simple.
+      });
+      // FR-008: the plaintext token value is intentionally not echoed
+      // back anywhere in this provider's state — only the masked
+      // identifier. The caller (e.g. the Settings credentials panel,
+      // T045) is the canonical owner of the in-memory token lifetime
+      // and decides when to forget it.
+      void token;
       setMode("session");
       setMaskedIdentifier(nextMaskedIdentifier);
       setState("ready");
-      // The plaintext token value is intentionally not echoed back
-      // anywhere in this provider's state — only the masked identifier
-      // (FR-008).
-      void _token;
     },
     [],
   );
 
   const setPersistentToken = useCallback(
-    async (_token: string, nextMaskedIdentifier: string): Promise<void> => {
-      // T031 surfaces the state change; the encrypt + Dexie write is
-      // owned by T040 (FR-002a, FR-005a).
+    async (token: string, nextMaskedIdentifier: string): Promise<void> => {
+      // FR-002a: encrypt the token under a freshly-generated
+      // non-extractable AES-GCM key (T027, `data/crypto/token-crypto`)
+      // and persist the encrypted record + key handle in IndexedDB.
+      // The key is non-extractable by design (Constitution Principle
+      // IV) so the raw key material cannot be copied out of the
+      // SubtleCrypto handle by reading the browser's storage files.
+      const key = await generateTokenKey();
+      const { ciphertext, iv } = await encryptToken(token, key);
+      await db.credentials.put({
+        mode: "persistent",
+        encryptedTokenRecord: { ciphertext, iv, keyRef: key },
+        maskedIdentifier: nextMaskedIdentifier,
+        lastValidatedAt: null,
+        lastValidationResult: null,
+      });
+
+      // FR-005a: replacing a prior persistent token or switching out
+      // of session mode into persistent MUST delete the previous
+      // encrypted token record. Dexie's primary-key upsert on
+      // `credentials` (the singleton `mode: "persistent"` row)
+      // already discards the prior row's ciphertext and key, so no
+      // explicit pre-delete is required here.
+
+      // FR-008: the plaintext token value never crosses the context
+      // boundary. The caller (Settings panel) keeps the in-memory
+      // token for the duration of the panel's lifetime and discards
+      // it on unmount / clear-all.
+      void token;
       setMode("persistent");
       setMaskedIdentifier(nextMaskedIdentifier);
       setState("ready");
-      void _token;
     },
     [],
   );
 
   const clearToSessionOnly = useCallback(async (): Promise<void> => {
-    setMode(null);
+    // FR-005a: switching from persistent mode back to session-only
+    // MUST immediately delete the previous encrypted token record
+    // and its associated non-extractable key. The Dexie primary-key
+    // `delete("persistent")` is sufficient because the credentials
+    // table only ever holds the singleton persistent row keyed by
+    // `mode`.
+    await db.credentials.delete("persistent");
+    setMode("session");
     setMaskedIdentifier("");
-    setState("first_run");
+    setState("ready");
   }, []);
 
   const clearAll = useCallback(async (): Promise<void> => {
-    // T031 clears the in-memory shell state; the FR-007 single-
-    // transaction wipe across every Dexie store is owned by T040.
+    // FR-007: the single explicit action that clears the token AND
+    // all locally retained Asana data (cache, snapshots, team
+    // mapping overrides, named person groups, refresh sessions,
+    // workspaces selection, …) MUST be a single Dexie transaction
+    // spanning every store. A partial clear — token wiped but cache
+    // retained, or vice versa — is the contract violation this
+    // transaction prevents. Dexie's native transaction atomicity
+    // (Principle V) is the enforcement mechanism: the writes either
+    // all land or none do.
+    await db.transaction("rw", [...ALL_DATA_TABLE_NAMES], async () => {
+      for (const tableName of ALL_DATA_TABLE_NAMES) {
+        await db.table(tableName).clear();
+      }
+    });
     setMode(null);
     setMaskedIdentifier("");
     setState("first_run");

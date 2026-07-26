@@ -616,10 +616,16 @@ export function resolveDateRangePreset(
       };
     default: {
       // Exhaustiveness check: a future preset added to the union will
-      // surface here at compile time, never at runtime.
+      // surface here at compile time, never at runtime. The `never`
+      // assignment is what fails `tsc` when a new preset is added
+      // without a matching case above; we surface `preset` so a caller
+      // that bypasses the type system (unsafe cast, runtime-built string)
+      // gets an actionable message naming the offending value, and
+      // reference `_exhaustive` in the throw so `noUnusedLocals` is
+      // satisfied without the `void` operator (which SonarS3735 flags).
       const _exhaustive: never = preset;
       throw new Error(
-        `resolveDateRangePreset: unhandled preset "${String(_exhaustive)}"`,
+        `resolveDateRangePreset: unhandled preset "${String(preset)}" (exhaustive: ${_exhaustive})`,
       );
     }
   }

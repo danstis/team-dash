@@ -88,6 +88,23 @@ const SESSION_TOKEN_A = "fixture-session-token-aaaaaaaa";
 const REPLACEMENT_TOKEN = "fixture-replacement-token-cccccccc";
 const INVALID_TOKEN = "fixture-invalid-token";
 
+async function clearEveryStore(): Promise<void> {
+  await db.workspaces.clear();
+  await db.projects.clear();
+  await db.portfolios.clear();
+  await db.asanaTeams.clear();
+  await db.teamMappingOverrides.clear();
+  await db.personGroups.clear();
+  await db.users.clear();
+  await db.priorityFields.clear();
+  await db.dependencies.clear();
+  await db.sections.clear();
+  await db.tasks.clear();
+  await db.snapshots.clear();
+  await db.refreshSessions.clear();
+  await db.credentials.clear();
+}
+
 /**
  * The four PAT characters the masked identifier is allowed to surface
  * (T044 — last-4-characters only). The full token never appears in the
@@ -141,20 +158,12 @@ function renderPanel(): {
 
 describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
   beforeEach(async () => {
-    await db.credentials.clear();
-    await db.workspaces.clear();
-    await db.projects.clear();
-    await db.tasks.clear();
-    await db.refreshSessions.clear();
+    await clearEveryStore();
   });
 
   afterEach(async () => {
     cleanup();
-    await db.credentials.clear();
-    await db.workspaces.clear();
-    await db.projects.clear();
-    await db.tasks.clear();
-    await db.refreshSessions.clear();
+    await clearEveryStore();
   });
 
   describe("Retest action (FR-004)", () => {
@@ -470,8 +479,8 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
 
   describe("Clear-all action (FR-007)", () => {
     it("removes the credential record and wipes every Dexie store in one transaction", async () => {
-      // Seed a workspace + project + task so we can prove the
-      // single-action wipe spans every store, not just credentials.
+      // Seed one row in every store so the clear-all contract proves
+      // the wipe spans the full Dexie schema, not just credentials.
       await db.workspaces.put({
         gid: smallDatasetWorkspaceGid,
         name: "Team Dash Workspace",
@@ -484,6 +493,42 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         asanaTeamGid: "1200000000000010",
         portfolioGids: [],
         archived: false,
+      });
+      await db.portfolios.put({
+        gid: "1200000000000110",
+        name: "Q3 Portfolio",
+        workspaceGid: smallDatasetWorkspaceGid,
+        projectGids: ["1200000000000100"],
+      });
+      await db.asanaTeams.put({
+        gid: "1200000000000010",
+        name: "Platform",
+        workspaceGid: smallDatasetWorkspaceGid,
+      });
+      await db.teamMappingOverrides.put({
+        projectGid: "1200000000000100",
+        reportingTeamGid: "team-platform",
+        updatedAt: "2026-07-25T00:00:00.000Z",
+      });
+      await db.personGroups.put({
+        id: "person-group-1",
+        workspaceGid: smallDatasetWorkspaceGid,
+        name: "Leadership",
+        kind: "named",
+        memberUserGids: ["1200000000000020"],
+        createdAt: "2026-07-25T00:00:00.000Z",
+        updatedAt: "2026-07-25T00:00:00.000Z",
+      });
+      await db.users.put({
+        gid: "1200000000000020",
+        name: "Alex Kim",
+        email: "alex@example.com",
+        workspaceGid: smallDatasetWorkspaceGid,
+      });
+      await db.priorityFields.put({
+        projectGid: "1200000000000100",
+        expectedOptionIds: ["high", "medium", "low"],
+        status: "ok",
       });
       await db.tasks.put({
         gid: "1200000000000200",
@@ -503,6 +548,35 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         lastSeenInScopeAt: "2026-07-25T00:00:00.000Z",
         outOfScopeReason: null,
       });
+      await db.dependencies.put({
+        taskGid: "1200000000000200",
+        dependsOnTaskGid: "1200000000000201",
+        dependsOnTaskAccessible: true,
+      });
+      await db.sections.put({
+        gid: "1200000000000300",
+        projectGid: "1200000000000100",
+        name: "Doing",
+      });
+      await db.snapshots.put({
+        workspaceGid: smallDatasetWorkspaceGid,
+        localCalendarDate: "2026-07-25",
+        incompleteCount: 1,
+        incompleteEstimatedMinutes: 480,
+        unestimatedIncompleteCount: 0,
+        computedFromRefreshId: "refresh-1",
+        computedAt: "2026-07-25T00:00:00.000Z",
+      });
+      await db.refreshSessions.put({
+        id: "refresh-1",
+        workspaceGid: smallDatasetWorkspaceGid,
+        startedAt: "2026-07-25T00:00:00.000Z",
+        finishedAt: "2026-07-25T00:05:00.000Z",
+        status: "succeeded",
+        itemsRetrieved: 42,
+        errorDetail: null,
+        syncMode: "full",
+      });
       const key = await generateTokenKey();
       const { ciphertext, iv } = await encryptToken(SESSION_TOKEN_A, key);
       await db.credentials.put({
@@ -512,6 +586,21 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         lastValidatedAt: null,
         lastValidationResult: null,
       });
+
+      expect(await db.workspaces.count()).toBe(1);
+      expect(await db.projects.count()).toBe(1);
+      expect(await db.portfolios.count()).toBe(1);
+      expect(await db.asanaTeams.count()).toBe(1);
+      expect(await db.teamMappingOverrides.count()).toBe(1);
+      expect(await db.personGroups.count()).toBe(1);
+      expect(await db.users.count()).toBe(1);
+      expect(await db.priorityFields.count()).toBe(1);
+      expect(await db.dependencies.count()).toBe(1);
+      expect(await db.sections.count()).toBe(1);
+      expect(await db.tasks.count()).toBe(1);
+      expect(await db.snapshots.count()).toBe(1);
+      expect(await db.refreshSessions.count()).toBe(1);
+      expect(await db.credentials.count()).toBe(1);
 
       const panel = renderPanel();
 
@@ -539,7 +628,17 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         expect(await db.credentials.count()).toBe(0);
         expect(await db.workspaces.count()).toBe(0);
         expect(await db.projects.count()).toBe(0);
+        expect(await db.portfolios.count()).toBe(0);
+        expect(await db.asanaTeams.count()).toBe(0);
+        expect(await db.teamMappingOverrides.count()).toBe(0);
+        expect(await db.personGroups.count()).toBe(0);
+        expect(await db.users.count()).toBe(0);
+        expect(await db.priorityFields.count()).toBe(0);
+        expect(await db.dependencies.count()).toBe(0);
+        expect(await db.sections.count()).toBe(0);
         expect(await db.tasks.count()).toBe(0);
+        expect(await db.snapshots.count()).toBe(0);
+        expect(await db.refreshSessions.count()).toBe(0);
       });
     });
   });

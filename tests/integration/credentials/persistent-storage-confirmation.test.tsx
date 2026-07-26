@@ -59,12 +59,11 @@
  *
  * Token-safety guard
  * ------------------
- * No plaintext token enters this test. The fixture supplies the
- * selector with a synthetic identifier (e.g. `"…wxyz"`) so the
- * selector's mode transition can be exercised end-to-end without ever
- * placing a real Asana PAT in the DOM or in IndexedDB; the FR-008
- * "token never rendered, logged, or embedded" rule is preserved by
- * construction.
+ * No real Asana PAT enters this test. The fixture supplies the
+ * selector with a synthetic token + identifier pair so the selector's
+ * mode transition can be exercised end-to-end without ever placing a
+ * real credential in the DOM or in IndexedDB; the FR-008 "token never
+ * rendered, logged, or embedded" rule is still pinned by assertion.
  */
 import {
   cleanup,
@@ -90,8 +89,13 @@ import { db } from "../../../src/data/db/schema";
  * assertion rather than on a module-resolution error that masks every
  * other assertion in the suite.
  */
+interface StorageModeSelectorTestProps {
+  token?: string;
+  maskedIdentifier?: string;
+}
+
 async function loadStorageModeSelector(): Promise<
-  React.ComponentType<Record<string, never>>
+  React.ComponentType<StorageModeSelectorTestProps>
 > {
   // The module path is composed at runtime so `tsc` does not statically
   // resolve it; this keeps the test file typecheck-clean while the
@@ -121,8 +125,13 @@ async function loadStorageModeSelector(): Promise<
         "src/features/credentials/StorageModeSelector.tsx — T042 must land before this integration test can pass.",
     );
   }
-  return mod.StorageModeSelector as React.ComponentType<Record<string, never>>;
+  return mod.StorageModeSelector as React.ComponentType<StorageModeSelectorTestProps>;
 }
+
+const STORAGE_MODE_SELECTOR_TEST_PROPS: StorageModeSelectorTestProps = {
+  token: "test-token-for-storage-mode-selector",
+  maskedIdentifier: "…wxyz",
+};
 
 /**
  * Tiny harness that renders the current `useCredentials().mode` to a
@@ -156,7 +165,7 @@ async function renderSelector(): Promise<ReturnType<typeof render>> {
   return render(
     <CredentialsProvider>
       <WorkspaceProvider>
-        <StorageModeSelector />
+        <StorageModeSelector {...STORAGE_MODE_SELECTOR_TEST_PROPS} />
         <ContextModeProbe />
       </WorkspaceProvider>
     </CredentialsProvider>,
@@ -286,8 +295,8 @@ describe("T036 persistent-storage risk disclosure confirmation", () => {
 
   it("does not expose the plaintext token through the disclosure surface", async () => {
     // FR-008 invariant pin: even though this test never supplies a
-    // real Asana PAT (the selector is invoked with no token
-    // argument), a future contributor who renders the disclosure
+    // real Asana PAT (the selector is invoked with a synthetic test
+    // token only), a future contributor who renders the disclosure
     // alongside the plaintext token in the same component will fail
     // this assertion because the rendered surface contains no token
     // text. Substring / `data-testid` checks rather than

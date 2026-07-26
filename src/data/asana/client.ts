@@ -12,13 +12,27 @@
  * the static + runtime scan in `tests/contract/asana-client.readonly.test.ts`
  * (T026).
  *
- * Resource-specific wrappers intentionally do not live here. They are
- * scoped to T039 (US1) and T054 (US2) in `specs/001-asana-team-dashboard/tasks.md`,
- * each gated behind its own dedicated contract test (T034 and T048
- * respectively). Splitting them out keeps T025's surface area small,
- * the Red/Green/Refactor sequencing for each wrapper explicit, and
- * `asanaGet` the single thing this module's contract tests need to
- * exercise.
+ * Resource-specific wrappers
+ * --------------------------
+ * The two resource-specific wrappers mandated by Phase 3 / US1 (T039
+ * `testToken` / `listWorkspaces`, BSOD-167) live in this module as
+ * thin delegations over `asanaGet`. T025's original design commented
+ * that they would "intentionally not live here" with full T039
+ * delegation as the landing site; the BSOD-163 release-readiness
+ * verdict (2026-07-26) requested the symbol surface land early as
+ * tactical stubs so `tests/contract/asana-client.auth.test.ts` (T034,
+ * BSOD-162) can typecheck and the CI pipeline can run to completion.
+ * T039 keeps the canonical ownership and extends each stub with the
+ * rest of the credential-flow surface (schedulable re-validation,
+ * `AbortSignal` cancellation, FR-005a re-encryption on token replace,
+ * `opt_fields` narrowing, explicit `400 Bad Request` outcome) — every
+ * extension is additive; the stub signatures here are the contract
+ * T039 starts from.
+ *
+ * T054 (US2) will add `fetchProjectsPage`, `fetchTasksPage`,
+ * `fetchTaskDetail`, and `fetchEventsSince` to this module as the
+ * refresh orchestrator's data-acquisition surface, each with its own
+ * contract test (T048, BSOD-176).
  *
  * Per-call token parameter
  * ------------------------
@@ -102,6 +116,7 @@
 
 import type { ZodTypeAny, z } from "zod";
 
+import { asanaUserSchema, asanaWorkspaceListResponseSchema } from "./schemas";
 import type { AsanaClientResult } from "./types";
 
 /* -------------------------------------------------------------------------- */
@@ -214,6 +229,90 @@ export async function asanaGet<Schema extends ZodTypeAny>(
   }
 
   return { outcome: "ok", data: parsed.data };
+}
+
+/* -------------------------------------------------------------------------- */
+/* T039 [BSOD-167] wrappers — minimal stubs to unblock BSOD-163 CI gate       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Validate the supplied personal access token by calling `GET /users/me`.
+ *
+ * Per-call token parameter (per `contracts/asana-client.md` § "Token
+ * handling"): the token is the second positional argument on every call,
+ * the function holds no module-level mutable credential state, and the
+ * token is dropped on function return — the call site is the only place
+ * the credential exists.
+ *
+ * The success variant returns `AsanaUser` per `schemas.ts`, satisfying
+ * the T034 contract test (BSOD-162) and the future T039 form-driven
+ * `TestTokenButton` (BSOD-169) which composes the same `outcome`
+ * discriminant into its UI state machine.
+ *
+ * ## This is a BSOD-163 unblock stub
+ *
+ * The Release/Link Steward's `not-merge-ready` verdict on PR #81
+ * (2026-07-26) flagged the upstream CI `Typecheck` failure caused by
+ * `tests/contract/asana-client.auth.test.ts` importing `testToken` /
+ * `listWorkspaces` before they were exported. This stub is the
+ * tactical fix: a one-line delegation to `asanaGet` against the
+ * already-defined `asanaUserSchema` so the typecheck compiles and the
+ * contract test passes.
+ *
+ * T039 [BSOD-167] is the canonical owner of this function. The full
+ * implementation will land here too (the contract document does not
+ * prescribe a separate module for upstream credential wrappers) and
+ * will extend the stub with the rest of the credential-flow surface
+ * — schedulable re-validation, FR-005a re-encryption on token replace,
+ * `AbortSignal` cancellation hook (the orchestrator passes one in
+ * `User Story 2` for the refresh flow), and the explicit `400 Bad
+ * Request` outcome for malformed tokens that this stub inherits from
+ * `asanaGet`'s generic `network_error` arm. Every extention is
+ * additive — this stub's signature is the contract T039 starts from.
+ *
+ * Read-only guarantee (FR-009 / NFR-004): `GET /users/me` is the
+ * documented Asana endpoint for token validation. The function
+ * inherits `asanaGet`'s read-only enforcement and cannot smuggle a
+ * write verb through this module.
+ */
+export async function testToken(
+  token: string,
+): Promise<AsanaClientResult<z.infer<typeof asanaUserSchema>>> {
+  return asanaGet("/users/me", asanaUserSchema, token);
+}
+
+/**
+ * List the workspaces the supplied token can access by calling
+ * `GET /workspaces`. The wire shape is Asana's documented envelope
+ * `{"data": Workspace[], "next_page": …}`; the response is parsed
+ * through `asanaWorkspaceListResponseSchema` so a malformed item is
+ * surfaced as a `validation_error` (FR-081 / FR-082 / FR-083) rather
+ * than silently coerced.
+ *
+ * Per-call token parameter: same contract as `testToken` above — no
+ * module-level credential state, the token is dropped on return, and
+ * `Authorization: Bearer` is the only credential-bearing header.
+ *
+ * ## This is a BSOD-163 unblock stub
+ *
+ * Same provenance as `testToken` above: a one-line delegation to
+ * `asanaGet` to satisfy the T034 contract test (BSOD-162) and unblock
+ * PR #81's CI gate. T039 [BSOD-167] will own the full implementation
+ * — including the `offset` pagination passthrough that lets the
+ * future `WorkspaceSelector` (T043, BSOD-171) page through very large
+ * workspace lists, and the `opt_fields` parameter Asana documents
+ * for narrowing the response to the fields the app actually caches.
+ *
+ * Read-only guarantee (FR-009 / NFR-004): `GET /workspaces` is the
+ * documented endpoint. The function inherits `asanaGet`'s read-only
+ * enforcement; the T026 read-only contract test pins the invariant.
+ */
+export async function listWorkspaces(
+  token: string,
+): Promise<
+  AsanaClientResult<z.infer<typeof asanaWorkspaceListResponseSchema>>
+> {
+  return asanaGet("/workspaces", asanaWorkspaceListResponseSchema, token);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -16,37 +16,17 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import {
-  type ReactElement,
-  type ReactNode,
-  StrictMode,
-  useEffect,
-  useState,
-} from "react";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { StrictMode } from "react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 
-import {
-  CredentialsProvider,
-  useCredentials,
-} from "../src/app/credentials-context";
-import {
-  WorkspaceProvider,
-  useWorkspace,
-} from "../src/app/workspace-context";
+import { CredentialsProvider } from "../src/app/credentials-context";
 import { SettingsCredentialsPanel } from "../src/features/credentials/SettingsCredentialsPanel";
 import { db } from "../src/data/db/schema";
 import {
   encryptToken,
   generateTokenKey,
 } from "../src/data/crypto/token-crypto";
-import { smallDatasetWorkspaceGid } from "../fixtures/asana/small-dataset/handlers";
 
 const OUTPUT_DIR = resolve(process.cwd(), ".multica/visual-qa");
 
@@ -131,7 +111,7 @@ describe("T045 Settings panel — visual-QA DOM capture (writes .multica/visual-
       fireEvent.click(result.getByRole("button", { name: /set token/i }));
       await waitFor(() =>
         expect(
-          result.queryByText(/Storage mode/i, { selector: "legend" }),
+          result.getByRole("button", { name: /switch to persistent/i }),
         ).toBeInTheDocument(),
       );
       await dump("02-session-after-set-token", result.container);
@@ -154,6 +134,11 @@ describe("T045 Settings panel — visual-QA DOM capture (writes .multica/visual-
         target: { value: "fixture-session-token-aaaaaaaa" },
       });
       fireEvent.click(result.getByRole("button", { name: /set token/i }));
+      await waitFor(() =>
+        expect(
+          result.getByRole("button", { name: /switch to persistent/i }),
+        ).toBeInTheDocument(),
+      );
       fireEvent.click(
         result.getByRole("button", { name: /switch to persistent/i }),
       );

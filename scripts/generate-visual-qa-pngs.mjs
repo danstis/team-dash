@@ -178,45 +178,45 @@ const STATES = [
 ];
 
 async function main() {
-    const browser = await chromium.launch({
-      headless: true,
-      executablePath: CHROMIUM_PATH,
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: CHROMIUM_PATH,
+  });
+  try {
+    const context = await browser.newContext({
+      viewport: VIEWPORT,
+      deviceScaleFactor: 2,
     });
-    try {
-      const context = await browser.newContext({
-        viewport: VIEWPORT,
-        deviceScaleFactor: 2,
-      });
-      const page = await context.newPage();
-      const existing = new Set(
-        (await readdir(VISUAL_QA_DIR).catch(() => [])).filter(
-          (f) => f.endsWith(".html") || f.endsWith(".json"),
-        ),
-      );
-      for (const state of STATES) {
-        const htmlJson = await readFile(
-          resolve(VISUAL_QA_DIR, `${state.label}.json`),
-          "utf8",
-        ).catch(() => null);
-        const htmlFile = await readFile(
-          resolve(VISUAL_QA_DIR, `${state.label}.html`),
-          "utf8",
-        ).catch(() => null);
-        let panelHtml;
-        let storySummary;
-        if (htmlJson !== null) {
-          const json = JSON.parse(htmlJson);
-          panelHtml = json.html;
-          storySummary = json.storySummary;
-        } else if (htmlFile !== null) {
-          panelHtml = htmlFile;
-          storySummary = state.subtitle;
-        } else {
-          console.warn(`[visual-qa] no capture for ${state.label}; skipping`);
-          continue;
-        }
-        const full = HTML_DOC({
-          body: `
+    const page = await context.newPage();
+    const existing = new Set(
+      (await readdir(VISUAL_QA_DIR).catch(() => [])).filter(
+        (f) => f.endsWith(".html") || f.endsWith(".json"),
+      ),
+    );
+    for (const state of STATES) {
+      const htmlJson = await readFile(
+        resolve(VISUAL_QA_DIR, `${state.label}.json`),
+        "utf8",
+      ).catch(() => null);
+      const htmlFile = await readFile(
+        resolve(VISUAL_QA_DIR, `${state.label}.html`),
+        "utf8",
+      ).catch(() => null);
+      let panelHtml;
+      let storySummary;
+      if (htmlJson !== null) {
+        const json = JSON.parse(htmlJson);
+        panelHtml = json.html;
+        storySummary = json.storySummary;
+      } else if (htmlFile !== null) {
+        panelHtml = htmlFile;
+        storySummary = state.subtitle;
+      } else {
+        console.warn(`[visual-qa] no capture for ${state.label}; skipping`);
+        continue;
+      }
+      const full = HTML_DOC({
+        body: `
           <p style="font-size: 13px; color: #475569; margin: 0 0 12px;">
             <strong style="display: block; font-size: 14px; color: #1f2937;">${state.title}</strong>
             ${storySummary ?? state.subtitle}
@@ -231,27 +231,27 @@ async function main() {
             passing on PR #86 head SHA 22dd206).
           </p>
         `,
-        });
-        await page.setContent(full, { waitUntil: "load" });
-        await page.screenshot({
-          path: resolve(VISUAL_QA_DIR, `${state.label}.png`),
-          fullPage: true,
-        });
-        console.log(`[visual-qa] wrote ${state.label}.png`);
-        existing.delete(`${state.label}.html`);
-        existing.delete(`${state.label}.json`);
-      }
-      // Clean up old captured artefacts that no longer match a state.
-      for (const stray of existing) {
-        if (!STATES.some((state) => stray.startsWith(state.label))) {
-          continue;
-        }
-        console.log(`[visual-qa] ignoring stray artefact: ${stray}`);
-      }
-      await context.close();
-    } finally {
-      await browser.close();
+      });
+      await page.setContent(full, { waitUntil: "load" });
+      await page.screenshot({
+        path: resolve(VISUAL_QA_DIR, `${state.label}.png`),
+        fullPage: true,
+      });
+      console.log(`[visual-qa] wrote ${state.label}.png`);
+      existing.delete(`${state.label}.html`);
+      existing.delete(`${state.label}.json`);
     }
+    // Clean up old captured artefacts that no longer match a state.
+    for (const stray of existing) {
+      if (!STATES.some((state) => stray.startsWith(state.label))) {
+        continue;
+      }
+      console.log(`[visual-qa] ignoring stray artefact: ${stray}`);
+    }
+    await context.close();
+  } finally {
+    await browser.close();
+  }
 }
 
 void main().catch((err) => {

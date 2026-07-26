@@ -8,14 +8,14 @@ screenshots / visual QA notes (required for UI changes)".
 
 ## Contents
 
-| File | Purpose |
-|---|---|
-| `01-initial-first-run.png`            | Panel rendered with no credential stored (ViewState = `first_run`, mode = `null`). |
-| `02-session-after-set-token.png`      | Panel after a successful `setSessionToken` (mode = `session`, state = `ready`). |
-| `03-persistent-confirmation-dialog.png` | `data-testid="persistent-confirmation"` open after clicking *Switch to persistent* (FR-003 disclosure copy visible). |
-| `04-clear-all-confirmation-dialog.png` | `data-testid="clear-all-confirmation"` open after clicking *Clear all* (FR-007 disclosure copy visible). |
-| `05-persistent-mode-loaded.png`       | Panel rendered with a pre-decrypted persistent row in IndexedDB — `Switch to session-only` rendered in place of *Set token* / *Switch to persistent*. |
-| `README.md`                           | This file. |
+| File                                    | Purpose                                                                                                                                               |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `01-initial-first-run.png`              | Panel rendered with no credential stored (ViewState = `first_run`, mode = `null`).                                                                    |
+| `02-session-after-set-token.png`        | Panel after a successful `setSessionToken` (mode = `session`, state = `ready`).                                                                       |
+| `03-persistent-confirmation-dialog.png` | `data-testid="persistent-confirmation"` open after clicking _Switch to persistent_ (FR-003 disclosure copy visible).                                  |
+| `04-clear-all-confirmation-dialog.png`  | `data-testid="clear-all-confirmation"` open after clicking _Clear all_ (FR-007 disclosure copy visible).                                              |
+| `05-persistent-mode-loaded.png`         | Panel rendered with a pre-decrypted persistent row in IndexedDB — `Switch to session-only` rendered in place of _Set token_ / _Switch to persistent_. |
+| `README.md`                             | This file.                                                                                                                                            |
 
 ## How the artefacts were generated
 
@@ -55,11 +55,11 @@ The visual-QA captures mirror the contract asserted by
 on PR #86 head SHA `22dd206`). Every state captured here corresponds
 to one or more of the test scenarios below:
 
-- *Initial* ↔ "renders the first-run primitive and hides the reporting surface when no credential and no workspace are set" (T035 / first-run.test.tsx, red until T046).
-- *Session-after-set-token* ↔ "transitions credentials to 'ready' but leaves workspace in 'first_run' when only a session token is set" (T035) and T037 retest / replace happy-paths.
-- *Persistent-confirmation* ↔ T037 "switching from session-only to persistent requires an explicit confirmation (FR-003)".
-- *Clear-all-confirmation* ↔ T037 "removes the credential record and wipes every Dexie store in one transaction".
-- *Persistent-mode-loaded* ↔ T037 "switching from persistent back to session-only immediately deletes the encrypted record (FR-005a)".
+- _Initial_ ↔ "renders the first-run primitive and hides the reporting surface when no credential and no workspace are set" (T035 / first-run.test.tsx, red until T046).
+- _Session-after-set-token_ ↔ "transitions credentials to 'ready' but leaves workspace in 'first_run' when only a session token is set" (T035) and T037 retest / replace happy-paths.
+- _Persistent-confirmation_ ↔ T037 "switching from session-only to persistent requires an explicit confirmation (FR-003)".
+- _Clear-all-confirmation_ ↔ T037 "removes the credential record and wipes every Dexie store in one transaction".
+- _Persistent-mode-loaded_ ↔ T037 "switching from persistent back to session-only immediately deletes the encrypted record (FR-005a)".
 
 ## Accessibility contract the captures also pin
 

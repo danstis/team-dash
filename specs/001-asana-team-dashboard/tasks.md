@@ -89,7 +89,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [ ] [BSOD-163] T035 [P] [US1] Integration test: first-run screen blocks reporting screens until token+workspace are set in `tests/integration/credentials/first-run.test.tsx`
 - [ ] [BSOD-164] T036 [P] [US1] Integration test: persistent-storage risk disclosure requires explicit confirmation; declining falls back to session-only in `tests/integration/credentials/persistent-storage-confirmation.test.tsx`
 - [ ] [BSOD-165] T037 [P] [US1] Integration test: Settings panel retest/replace/switch-mode/clear-all actions in `tests/integration/credentials/settings-panel.test.tsx`
-- [ ] [BSOD-166] T038 [P] [US1] Integration test: token is never rendered, logged, or embedded in a URL — only a masked identifier appears in `tests/integration/credentials/token-masking.test.tsx`
+- [x] [BSOD-166] T038 [P] [US1] Integration test: token is never rendered, logged, or embedded in a URL — only a masked identifier appears in `tests/integration/credentials/token-masking.test.tsx`
 
 ### Implementation for User Story 1
 

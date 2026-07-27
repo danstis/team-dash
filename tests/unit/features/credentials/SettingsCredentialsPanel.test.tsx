@@ -300,9 +300,7 @@ describe("SettingsCredentialsPanel", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /retest/i }));
-    await waitFor(() =>
-      expect(screen.getByTestId("retest-outcome")).toBeInTheDocument(),
-    );
+    await screen.findByTestId("retest-outcome");
 
     credentialsState.mode = "persistent";
     view.rerender(<SettingsCredentialsPanel />);
@@ -339,9 +337,7 @@ describe("SettingsCredentialsPanel", () => {
       target: { value: REPLACEMENT_TOKEN },
     });
     fireEvent.click(screen.getByRole("button", { name: /retest/i }));
-    await waitFor(() =>
-      expect(screen.getByTestId("retest-outcome")).toBeInTheDocument(),
-    );
+    await screen.findByTestId("retest-outcome");
 
     fireEvent.click(screen.getByRole("button", { name: /clear all/i }));
     expect(screen.getByTestId("clear-all-confirmation")).toBeInTheDocument();

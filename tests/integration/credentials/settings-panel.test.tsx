@@ -167,6 +167,22 @@ async function setSessionTokenThroughPanel(token: string): Promise<void> {
   );
 }
 
+async function findSettingsPanel(): Promise<HTMLElement> {
+  return screen.findByTestId("settings-panel");
+}
+
+async function findRetestOutcome(): Promise<HTMLElement> {
+  return screen.findByTestId("retest-outcome");
+}
+
+async function findPersistentConfirmation(): Promise<HTMLElement> {
+  return screen.findByTestId("persistent-confirmation");
+}
+
+async function findClearAllConfirmation(): Promise<HTMLElement> {
+  return screen.findByTestId("clear-all-confirmation");
+}
+
 function renderPanel(): {
   stateProbe: () => string | null;
   modeProbe: () => string | null;
@@ -206,19 +222,13 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
       // (FR-004: 'success or specific failure reason').
       const panel = renderPanel();
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
 
       await setSessionTokenThroughPanel(SESSION_TOKEN_A);
 
       fireEvent.click(screen.getByRole("button", { name: /retest/i }));
 
-      await waitFor(() =>
-        expect(screen.getByTestId("retest-outcome")).toHaveTextContent(
-          /valid/i,
-        ),
-      );
+      expect(await findRetestOutcome()).toHaveTextContent(/valid/i);
 
       // The provider state did not change as a side-effect of retest —
       // it is an on-demand validity probe, not a credential mutation.
@@ -236,18 +246,12 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
 
       renderPanel();
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
 
       await setSessionTokenThroughPanel(INVALID_TOKEN);
       fireEvent.click(screen.getByRole("button", { name: /retest/i }));
 
-      await waitFor(() =>
-        expect(screen.getByTestId("retest-outcome")).toHaveTextContent(
-          /invalid token/i,
-        ),
-      );
+      expect(await findRetestOutcome()).toHaveTextContent(/invalid token/i);
     });
 
     it("displays a specific 'insufficient permission' reason on a 403 response", async () => {
@@ -260,17 +264,13 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
 
       renderPanel();
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
 
       await setSessionTokenThroughPanel(SESSION_TOKEN_A);
       fireEvent.click(screen.getByRole("button", { name: /retest/i }));
 
-      await waitFor(() =>
-        expect(screen.getByTestId("retest-outcome")).toHaveTextContent(
-          /insufficient permission/i,
-        ),
+      expect(await findRetestOutcome()).toHaveTextContent(
+        /insufficient permission/i,
       );
     });
 
@@ -283,33 +283,23 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
 
       renderPanel();
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
 
       await setSessionTokenThroughPanel(SESSION_TOKEN_A);
       fireEvent.click(screen.getByRole("button", { name: /retest/i }));
 
-      await waitFor(() =>
-        expect(screen.getByTestId("retest-outcome")).toHaveTextContent(
-          /network/i,
-        ),
-      );
+      expect(await findRetestOutcome()).toHaveTextContent(/network/i);
     });
 
     it("never renders the plaintext token in the retest outcome (FR-008)", async () => {
       renderPanel();
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
 
       await setSessionTokenThroughPanel(SESSION_TOKEN_A);
       fireEvent.click(screen.getByRole("button", { name: /retest/i }));
 
-      await waitFor(() =>
-        expect(screen.getByTestId("retest-outcome")).toBeInTheDocument(),
-      );
+      await findRetestOutcome();
 
       // The retest outcome label can name the user / email / etc., but
       // it MUST NOT contain the plaintext token. A masked suffix is
@@ -325,9 +315,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
     it("updates the masked identifier and the session mode to the new token", async () => {
       const panel = renderPanel();
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
 
       fireEvent.change(screen.getByLabelText(/token/i), {
         target: { value: SESSION_TOKEN_A },
@@ -381,9 +369,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
       try {
         const panel = renderPanel();
 
-        await waitFor(() =>
-          expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-        );
+        await findSettingsPanel();
         await waitFor(() => expect(panel.modeProbe()).toBe("persistent"));
         await waitFor(() =>
           expect(panel.maskedProbe()).toBe(lastFour(SESSION_TOKEN_A)),
@@ -429,9 +415,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
     it("switching from session-only to persistent requires an explicit confirmation (FR-003)", async () => {
       renderPanel();
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
 
       await setSessionTokenThroughPanel(SESSION_TOKEN_A);
 
@@ -442,11 +426,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
         screen.getByRole("button", { name: /switch to persistent/i }),
       );
 
-      await waitFor(() =>
-        expect(
-          screen.getByTestId("persistent-confirmation"),
-        ).toBeInTheDocument(),
-      );
+      await findPersistentConfirmation();
 
       // Declining falls back to session-only without writing.
       fireEvent.click(screen.getByRole("button", { name: /decline/i }));
@@ -464,20 +444,14 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
     it("confirming persistent storage writes an encrypted record and updates the masked identifier", async () => {
       const panel = renderPanel();
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
 
       await setSessionTokenThroughPanel(SESSION_TOKEN_A);
 
       fireEvent.click(
         screen.getByRole("button", { name: /switch to persistent/i }),
       );
-      await waitFor(() =>
-        expect(
-          screen.getByTestId("persistent-confirmation"),
-        ).toBeInTheDocument(),
-      );
+      await findPersistentConfirmation();
       fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
 
       await waitFor(() => expect(panel.modeProbe()).toBe("persistent"));
@@ -506,9 +480,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
       // before exercising the switch-to-session action — the
       // "Switch to session-only" button only renders once the
       // credentials context reports mode="persistent".
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
       await waitFor(() => expect(panel.modeProbe()).toBe("persistent"));
 
       fireEvent.click(
@@ -651,18 +623,12 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
 
       const panel = renderPanel();
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
 
       // Clear-all requires an explicit confirmation so the user does
       // not lose their local cache with one stray click.
       fireEvent.click(screen.getByRole("button", { name: /clear all/i }));
-      await waitFor(() =>
-        expect(
-          screen.getByTestId("clear-all-confirmation"),
-        ).toBeInTheDocument(),
-      );
+      await findClearAllConfirmation();
       fireEvent.click(
         screen.getByRole("button", { name: /confirm clear all/i }),
       );
@@ -694,9 +660,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
     it("never embeds the full token in any link or route the panel renders", async () => {
       const { container } = renderPanel();
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
 
       await setSessionTokenThroughPanel(SESSION_TOKEN_A);
 
@@ -705,9 +669,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
       // post-replace confirmation, Clear-all's recovery hint), the
       // DOM MUST NOT carry the full token in any attribute or text.
       fireEvent.click(screen.getByRole("button", { name: /retest/i }));
-      await waitFor(() =>
-        expect(screen.getByTestId("retest-outcome")).toBeInTheDocument(),
-      );
+      await findRetestOutcome();
       // Opening the persistent-confirmation dialog exercises the
       // disclosure copy as well, which also must not leak the token.
       fireEvent.click(
@@ -724,9 +686,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
     it("never exposes the plaintext token through the useCredentials hook", async () => {
       renderPanel();
 
-      await waitFor(() =>
-        expect(screen.getByTestId("settings-panel")).toBeInTheDocument(),
-      );
+      await findSettingsPanel();
 
       await setSessionTokenThroughPanel(SESSION_TOKEN_A);
 

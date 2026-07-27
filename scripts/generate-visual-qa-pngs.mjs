@@ -267,7 +267,9 @@ async function main() {
   }
 }
 
-void main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error("[visual-qa] PNG generation failed:", err);
   process.exitCode = 1;
-});
+}

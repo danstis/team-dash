@@ -81,14 +81,6 @@ import type { AsanaClientResult } from "../../data/asana/types";
 import { asanaUserSchema } from "../../data/asana/schemas";
 
 /**
- * A plain string usable as the value backing the panel's local inputs.
- * Kept as a local alias so the field-level types read at the call site
- * (e.g. `<input value={draftToken} …>`) without re-stating
- * `useState<string>` three times.
- */
-type DraftToken = string;
-
-/**
  * The display-only summary of the most recent Retest outcome.
  * Deliberately distinct from the full `AsanaClientResult<AsanaUser>`
  * union: the panel never has to re-discriminate the result once the
@@ -114,7 +106,7 @@ interface RetestOutcomeSummary {
  * three-character token still produces a non-empty masked identifier
  * and the panel can render it verbatim without crashing.
  */
-function maskedIdentifierFor(token: DraftToken): string {
+function maskedIdentifierFor(token: string): string {
   if (token.length === 0) {
     return "";
   }
@@ -197,9 +189,9 @@ function summariseRetestOutcome(result: AsanaUserResult): RetestOutcomeSummary {
 export function SettingsCredentialsPanel(): ReactElement {
   const credentials = useCredentials();
 
-  const [draftToken, setDraftToken] = useState<DraftToken>("");
-  const [replacementToken, setReplacementToken] = useState<DraftToken>("");
-  const [currentToken, setCurrentToken] = useState<DraftToken>("");
+  const [draftToken, setDraftToken] = useState("");
+  const [replacementToken, setReplacementToken] = useState("");
+  const [currentToken, setCurrentToken] = useState("");
   const [retestOutcome, setRetestOutcome] =
     useState<RetestOutcomeSummary | null>(null);
   const [persistentConfirmOpen, setPersistentConfirmOpen] = useState(false);

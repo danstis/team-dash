@@ -304,7 +304,7 @@ export function CredentialsProvider({
   }, []);
 
   const setSessionToken = useCallback(
-    async (token: string, nextMaskedIdentifier: string): Promise<void> => {
+    async (_token: string, nextMaskedIdentifier: string): Promise<void> => {
       // FR-005a: switching from persistent mode back to session-only —
       // or replacing a stored token with a session-only one — MUST
       // immediately delete the previous encrypted token record and
@@ -318,7 +318,6 @@ export function CredentialsProvider({
       // identifier. The caller (e.g. the Settings credentials panel,
       // T045) is the canonical owner of the in-memory token lifetime
       // and decides when to forget it.
-      void token;
       setMode("session");
       setMaskedIdentifier(nextMaskedIdentifier);
       setState("ready");
@@ -355,7 +354,6 @@ export function CredentialsProvider({
       // boundary. The caller (Settings panel) keeps the in-memory
       // token for the duration of the panel's lifetime and discards
       // it on unmount / clear-all.
-      void token;
       setMode("persistent");
       setMaskedIdentifier(nextMaskedIdentifier);
       setState("ready");

@@ -18,7 +18,7 @@
  *
  * Run: `npx vitest run tests/visual-qa-dump.test.tsx`
  */
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { http, HttpResponse } from "msw";
@@ -391,6 +391,17 @@ describe("T045 Settings panel — visual-QA DOM capture", () => {
       await db.credentials.clear();
     }
 
-    expect(true).toBe(true);
+    const expectedArtifacts = [
+      "01-initial-first-run.html",
+      "02-retest-success.html",
+      "03-retest-failure.html",
+      "04-replace-flow-after.html",
+      "05-persistent-confirmation-dialog.html",
+      "06-clear-all-confirmation-dialog.html",
+      "07-persistent-mode-loaded.html",
+    ];
+    expect(await readdir(OUTPUT_DIR)).toEqual(
+      expect.arrayContaining(expectedArtifacts),
+    );
   });
 });

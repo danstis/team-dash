@@ -109,11 +109,16 @@ import type { z } from "zod";
 
 import { listWorkspaces, testToken } from "../../data/asana/client";
 import {
-  asanaUserSchema,
   asanaWorkspaceListResponseSchema,
   asanaWorkspaceSchema,
 } from "../../data/asana/schemas";
 import type { AsanaClientResult } from "../../data/asana/types";
+import {
+  maskedIdentifierFor,
+  summariseUserValidationResult,
+  type CredentialValidationOutcomeKind,
+  type CredentialValidationSummary,
+} from "./helpers";
 
 /* -------------------------------------------------------------------------- */
 /* Outcome surface                                                            */
@@ -128,13 +133,7 @@ import type { AsanaClientResult } from "../../data/asana/types";
  * Exported as a literal type so downstream US1 features (T042, T043)
  * can switch on it exhaustively without re-deriving the union.
  */
-export type TokenTestOutcomeKind =
-  | "valid"
-  | "invalid_token"
-  | "insufficient_permission"
-  | "rate_limited"
-  | "network_error"
-  | "validation_error";
+export type TokenTestOutcomeKind = CredentialValidationOutcomeKind;
 
 /**
  * The display-only summary of a single `testToken` (or
@@ -145,17 +144,7 @@ export type TokenTestOutcomeKind =
  * (`retryAfterMs`, the `issues[]` array, the underlying `data`)
  * do not leak into the form's local state.
  */
-export interface TokenTestOutcome {
-  readonly kind: TokenTestOutcomeKind;
-  readonly message: string;
-}
-
-/**
- * The `testToken` client function's return type. Aliased here so the
- * summariser's signature reads succinctly at the call site; the
- * structural shape is `AsanaClientResult<z.infer<typeof asanaUserSchema>>`.
- */
-type AsanaUserResult = AsanaClientResult<z.infer<typeof asanaUserSchema>>;
+export interface TokenTestOutcome extends CredentialValidationSummary {}
 
 /**
  * The `listWorkspaces` client function's return type. Aliased for
@@ -168,54 +157,6 @@ type AsanaWorkspaceListResult = AsanaClientResult<
 /* -------------------------------------------------------------------------- */
 /* Outcome summarisers (FR-004 specific-failure-reason contract)              */
 /* -------------------------------------------------------------------------- */
-
-/**
- * Render a single `testToken` outcome as a short, user-facing
- * summary. The message strings are deliberately chosen so each
- * non-success variant contains the substring the `Settings panel`
- * (T037) and `TokenEntry` integration tests assert against
- * (`/invalid token/i`, `/insufficient permission/i`, `/network/i`,
- * `/rate/i`); a future contributor who rephrases the copy must
- * preserve those substrings or update both tests in the same change.
- */
-function summariseUserResult(result: AsanaUserResult): TokenTestOutcome {
-  switch (result.outcome) {
-    case "ok":
-      return {
-        kind: "valid",
-        message: `Token valid. Authenticated as ${result.data.name}.`,
-      };
-    case "auth_failure":
-      return {
-        kind: "invalid_token",
-        message: "Invalid token. Asana rejected the credential.",
-      };
-    case "permission_failure":
-      return {
-        kind: "insufficient_permission",
-        message:
-          "Insufficient permission to access Asana. The token may lack the required scopes.",
-      };
-    case "rate_limited":
-      return {
-        kind: "rate_limited",
-        message: `Rate limited by Asana. Retry after ${Math.round(
-          result.retryAfterMs / 1000,
-        )}s.`,
-      };
-    case "network_error":
-      return {
-        kind: "network_error",
-        message: `Network error: ${result.message}`,
-      };
-    case "validation_error":
-      return {
-        kind: "validation_error",
-        message:
-          "Unexpected response from Asana. The API shape may have changed.",
-      };
-  }
-}
 
 /**
  * Render a post-validation `listWorkspaces` failure as a
@@ -274,38 +215,6 @@ function summariseWorkspaceListFailure(
           "Unexpected response from Asana. The API shape may have changed.",
       };
   }
-}
-
-/* -------------------------------------------------------------------------- */
-/* Masked identifier (FR-008 last-4-only)                                     */
-/* -------------------------------------------------------------------------- */
-
-/**
- * The masked identifier (FR-008 — last-4-characters only) for the
- * supplied token. Defensive against tokens shorter than four
- * characters: the entire string is returned, so a hypothetical
- * three-character token still produces a non-empty masked
- * identifier and the form can hand it to downstream US1 features
- * without crashing.
- *
- * Duplicated locally rather than imported from
- * `src/data/db/repositories/credential.repository.ts`'s
- * `maskTokenIdentifier` because the repository module is a data-
- * boundary file (`src/data/**`) the feature boundary's
- * "presentation-only" rule would not allow importing from at the
- * source level (the data→feature direction is allowed; the
- * feature→data direction for a non-data value like this helper is
- * not). The two implementations share the same algorithm and are
- * kept in sync by the integration tests (a future contributor who
- * changes the rule in one without changing the other fails the
- * `tests/integration/credentials/token-masking.test.tsx` FR-008
- * assertions).
- */
-function maskedIdentifierFor(token: string): string {
-  if (token.length === 0) {
-    return "";
-  }
-  return token.slice(-4);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -371,7 +280,7 @@ export function TestTokenButton({
     setPending(true);
     try {
       const result = await testToken(token);
-      const outcome = summariseUserResult(result);
+      const outcome = summariseUserValidationResult(result);
       await onResult?.(outcome);
     } finally {
       setPending(false);

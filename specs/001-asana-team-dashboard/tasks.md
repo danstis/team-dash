@@ -89,17 +89,17 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [x] [BSOD-163] T035 [P] [US1] Integration test: first-run screen blocks reporting screens until token+workspace are set in `tests/integration/credentials/first-run.test.tsx`
 - [x] [BSOD-164] T036 [P] [US1] Integration test: persistent-storage risk disclosure requires explicit confirmation; declining falls back to session-only in `tests/integration/credentials/persistent-storage-confirmation.test.tsx`
 - [x] [BSOD-165] T037 [P] [US1] Integration test: Settings panel retest/replace/switch-mode/clear-all actions in `tests/integration/credentials/settings-panel.test.tsx`
-- [ ] [BSOD-166] T038 [P] [US1] Integration test: token is never rendered, logged, or embedded in a URL — only a masked identifier appears in `tests/integration/credentials/token-masking.test.tsx`
+- [x] [BSOD-166] T038 [P] [US1] Integration test: token is never rendered, logged, or embedded in a URL — only a masked identifier appears in `tests/integration/credentials/token-masking.test.tsx`
 
 ### Implementation for User Story 1
 
-- [ ] [BSOD-167] T039 [US1] Implement `testToken` and `listWorkspaces` client functions in `src/data/asana/client.ts`
+- [x] [BSOD-167] T039 [US1] Implement `testToken` and `listWorkspaces` client functions in `src/data/asana/client.ts`
 - [ ] [BSOD-168] T040 [US1] Implement `CredentialRepository` (`getCurrent`, `setSessionToken`, `setPersistentToken` w/ FR-005a immediate deletion of the prior encrypted record, `clearToSessionOnly`, `clearAll` spanning every store in one transaction per FR-007) in `src/data/db/repositories/credential.repository.ts`
 - [ ] [BSOD-169] T041 [US1] Implement `TokenEntryForm` and `TestTokenButton` in `src/features/credentials/TokenEntry.tsx`
 - [ ] [BSOD-170] T042 [US1] Implement `StorageModeSelector` with risk disclosure and explicit confirmation step in `src/features/credentials/StorageModeSelector.tsx`
 - [ ] [BSOD-171] T043 [US1] Implement `WorkspaceSelector` (single-select from the validated token's accessible workspaces) in `src/features/credentials/WorkspaceSelector.tsx`
 - [ ] [BSOD-172] T044 [US1] Implement the shared masked-token display component (last-4-characters only) in `src/shared/components/MaskedToken.tsx`
-- [ ] [BSOD-173] T045 [US1] Implement the Settings credentials panel (retest, replace, switch storage mode, single clear-all action) in `src/features/credentials/SettingsCredentialsPanel.tsx`
+- [x] [BSOD-173] T045 [US1] Implement the Settings credentials panel (retest, replace, switch storage mode, single clear-all action) in `src/features/credentials/SettingsCredentialsPanel.tsx`
 - [ ] [BSOD-174] T046 [US1] Wire a route guard in `src/app/router.tsx` blocking reporting routes until token+workspace are validated
 
 **Checkpoint**: User Story 1 fully functional and independently testable.

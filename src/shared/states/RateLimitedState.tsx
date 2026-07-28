@@ -22,6 +22,23 @@ import type { ReactElement } from "react";
 
 import type { ViewStatePrimitiveProps } from "./types";
 
+/** Milliseconds in one second. */
+const MS_PER_SECOND = 1000;
+
+/** Seconds in one minute. */
+const SECONDS_PER_MINUTE = 60;
+
+/** Minutes in one hour. */
+const MINUTES_PER_HOUR = 60;
+
+/**
+ * The smallest positive seconds value the formatter surfaces when a
+ * sub-second `Retry-After` (or a non-positive one) would otherwise
+ * read as "0 seconds". Documented so a reader of the "1 second" branch
+ * knows it is a deliberate floor, not an arbitrary literal.
+ */
+const MIN_RETRY_DISPLAY_SECONDS = 1;
+
 export interface RateLimitedStateProps extends ViewStatePrimitiveProps {
   /**
    * The `Retry-After` delay (milliseconds) the Asana client parsed.
@@ -33,22 +50,23 @@ export interface RateLimitedStateProps extends ViewStatePrimitiveProps {
 
 /**
  * Format a millisecond delay as the largest natural unit it crosses
- * (seconds, minutes, or hours). Sub-second delays round up to 1 s so
- * a 200 ms `Retry-After` does not silently read as "0 seconds".
+ * (seconds, minutes, or hours). Sub-second delays round up to
+ * `MIN_RETRY_DISPLAY_SECONDS` so a 200 ms `Retry-After` does not
+ * silently read as "0 seconds".
  */
 function formatRetryAfter(milliseconds: number): string {
   if (milliseconds <= 0) {
-    return "1 second";
+    return `${MIN_RETRY_DISPLAY_SECONDS} second`;
   }
-  const totalSeconds = Math.ceil(milliseconds / 1000);
-  if (totalSeconds < 60) {
+  const totalSeconds = Math.ceil(milliseconds / MS_PER_SECOND);
+  if (totalSeconds < SECONDS_PER_MINUTE) {
     return `${totalSeconds} second${totalSeconds === 1 ? "" : "s"}`;
   }
-  const totalMinutes = Math.ceil(totalSeconds / 60);
-  if (totalMinutes < 60) {
+  const totalMinutes = Math.ceil(totalSeconds / SECONDS_PER_MINUTE);
+  if (totalMinutes < MINUTES_PER_HOUR) {
     return `${totalMinutes} minute${totalMinutes === 1 ? "" : "s"}`;
   }
-  const totalHours = Math.ceil(totalMinutes / 60);
+  const totalHours = Math.ceil(totalMinutes / MINUTES_PER_HOUR);
   return `${totalHours} hour${totalHours === 1 ? "" : "s"}`;
 }
 

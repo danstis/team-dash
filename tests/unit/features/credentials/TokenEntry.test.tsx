@@ -41,7 +41,7 @@ describe("TokenEntryForm", () => {
   it("lists workspaces after a successful validation, clears the input, and reports the masked identifier", async () => {
     let workspaceRequests = 0;
     let resolveWorkspaces: (response: Response) => void = () => {
-      throw new Error('workspace resolver was not initialised');
+      throw new Error("workspace resolver was not initialised");
     };
     const workspacesPending = new Promise<Response>((resolve) => {
       resolveWorkspaces = resolve;

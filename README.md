@@ -118,6 +118,8 @@ The container has no backend behaviour and no server-side Asana credentials. In 
 
 For a self-hosted deployment, place the container behind the operator's normal network and access controls. Use HTTPS and restrict who can reach the service, because anyone able to use the application may access the local browser data and any active session credential in that browser.
 
+The bundled nginx image applies the full response-header hardening in `docker/security-headers.conf`, including `Content-Security-Policy`, `X-Frame-Options: DENY`, `Referrer-Policy`, and `Permissions-Policy`. If you deploy the built `dist/` output on another static host or behind another reverse proxy, reproduce those headers there as well. The `index.html` CSP meta tag is only a fallback for script, connect, object, image, and form controls; it cannot enforce clickjacking protections such as `frame-ancestors` or `X-Frame-Options`.
+
 ## Releases
 
 Team Dash versions are generated automatically by [release-please](https://github.com/googleapis/release-please) on every push to `main`. The pipeline is conventional-commits driven: the version follows strictly from the commit history and does not require human edits.

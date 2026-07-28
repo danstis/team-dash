@@ -12,6 +12,13 @@ import { TokenEntryForm } from "../../../../src/features/credentials/TokenEntry"
 import { server } from "../../../setup";
 
 const TOKEN = "fixture-token-123456789";
+const USERS_ME_URL = "https://app.asana.com/api/1.0/users/me";
+const WORKSPACES_URL = "https://app.asana.com/api/1.0/workspaces";
+const AUTHENTICATED_USER = {
+  gid: "user-1",
+  name: "Alex Kim",
+  resource_type: "user" as const,
+};
 
 const WORKSPACES = [
   {
@@ -37,6 +44,29 @@ function enterToken(token: string): HTMLInputElement {
   return input;
 }
 
+function renderForm() {
+  render(<TokenEntryForm />);
+
+  return {
+    tokenInput: enterToken(TOKEN),
+    testButton: screen.getByRole("button", { name: /test token/i }),
+  };
+}
+
+function mockAuthenticatedUser() {
+  return http.get(USERS_ME_URL, () => HttpResponse.json(AUTHENTICATED_USER));
+}
+
+async function submitForOutcome() {
+  const form = renderForm();
+  fireEvent.click(form.testButton);
+
+  return {
+    ...form,
+    outcome: await screen.findByRole("status"),
+  };
+}
+
 describe("TokenEntryForm", () => {
   it("lists workspaces after a successful validation, clears the input, and reports the masked identifier", async () => {
     let workspaceRequests = 0;
@@ -48,14 +78,8 @@ describe("TokenEntryForm", () => {
     });
 
     server.use(
-      http.get("https://app.asana.com/api/1.0/users/me", () =>
-        HttpResponse.json({
-          gid: "user-1",
-          name: "Alex Kim",
-          resource_type: "user",
-        }),
-      ),
-      http.get("https://app.asana.com/api/1.0/workspaces", () => {
+      mockAuthenticatedUser(),
+      http.get(WORKSPACES_URL, () => {
         workspaceRequests += 1;
         return workspacesPending;
       }),
@@ -99,70 +123,35 @@ describe("TokenEntryForm", () => {
 
   it("renders the invalid-token outcome when Asana rejects the credential", async () => {
     server.use(
-      http.get(
-        "https://app.asana.com/api/1.0/users/me",
-        () => new HttpResponse(null, { status: 401 }),
-      ),
+      http.get(USERS_ME_URL, () => new HttpResponse(null, { status: 401 })),
     );
 
-    render(<TokenEntryForm />);
+    const { outcome } = await submitForOutcome();
 
-    enterToken(TOKEN);
-    fireEvent.click(screen.getByRole("button", { name: /test token/i }));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("token-test-outcome")).toHaveTextContent(
-        /invalid token\. asana rejected the credential\./i,
-      ),
+    expect(outcome).toHaveTextContent(
+      /invalid token\. asana rejected the credential\./i,
     );
   });
 
   it("renders the scrubbed network-error outcome when validation cannot reach Asana", async () => {
-    server.use(
-      http.get("https://app.asana.com/api/1.0/users/me", () =>
-        HttpResponse.error(),
-      ),
-    );
+    server.use(http.get(USERS_ME_URL, () => HttpResponse.error()));
 
-    render(<TokenEntryForm />);
+    const { outcome } = await submitForOutcome();
 
-    enterToken(TOKEN);
-    fireEvent.click(screen.getByRole("button", { name: /test token/i }));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("token-test-outcome")).toHaveTextContent(
-        /network error:/i,
-      ),
-    );
-    expect(screen.getByTestId("token-test-outcome")).not.toHaveTextContent(
-      TOKEN,
-    );
+    expect(outcome).toHaveTextContent(/network error:/i);
+    expect(outcome).not.toHaveTextContent(TOKEN);
   });
 
   it("renders the workspace-list permission failure without clearing the draft token", async () => {
     server.use(
-      http.get("https://app.asana.com/api/1.0/users/me", () =>
-        HttpResponse.json({
-          gid: "user-1",
-          name: "Alex Kim",
-          resource_type: "user",
-        }),
-      ),
-      http.get(
-        "https://app.asana.com/api/1.0/workspaces",
-        () => new HttpResponse(null, { status: 403 }),
-      ),
+      mockAuthenticatedUser(),
+      http.get(WORKSPACES_URL, () => new HttpResponse(null, { status: 403 })),
     );
 
-    render(<TokenEntryForm />);
+    const { outcome, tokenInput } = await submitForOutcome();
 
-    const tokenInput = enterToken(TOKEN);
-    fireEvent.click(screen.getByRole("button", { name: /test token/i }));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("token-test-outcome")).toHaveTextContent(
-        /insufficient permission to list workspaces/i,
-      ),
+    expect(outcome).toHaveTextContent(
+      /insufficient permission to list workspaces/i,
     );
     expect(tokenInput).toHaveValue(TOKEN);
     expect(

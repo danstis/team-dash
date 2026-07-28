@@ -59,7 +59,6 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -74,6 +73,11 @@ import {
 } from "../../../src/data/crypto/token-crypto";
 import { SettingsCredentialsPanel } from "../../../src/features/credentials/SettingsCredentialsPanel";
 import { smallDatasetWorkspaceGid } from "../../../fixtures/asana/small-dataset/handlers";
+import {
+  invalidUserTokenHandler,
+  userNetworkErrorHandler,
+  userPermissionFailureHandler,
+} from "../../fixtures/asana-auth-handlers";
 import { server } from "../../setup";
 
 /**
@@ -237,12 +241,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
     });
 
     it("displays a specific 'invalid token' reason on a 401 response", async () => {
-      server.use(
-        http.get(
-          "https://app.asana.com/api/1.0/users/me",
-          () => new HttpResponse(null, { status: 401 }),
-        ),
-      );
+      server.use(invalidUserTokenHandler());
 
       renderPanel();
 
@@ -255,12 +254,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
     });
 
     it("displays a specific 'insufficient permission' reason on a 403 response", async () => {
-      server.use(
-        http.get(
-          "https://app.asana.com/api/1.0/users/me",
-          () => new HttpResponse(null, { status: 403 }),
-        ),
-      );
+      server.use(userPermissionFailureHandler());
 
       renderPanel();
 
@@ -275,11 +269,7 @@ describe("T037 Settings credentials panel (US1 acceptance scenario 6)", () => {
     });
 
     it("displays a specific 'network error' reason on a transport failure", async () => {
-      server.use(
-        http.get("https://app.asana.com/api/1.0/users/me", () =>
-          HttpResponse.error(),
-        ),
-      );
+      server.use(userNetworkErrorHandler());
 
       renderPanel();
 

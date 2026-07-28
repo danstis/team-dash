@@ -9,11 +9,16 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TokenEntryForm } from "../../../../src/features/credentials/TokenEntry";
+import {
+  WORKSPACES_URL,
+  authenticatedUserHandler,
+  invalidUserTokenHandler,
+  userNetworkErrorHandler,
+  workspacePermissionFailureHandler,
+} from "../../../fixtures/asana-auth-handlers";
 import { server } from "../../../setup";
 
 const TOKEN = "fixture-token-123456789";
-const USERS_ME_URL = "https://app.asana.com/api/1.0/users/me";
-const WORKSPACES_URL = "https://app.asana.com/api/1.0/workspaces";
 const WORKSPACES = [
   {
     gid: "workspace-1",
@@ -26,16 +31,6 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
-
-function authenticatedUserHandler() {
-  return http.get(USERS_ME_URL, () =>
-    HttpResponse.json({
-      gid: "user-1",
-      name: "Alex Kim",
-      resource_type: "user" as const,
-    }),
-  );
-}
 
 function renderAndFill(onValidated?: (validated: unknown) => void) {
   render(<TokenEntryForm onValidated={onValidated} />);
@@ -108,14 +103,12 @@ describe("TokenEntryForm", () => {
   it.each([
     {
       name: "invalid-token",
-      handlers: [
-        http.get(USERS_ME_URL, () => new HttpResponse(null, { status: 401 })),
-      ],
+      handlers: [invalidUserTokenHandler()],
       expected: /invalid token\. asana rejected the credential\./i,
     },
     {
       name: "network-error",
-      handlers: [http.get(USERS_ME_URL, () => HttpResponse.error())],
+      handlers: [userNetworkErrorHandler()],
       expected: /network error:/i,
       assertScrubbed: true,
     },
@@ -123,7 +116,7 @@ describe("TokenEntryForm", () => {
       name: "workspace permission failure",
       handlers: [
         authenticatedUserHandler(),
-        http.get(WORKSPACES_URL, () => new HttpResponse(null, { status: 403 })),
+        workspacePermissionFailureHandler(),
       ],
       expected: /insufficient permission to list workspaces/i,
       assertTokenRetained: true,

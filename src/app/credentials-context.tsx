@@ -43,10 +43,9 @@
  *   downstream UI renders. The credential lifecycle actions
  *   (`setSessionToken`, `setPersistentToken`, `clearToSessionOnly`,
  *   `clearAll`) own the FR-002a / FR-005a / FR-007 IndexedDB write
- *   paths so the Settings panel (T045) can compose them without
- *   having to depend on a separate `CredentialRepository` module —
- *   the credential repository's contract from
- *   `contracts/storage-repository.md` is satisfied inline here.
+ *   paths so the Settings panel (T045) can compose them while the
+ *   dedicated `CredentialRepository` enforces the storage contract from
+ *   `contracts/storage-repository.md`.
  *
  * ## URL/log safety
  *
@@ -83,41 +82,9 @@ import {
   type ReactNode,
 } from "react";
 
-import { db } from "../data/db/schema";
-import {
-  decryptToken,
-  encryptToken,
-  generateTokenKey,
-  isTokenCryptoError,
-} from "../data/crypto/token-crypto";
+import { decryptToken, isTokenCryptoError } from "../data/crypto/token-crypto";
+import { credentialRepository } from "../data/db/repositories/credential.repository";
 import type { ViewState } from "../domain/types";
-
-/**
- * The full Dexie table list that FR-007's single-transaction wipe must
- * span. Mirrors `contracts/storage-repository.md` and the Dexie schema
- * in `src/data/db/schema.ts` — kept here as a local constant rather than
- * derived from the schema class so the boundary is explicit at the
- * credential repository's call site (a future schema addition that
- * forgets to update this list fails CI through the
- * `tests/integration/credentials/settings-panel.test.tsx` clear-all
- * assertion, which counts every store after `clearAll()`).
- */
-const ALL_DATA_TABLE_NAMES = [
-  "workspaces",
-  "projects",
-  "portfolios",
-  "asanaTeams",
-  "teamMappingOverrides",
-  "personGroups",
-  "users",
-  "priorityFields",
-  "dependencies",
-  "sections",
-  "tasks",
-  "snapshots",
-  "refreshSessions",
-  "credentials",
-] as const;
 
 /**
  * The credential storage mode surfaced to the rest of the app.
@@ -245,11 +212,11 @@ export function CredentialsProvider({
   useEffect(() => {
     let cancelled = false;
     void (async (): Promise<void> => {
-      const stored = await db.credentials.get("persistent");
+      const stored = await credentialRepository.getCurrent();
       if (cancelled) {
         return;
       }
-      if (stored === undefined) {
+      if (stored === null) {
         setState("first_run");
         return;
       }
@@ -285,7 +252,7 @@ export function CredentialsProvider({
         // attempt can write a fresh record without colliding with a
         // stale one.
         if (isTokenCryptoError(error)) {
-          await db.credentials.delete("persistent").catch(() => {
+          await credentialRepository.clearToSessionOnly().catch(() => {
             // Best-effort cleanup; the next write path (T040) is the
             // canonical owner of this row's lifecycle.
           });
@@ -312,7 +279,7 @@ export function CredentialsProvider({
       // for the full FR-007 clear-data action. Dexie's primary-key
       // upsert on the `credentials` table guarantees there is at most
       // one persistent row, so `delete("persistent")` is sufficient.
-      await db.credentials.delete("persistent");
+      await credentialRepository.setSessionToken(_token);
       // FR-008: the plaintext token value is intentionally not echoed
       // back anywhere in this provider's state — only the masked
       // identifier. The caller (e.g. the Settings credentials panel,
@@ -333,22 +300,7 @@ export function CredentialsProvider({
       // The key is non-extractable by design (Constitution Principle
       // IV) so the raw key material cannot be copied out of the
       // SubtleCrypto handle by reading the browser's storage files.
-      const key = await generateTokenKey();
-      const { ciphertext, iv } = await encryptToken(token, key);
-      await db.credentials.put({
-        mode: "persistent",
-        encryptedTokenRecord: { ciphertext, iv, keyRef: key },
-        maskedIdentifier: nextMaskedIdentifier,
-        lastValidatedAt: null,
-        lastValidationResult: null,
-      });
-
-      // FR-005a: replacing a prior persistent token or switching out
-      // of session mode into persistent MUST delete the previous
-      // encrypted token record. Dexie's primary-key upsert on
-      // `credentials` (the singleton `mode: "persistent"` row)
-      // already discards the prior row's ciphertext and key, so no
-      // explicit pre-delete is required here.
+      await credentialRepository.setPersistentToken(token);
 
       // FR-008: the plaintext token value never crosses the context
       // boundary. The caller (Settings panel) keeps the in-memory
@@ -368,7 +320,7 @@ export function CredentialsProvider({
     // `delete("persistent")` is sufficient because the credentials
     // table only ever holds the singleton persistent row keyed by
     // `mode`.
-    await db.credentials.delete("persistent");
+    await credentialRepository.clearToSessionOnly();
     setMode("session");
     setMaskedIdentifier("");
     setState("ready");
@@ -384,11 +336,7 @@ export function CredentialsProvider({
     // transaction prevents. Dexie's native transaction atomicity
     // (Principle V) is the enforcement mechanism: the writes either
     // all land or none do.
-    await db.transaction("rw", [...ALL_DATA_TABLE_NAMES], async () => {
-      for (const tableName of ALL_DATA_TABLE_NAMES) {
-        await db.table(tableName).clear();
-      }
-    });
+    await credentialRepository.clearAll();
     setMode(null);
     setMaskedIdentifier("");
     setState("first_run");

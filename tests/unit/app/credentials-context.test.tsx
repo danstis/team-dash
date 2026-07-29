@@ -61,6 +61,7 @@ import {
 } from "../../../src/data/crypto/token-crypto";
 import {
   CredentialsProvider,
+  useCredentialTokenAccessor,
   useCredentials,
 } from "../../../src/app/credentials-context";
 
@@ -313,6 +314,7 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
   describe("session-mode transitions", () => {
     function ActionsHarness(): React.ReactElement {
       const value = useCredentials();
+      const tokenAccessor = useCredentialTokenAccessor();
       return (
         <div>
           <button
@@ -335,7 +337,7 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
           <span data-testid="action-mode">{value.mode ?? "none"}</span>
           <span data-testid="action-masked">{value.maskedIdentifier}</span>
           <span data-testid="action-token">
-            {value.getPlaintextToken() ?? "none"}
+            {tokenAccessor.getPlaintextToken() ?? "none"}
           </span>
         </div>
       );
@@ -400,6 +402,7 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
     it("exposes the plaintext token through a non-serialized provider method and clears it on clearAll", async () => {
       function SetterHarness(): React.ReactElement {
         const value = useCredentials();
+        const tokenAccessor = useCredentialTokenAccessor();
         return (
           <div>
             <button
@@ -422,7 +425,7 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
               Clear all
             </button>
             <span data-testid="setter-token">
-              {value.getPlaintextToken() ?? "none"}
+              {tokenAccessor.getPlaintextToken() ?? "none"}
             </span>
             <span data-testid="setter-state">{value.state}</span>
           </div>

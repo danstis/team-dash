@@ -101,7 +101,6 @@ export interface CredentialsContextValue {
   state: ViewState;
   mode: CredentialsMode;
   maskedIdentifier: string;
-  getPlaintextToken: () => string | null;
   setSessionToken: (token: string, maskedIdentifier: string) => Promise<void>;
   setPersistentToken: (
     token: string,
@@ -115,7 +114,6 @@ const CREDENTIALS_CONTEXT_DEFAULT: CredentialsContextValue = {
   state: "loading",
   mode: null,
   maskedIdentifier: "",
-  getPlaintextToken: () => null,
   setSessionToken: async () => {
     throw new Error(
       "CredentialsProvider.setSessionToken called outside a provider",
@@ -141,6 +139,31 @@ const CredentialsContext = createContext<CredentialsContextValue>(
 );
 
 CredentialsContext.displayName = "CredentialsContext";
+
+export interface CredentialTokenAccessorValue {
+  getPlaintextToken: () => string | null;
+}
+
+const CREDENTIAL_TOKEN_ACCESSOR_DEFAULT: CredentialTokenAccessorValue = {
+  getPlaintextToken: () => null,
+};
+
+const CredentialTokenAccessorContext =
+  createContext<CredentialTokenAccessorValue>(
+    CREDENTIAL_TOKEN_ACCESSOR_DEFAULT,
+  );
+
+CredentialTokenAccessorContext.displayName = "CredentialTokenAccessorContext";
+
+export function useCredentialTokenAccessor(): CredentialTokenAccessorValue {
+  const value = useContext(CredentialTokenAccessorContext);
+  if (value === CREDENTIAL_TOKEN_ACCESSOR_DEFAULT) {
+    throw new Error(
+      "useCredentialTokenAccessor must be called inside <CredentialsProvider>",
+    );
+  }
+  return value;
+}
 
 export function useCredentials(): CredentialsContextValue {
   const value = useContext(CredentialsContext);
@@ -267,7 +290,6 @@ export function CredentialsProvider({
       state,
       mode,
       maskedIdentifier,
-      getPlaintextToken,
       setSessionToken,
       setPersistentToken,
       clearToSessionOnly,
@@ -277,7 +299,6 @@ export function CredentialsProvider({
       state,
       mode,
       maskedIdentifier,
-      getPlaintextToken,
       setSessionToken,
       setPersistentToken,
       clearToSessionOnly,
@@ -285,9 +306,16 @@ export function CredentialsProvider({
     ],
   );
 
+  const tokenAccessorValue = useMemo<CredentialTokenAccessorValue>(
+    () => ({ getPlaintextToken }),
+    [getPlaintextToken],
+  );
+
   return (
-    <CredentialsContext.Provider value={value}>
-      {children}
-    </CredentialsContext.Provider>
+    <CredentialTokenAccessorContext.Provider value={tokenAccessorValue}>
+      <CredentialsContext.Provider value={value}>
+        {children}
+      </CredentialsContext.Provider>
+    </CredentialTokenAccessorContext.Provider>
   );
 }

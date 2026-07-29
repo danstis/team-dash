@@ -77,100 +77,11 @@ import {
 
 import { useCredentials } from "../../app/credentials-context";
 import { testToken } from "../../data/asana/client";
-import type { AsanaClientResult } from "../../data/asana/types";
-import { asanaUserSchema } from "../../data/asana/schemas";
-
-/**
- * The display-only summary of the most recent Retest outcome.
- * Deliberately distinct from the full `AsanaClientResult<AsanaUser>`
- * union: the panel never has to re-discriminate the result once the
- * summary string has been computed, and the per-variant fields the
- * summary does not need (`retryAfterMs`, the `issues[]` array, the
- * underlying `data`) do not leak into the panel's local state.
- */
-interface RetestOutcomeSummary {
-  readonly kind:
-    | "valid"
-    | "invalid_token"
-    | "insufficient_permission"
-    | "rate_limited"
-    | "network_error"
-    | "validation_error";
-  readonly message: string;
-}
-
-/**
- * The four-character masked identifier (FR-008 — last-4-characters only)
- * for the supplied token. Defensive against tokens shorter than four
- * characters: the entire string is returned, so a hypothetical
- * three-character token still produces a non-empty masked identifier
- * and the panel can render it verbatim without crashing.
- */
-function maskedIdentifierFor(token: string): string {
-  if (token.length === 0) {
-    return "";
-  }
-  return token.slice(-4);
-}
-
-/**
- * The shape returned by the `testToken` Asana client function:
- * `AsanaClientResult<z.infer<typeof asanaUserSchema>>`. Kept as a local
- * type alias so the retest-outcome summariser's signature reads
- * succinctly at the call site.
- */
-type AsanaUserResult = AsanaClientResult<
-  import("zod").infer<typeof asanaUserSchema>
->;
-
-/**
- * Render a single Retest outcome as a short, user-facing string.
- *
- * The text strings are deliberately chosen so each variant contains
- * the substring the T037 contract test (`settings-panel.test.tsx`)
- * asserts against (`/valid/i`, `/invalid token/i`,
- * `/insufficient permission/i`, `/network/i`). A future contributor
- * who rephrases the copy must preserve those substrings or update the
- * contract test in the same change.
- */
-function summariseRetestOutcome(result: AsanaUserResult): RetestOutcomeSummary {
-  switch (result.outcome) {
-    case "ok":
-      return {
-        kind: "valid",
-        message: `Token valid. Authenticated as ${result.data.name}.`,
-      };
-    case "auth_failure":
-      return {
-        kind: "invalid_token",
-        message: "Invalid token. Asana rejected the credential.",
-      };
-    case "permission_failure":
-      return {
-        kind: "insufficient_permission",
-        message:
-          "Insufficient permission to access Asana. The token may lack the required scopes.",
-      };
-    case "rate_limited":
-      return {
-        kind: "rate_limited",
-        message: `Rate limited by Asana. Retry after ${Math.round(
-          result.retryAfterMs / 1000,
-        )}s.`,
-      };
-    case "network_error":
-      return {
-        kind: "network_error",
-        message: `Network error: ${result.message}`,
-      };
-    case "validation_error":
-      return {
-        kind: "validation_error",
-        message:
-          "Unexpected response from Asana. The API shape may have changed.",
-      };
-  }
-}
+import {
+  maskedIdentifierFor,
+  summariseUserValidationResult,
+  type CredentialValidationSummary,
+} from "./helpers";
 
 /**
  * The Settings credentials panel.
@@ -193,7 +104,7 @@ export function SettingsCredentialsPanel(): ReactElement {
   const [replacementToken, setReplacementToken] = useState("");
   const [currentToken, setCurrentToken] = useState("");
   const [retestOutcome, setRetestOutcome] =
-    useState<RetestOutcomeSummary | null>(null);
+    useState<CredentialValidationSummary | null>(null);
   const [persistentConfirmOpen, setPersistentConfirmOpen] = useState(false);
   const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
 
@@ -231,7 +142,7 @@ export function SettingsCredentialsPanel(): ReactElement {
       return;
     }
     const result = await testToken(currentToken);
-    setRetestOutcome(summariseRetestOutcome(result));
+    setRetestOutcome(summariseUserValidationResult(result));
   }, [currentToken]);
 
   const handleReplace = useCallback(async (): Promise<void> => {

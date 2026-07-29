@@ -131,6 +131,17 @@ import type { AsanaClientResult } from "./types";
  */
 const ASANA_API_BASE = "https://app.asana.com/api/1.0";
 
+/**
+ * Milliseconds in one second. Used by `parseRetryAfter` to convert the
+ * seconds-form `Retry-After` header into the millisecond delay the
+ * `rate_limited` outcome surfaces. Held as a named constant so this
+ * file matches the project-wide unit-convention used by
+ * `src/shared/format/index.ts` and `src/shared/states/RateLimitedState.tsx`
+ * (see their `MINUTES_PER_HOUR` / `MS_PER_SECOND` / `SECONDS_PER_MINUTE`
+ * declarations) rather than repeating an inline literal.
+ */
+const MS_PER_SECOND = 1_000;
+
 /* -------------------------------------------------------------------------- */
 /* Public plumbing                                                             */
 /* -------------------------------------------------------------------------- */
@@ -338,7 +349,7 @@ function parseRetryAfter(rawHeader: string | null): number {
     if (!Number.isFinite(seconds) || seconds < 0) {
       return DEFAULT_RETRY_AFTER_MS;
     }
-    return Math.ceil(seconds * 1000);
+    return Math.ceil(seconds * MS_PER_SECOND);
   }
 
   // HTTP-date form — `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT`.

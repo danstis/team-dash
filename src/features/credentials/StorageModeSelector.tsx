@@ -3,10 +3,12 @@ import {
   useEffect,
   useRef,
   useState,
+  type KeyboardEvent,
   type ReactElement,
 } from "react";
 
 import { useCredentials } from "../../app/credentials-context";
+import { maskedIdentifierFor } from "./helpers";
 
 export type StorageMode = "session" | "persistent";
 
@@ -14,6 +16,16 @@ export interface StorageModeSelectorProps {
   readonly token: string;
   readonly maskedIdentifier?: string;
   readonly onModeSelected?: (mode: StorageMode) => void;
+}
+
+function displayIdentifier(identifier: string): string {
+  if (identifier.length === 0) {
+    return "";
+  }
+  if (identifier === "••••") {
+    return identifier;
+  }
+  return `…${identifier}`;
 }
 
 export function StorageModeSelector({
@@ -27,13 +39,23 @@ export function StorageModeSelector({
   );
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [pending, setPending] = useState(false);
+  const sessionRadioRef = useRef<HTMLInputElement>(null);
+  const persistentRadioRef = useRef<HTMLInputElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
-  const suffix = (token.length > 0 ? token : maskedIdentifier).slice(-4);
+  const declineButtonRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const identifier = maskedIdentifierFor(token.length > 0 ? token : maskedIdentifier);
 
   useEffect(() => {
-    if (confirmationOpen) {
-      confirmButtonRef.current?.focus();
+    setSelectedMode(credentials.mode);
+    setConfirmationOpen(false);
+  }, [credentials.mode, maskedIdentifier, token]);
+
+  useEffect(() => {
+    if (!confirmationOpen) {
+      return;
     }
+    confirmButtonRef.current?.focus();
   }, [confirmationOpen]);
 
   const selectSession = useCallback(async (): Promise<void> => {
@@ -42,19 +64,20 @@ export function StorageModeSelector({
     }
     setPending(true);
     try {
-      await credentials.setSessionToken(token, suffix);
+      await credentials.setSessionToken(token, identifier);
       setSelectedMode("session");
       setConfirmationOpen(false);
       onModeSelected?.("session");
     } finally {
       setPending(false);
     }
-  }, [credentials, onModeSelected, pending, suffix, token]);
+  }, [credentials, identifier, onModeSelected, pending, token]);
 
   const requestPersistent = useCallback((): void => {
     if (token.length === 0 || pending) {
       return;
     }
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
     setSelectedMode("persistent");
     setConfirmationOpen(true);
   }, [pending, token]);
@@ -65,18 +88,54 @@ export function StorageModeSelector({
     }
     setPending(true);
     try {
-      await credentials.setPersistentToken(token, suffix);
+      await credentials.setPersistentToken(token, identifier);
       setSelectedMode("persistent");
       setConfirmationOpen(false);
       onModeSelected?.("persistent");
+      persistentRadioRef.current?.focus();
     } finally {
       setPending(false);
     }
-  }, [credentials, onModeSelected, pending, suffix, token]);
+  }, [credentials, identifier, onModeSelected, pending, token]);
 
-  const declinePersistent = useCallback((): void => {
-    void selectSession();
+  const declinePersistent = useCallback(async (): Promise<void> => {
+    await selectSession();
+    setTimeout(() => {
+      sessionRadioRef.current?.focus();
+    }, 0);
   }, [selectSession]);
+
+  const onDialogKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>): void => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        void declinePersistent();
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const focusableButtons = [confirmButtonRef.current, declineButtonRef.current]
+        .filter((value): value is HTMLButtonElement => value !== null);
+      if (focusableButtons.length === 0) {
+        return;
+      }
+      event.preventDefault();
+      const currentIndex = focusableButtons.findIndex(
+        (button) => button === document.activeElement,
+      );
+      const delta = event.shiftKey ? -1 : 1;
+      const nextIndex =
+        currentIndex === -1
+          ? event.shiftKey
+            ? focusableButtons.length - 1
+            : 0
+          : (currentIndex + delta + focusableButtons.length) %
+            focusableButtons.length;
+      focusableButtons[nextIndex]?.focus();
+    },
+    [declinePersistent],
+  );
 
   return (
     <fieldset
@@ -86,11 +145,12 @@ export function StorageModeSelector({
     >
       <legend>Token storage</legend>
       <p>
-        Token identifier: <code>…{suffix}</code>. Only the last four characters
-        are shown.
+        Token identifier: <code>{displayIdentifier(identifier)}</code>. Only the
+        last four characters are shown.
       </p>
       <label>
         <input
+          ref={sessionRadioRef}
           type="radio"
           name="storage-mode"
           value="session"
@@ -107,6 +167,7 @@ export function StorageModeSelector({
       </p>
       <label>
         <input
+          ref={persistentRadioRef}
           type="radio"
           name="storage-mode"
           value="persistent"
@@ -126,6 +187,7 @@ export function StorageModeSelector({
           aria-labelledby="persistent-storage-title"
           aria-describedby="persistent-storage-disclosure"
           data-testid="persistent-confirmation"
+          onKeyDown={onDialogKeyDown}
         >
           <h3 id="persistent-storage-title">Confirm persistent storage</h3>
           <div id="persistent-storage-disclosure">
@@ -152,7 +214,11 @@ export function StorageModeSelector({
           >
             Confirm persistent storage
           </button>
-          <button type="button" onClick={declinePersistent}>
+          <button
+            ref={declineButtonRef}
+            type="button"
+            onClick={() => void declinePersistent()}
+          >
             Decline
           </button>
         </div>

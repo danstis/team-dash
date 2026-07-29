@@ -78,67 +78,35 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
 import { decryptToken, isTokenCryptoError } from "../data/crypto/token-crypto";
-import { credentialRepository } from "../data/db/repositories/credential.repository";
+import {
+  credentialRepository,
+  maskTokenIdentifier,
+} from "../data/db/repositories/credential.repository";
 import type { ViewState } from "../domain/types";
 
-/**
- * The credential storage mode surfaced to the rest of the app.
- * Mirrors the `mode` discriminant on `CredentialRecord` in
- * `src/data/db/schema.ts` (T021 / data-model.md) — kept as a local
- * type alias rather than re-importing the schema interface so this
- * module has no compile-time dependency on the Dexie row shape.
- */
 export type CredentialsMode = "session" | "persistent" | null;
 
-/**
- * The current credential the shell is holding. `token` is the
- * plaintext PAT for the lifetime of the call it backs; the provider
- * never logs it and never echoes it through a context field whose
- * name could be picked up by a React DevTools consumer (FR-008).
- *
- * `maskedIdentifier` is the only representation the rest of the app
- * is permitted to render — produced alongside the encrypted record by
- * the future `CredentialRepository` and surfaced here for downstream
- * UI (T044's `MaskedToken`).
- */
 export interface CredentialsSnapshot {
   mode: Exclude<CredentialsMode, null>;
   maskedIdentifier: string;
 }
 
-/**
- * The provider's public surface. The four action methods are
- * `async` even when their bodies are synchronous today — a future
- * `CredentialRepository` call is awaited inside, and the router/UI
- * consumers (T043's workspace selector, T045's settings panel) need
- * the promise to await the Dexie write before navigating.
- */
 export interface CredentialsContextValue {
-  /**
-   * The current `ViewState`. `'loading'` on the first synchronous
-   * render, then resolves to `'first_run'`, `'ready'`, or one of the
-   * failure states on the next render.
-   */
   state: ViewState;
-  /** The current mode once known — `null` until the IndexedDB lookup resolves. */
   mode: CredentialsMode;
-  /** The masked identifier once known — empty until the IndexedDB lookup resolves. */
   maskedIdentifier: string;
-  /** Hold the plaintext token in memory only (no Dexie write). */
   setSessionToken: (token: string, maskedIdentifier: string) => Promise<void>;
-  /** Encrypt + persist the token (FR-002a); deletes any prior persistent record first (FR-005a). */
   setPersistentToken: (
     token: string,
     maskedIdentifier: string,
   ) => Promise<void>;
-  /** Delete the persistent record; keep the token in memory only. */
   clearToSessionOnly: () => Promise<void>;
-  /** FR-007: single-action wipe of credentials + all locally retained Asana data. */
   clearAll: () => Promise<void>;
 }
 
@@ -172,17 +140,8 @@ const CredentialsContext = createContext<CredentialsContextValue>(
 
 CredentialsContext.displayName = "CredentialsContext";
 
-/**
- * Read the current credential state. Throws if called outside the
- * provider so a feature component that forgets to wrap with
- * `<CredentialsProvider>` fails fast at the call site rather than
- * silently rendering with the default `'loading'` state.
- */
 export function useCredentials(): CredentialsContextValue {
   const value = useContext(CredentialsContext);
-  // The default value is the only way `value` can come from outside a
-  // real provider — distinguishing the two cases lets the error
-  // message point a developer at the right place.
   if (value === CREDENTIALS_CONTEXT_DEFAULT) {
     throw new Error(
       "useCredentials must be called inside <CredentialsProvider>",
@@ -195,19 +154,13 @@ export interface CredentialsProviderProps {
   children: ReactNode;
 }
 
-/**
- * Mount the credentials context. Renders its children on the first
- * synchronous render with `state = 'loading'`; runs the IndexedDB
- * lookup + AES-GCM decrypt on `useEffect`; resolves to one of the
- * documented `ViewState` values (`'first_run'`, `'ready'`, …) on the
- * next render.
- */
 export function CredentialsProvider({
   children,
 }: CredentialsProviderProps): ReactNode {
   const [state, setState] = useState<ViewState>("loading");
   const [mode, setMode] = useState<CredentialsMode>(null);
   const [maskedIdentifier, setMaskedIdentifier] = useState<string>("");
+  const privateTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,14 +170,13 @@ export function CredentialsProvider({
         return;
       }
       if (stored === null) {
+        privateTokenRef.current = null;
+        setMode(null);
+        setMaskedIdentifier("");
         setState("first_run");
         return;
       }
 
-      // T031 only handles the persistent record. A session-only token
-      // (FR-002 "default mode") is held in memory only and therefore
-      // never appears in IndexedDB; the loader below reflects that
-      // distinction by treating "no persistent row" as `first_run`.
       try {
         const plaintext = await decryptToken(
           stored.encryptedTokenRecord.ciphertext,
@@ -234,32 +186,21 @@ export function CredentialsProvider({
         if (cancelled) {
           return;
         }
-        // The plaintext token never crosses the context boundary
-        // (FR-008) — we read it solely so a subsequent token-backing
-        // Asana call has it on hand. Today the only consumer is the
-        // route guard T046; future US1/US2 features read it via the
-        // narrower per-call API the future CredentialRepository will
-        // expose.
-        void plaintext;
+        privateTokenRef.current = plaintext;
         setMode("persistent");
-        setMaskedIdentifier(stored.maskedIdentifier);
+        setMaskedIdentifier(maskTokenIdentifier(plaintext));
         setState("ready");
       } catch (error) {
-        // FR-002b: a missing or corrupted non-extractable key, or a
-        // tampered ciphertext, MUST transition the app to the first-
-        // run credential entry screen rather than a dedicated error
-        // state. We also delete the corrupt row so a subsequent
-        // attempt can write a fresh record without colliding with a
-        // stale one.
         if (isTokenCryptoError(error)) {
           await credentialRepository.clearToSessionOnly().catch(() => {
-            // Best-effort cleanup; the next write path (T040) is the
-            // canonical owner of this row's lifecycle.
+            // Best-effort cleanup; the next write path is the canonical
+            // owner of this row's lifecycle.
           });
         }
         if (cancelled) {
           return;
         }
+        privateTokenRef.current = null;
         setMode(null);
         setMaskedIdentifier("");
         setState("first_run");
@@ -271,22 +212,11 @@ export function CredentialsProvider({
   }, []);
 
   const setSessionToken = useCallback(
-    async (_token: string, nextMaskedIdentifier: string): Promise<void> => {
-      // FR-005a: switching from persistent mode back to session-only —
-      // or replacing a stored token with a session-only one — MUST
-      // immediately delete the previous encrypted token record and
-      // its associated non-extractable key from IndexedDB, not wait
-      // for the full FR-007 clear-data action. Dexie's primary-key
-      // upsert on the `credentials` table guarantees there is at most
-      // one persistent row, so `delete("persistent")` is sufficient.
-      await credentialRepository.setSessionToken(_token);
-      // FR-008: the plaintext token value is intentionally not echoed
-      // back anywhere in this provider's state — only the masked
-      // identifier. The caller (e.g. the Settings credentials panel,
-      // T045) is the canonical owner of the in-memory token lifetime
-      // and decides when to forget it.
+    async (token: string, nextMaskedIdentifier: string): Promise<void> => {
+      await credentialRepository.setSessionToken(token);
+      privateTokenRef.current = token;
       setMode("session");
-      setMaskedIdentifier(nextMaskedIdentifier);
+      setMaskedIdentifier(nextMaskedIdentifier || maskTokenIdentifier(token));
       setState("ready");
     },
     [],
@@ -294,49 +224,33 @@ export function CredentialsProvider({
 
   const setPersistentToken = useCallback(
     async (token: string, nextMaskedIdentifier: string): Promise<void> => {
-      // FR-002a: encrypt the token under a freshly-generated
-      // non-extractable AES-GCM key (T027, `data/crypto/token-crypto`)
-      // and persist the encrypted record + key handle in IndexedDB.
-      // The key is non-extractable by design (Constitution Principle
-      // IV) so the raw key material cannot be copied out of the
-      // SubtleCrypto handle by reading the browser's storage files.
       await credentialRepository.setPersistentToken(token);
-
-      // FR-008: the plaintext token value never crosses the context
-      // boundary. The caller (Settings panel) keeps the in-memory
-      // token for the duration of the panel's lifetime and discards
-      // it on unmount / clear-all.
+      privateTokenRef.current = token;
       setMode("persistent");
-      setMaskedIdentifier(nextMaskedIdentifier);
+      setMaskedIdentifier(nextMaskedIdentifier || maskTokenIdentifier(token));
       setState("ready");
     },
     [],
   );
 
   const clearToSessionOnly = useCallback(async (): Promise<void> => {
-    // FR-005a: switching from persistent mode back to session-only
-    // MUST immediately delete the previous encrypted token record
-    // and its associated non-extractable key. The Dexie primary-key
-    // `delete("persistent")` is sufficient because the credentials
-    // table only ever holds the singleton persistent row keyed by
-    // `mode`.
     await credentialRepository.clearToSessionOnly();
+
+    if (privateTokenRef.current === null) {
+      setMode(null);
+      setMaskedIdentifier("");
+      setState("first_run");
+      return;
+    }
+
     setMode("session");
-    setMaskedIdentifier("");
+    setMaskedIdentifier(maskTokenIdentifier(privateTokenRef.current));
     setState("ready");
   }, []);
 
   const clearAll = useCallback(async (): Promise<void> => {
-    // FR-007: the single explicit action that clears the token AND
-    // all locally retained Asana data (cache, snapshots, team
-    // mapping overrides, named person groups, refresh sessions,
-    // workspaces selection, …) MUST be a single Dexie transaction
-    // spanning every store. A partial clear — token wiped but cache
-    // retained, or vice versa — is the contract violation this
-    // transaction prevents. Dexie's native transaction atomicity
-    // (Principle V) is the enforcement mechanism: the writes either
-    // all land or none do.
     await credentialRepository.clearAll();
+    privateTokenRef.current = null;
     setMode(null);
     setMaskedIdentifier("");
     setState("first_run");

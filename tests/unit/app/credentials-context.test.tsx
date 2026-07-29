@@ -56,6 +56,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "../../../src/data/db/schema";
 import {
+  encryptToken,
+  generateTokenKey,
+} from "../../../src/data/crypto/token-crypto";
+import {
   CredentialsProvider,
   useCredentials,
 } from "../../../src/app/credentials-context";
@@ -305,4 +309,82 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
       );
     });
   });
+
+  describe("session-mode transitions", () => {
+    function ActionsHarness(): React.ReactElement {
+      const value = useCredentials();
+      return (
+        <div>
+          <button
+            type="button"
+            onClick={() => {
+              void value.clearToSessionOnly();
+            }}
+          >
+            Clear to session
+          </button>
+          <span data-testid="action-state">{value.state}</span>
+          <span data-testid="action-mode">{value.mode ?? "none"}</span>
+          <span data-testid="action-masked">{value.maskedIdentifier}</span>
+        </div>
+      );
+    }
+
+    it("falls back to first_run when switching to session-only without a usable token", async () => {
+      render(
+        <CredentialsProvider>
+          <ActionsHarness />
+        </CredentialsProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("action-state").textContent).toBe(
+          "first_run",
+        );
+      });
+
+      screen.getByRole("button", { name: /clear to session/i }).click();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("action-state").textContent).toBe(
+          "first_run",
+        );
+      });
+      expect(screen.getByTestId("action-mode").textContent).toBe("none");
+      expect(screen.getByTestId("action-masked").textContent).toBe("");
+    });
+
+    it("retains a decrypted persistent token when switching to session-only", async () => {
+      const token = "fixture-persistent-token-wxyz";
+      const key = await generateTokenKey();
+      const encryptedTokenRecord = await encryptToken(token, key);
+      await db.credentials.put({
+        mode: "persistent",
+        encryptedTokenRecord: { ...encryptedTokenRecord, keyRef: key },
+        maskedIdentifier: "wxyz",
+        lastValidatedAt: null,
+        lastValidationResult: null,
+      });
+
+      render(
+        <CredentialsProvider>
+          <ActionsHarness />
+        </CredentialsProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("action-state").textContent).toBe("ready");
+      });
+      expect(screen.getByTestId("action-mode").textContent).toBe("persistent");
+
+      screen.getByRole("button", { name: /clear to session/i }).click();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("action-state").textContent).toBe("ready");
+        expect(screen.getByTestId("action-mode").textContent).toBe("session");
+      });
+      expect(await db.credentials.get("persistent")).toBeUndefined();
+    });
+  });
+
 });

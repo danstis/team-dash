@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,6 +58,17 @@ describe("StorageModeSelector", () => {
     expect(container.innerHTML).not.toContain(TOKEN);
   });
 
+  it.each(["a", "ab", "abc", "abcd"])(
+    "does not reveal the full token when the token length is %s",
+    (shortToken) => {
+      render(<StorageModeSelector token={shortToken} />);
+
+      const identifier = screen.getByText("••••");
+      expect(identifier).toBeInTheDocument();
+      expect(identifier).not.toHaveTextContent(shortToken);
+    },
+  );
+
   it("requires confirmation after showing the persistent-storage risk disclosure", () => {
     render(<StorageModeSelector token={TOKEN} />);
 
@@ -72,6 +84,39 @@ describe("StorageModeSelector", () => {
     ).toHaveFocus();
     expect(setPersistentToken).not.toHaveBeenCalled();
     expect(setSessionToken).not.toHaveBeenCalled();
+  });
+
+  it("traps focus inside the confirmation dialog and declines on Escape", async () => {
+    render(<StorageModeSelector token={TOKEN} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: /persistent/i }));
+
+    const dialog = screen.getByRole("alertdialog");
+    const confirmButton = within(dialog).getByRole("button", {
+      name: /confirm persistent storage/i,
+    });
+    const declineButton = within(dialog).getByRole("button", {
+      name: /decline/i,
+    });
+
+    expect(confirmButton).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(declineButton).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(confirmButton).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    await waitFor(() =>
+      expect(setSessionToken).toHaveBeenCalledWith(TOKEN, "wxyz"),
+    );
+    expect(setPersistentToken).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: /session[- ]only/i })).toHaveFocus(),
+    );
   });
 
   it("persists only after explicit acceptance", async () => {
@@ -125,5 +170,31 @@ describe("StorageModeSelector", () => {
     );
     expect(setPersistentToken).not.toHaveBeenCalled();
     expect(onModeSelected).toHaveBeenCalledWith("session");
+  });
+
+  it("syncs the checked radio with credential mode updates from context", () => {
+    const { rerender } = render(<StorageModeSelector token={TOKEN} />);
+
+    expect(
+      screen.getByRole("radio", { name: /session[- ]only/i }),
+    ).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /persistent/i })).not.toBeChecked();
+
+    useCredentialsMock.mockReturnValue({
+      state: "ready",
+      mode: "persistent",
+      maskedIdentifier: "wxyz",
+      setSessionToken,
+      setPersistentToken,
+      clearToSessionOnly: vi.fn(async () => undefined),
+      clearAll: vi.fn(async () => undefined),
+    });
+
+    rerender(<StorageModeSelector token={TOKEN} />);
+
+    expect(screen.getByRole("radio", { name: /persistent/i })).toBeChecked();
+    expect(
+      screen.getByRole("radio", { name: /session[- ]only/i }),
+    ).not.toBeChecked();
   });
 });

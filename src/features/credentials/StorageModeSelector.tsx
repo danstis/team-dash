@@ -28,6 +28,57 @@ function displayIdentifier(identifier: string): string {
   return `…${identifier}`;
 }
 
+interface PersistentStorageDialogProps {
+  readonly onConfirm: () => void;
+  readonly onDecline: () => void;
+  readonly confirmButtonRef: React.RefObject<HTMLButtonElement | null>;
+  readonly declineButtonRef: React.RefObject<HTMLButtonElement | null>;
+  readonly onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+}
+
+function PersistentStorageDialog({
+  onConfirm,
+  onDecline,
+  confirmButtonRef,
+  declineButtonRef,
+  onKeyDown,
+}: Readonly<PersistentStorageDialogProps>): ReactElement {
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="persistent-storage-title"
+      aria-describedby="persistent-storage-disclosure"
+      data-testid="persistent-confirmation"
+      onKeyDown={onKeyDown}
+    >
+      <h3 id="persistent-storage-title">Confirm persistent storage</h3>
+      <div id="persistent-storage-disclosure">
+        <p>
+          Your Asana personal access token is sensitive. Anyone who obtains it
+          may access the Asana data allowed by that token.
+        </p>
+        <p>
+          The token is encrypted at rest with AES-GCM and a non-extractable key.
+          This reduces opportunistic access to copied browser storage, but it
+          cannot protect the token from an attacker who can execute scripts in
+          this application&apos;s origin.
+        </p>
+        <p>
+          The stored token remains on this device and in this browser profile
+          until you switch to session-only storage or clear local data.
+        </p>
+      </div>
+      <button ref={confirmButtonRef} type="button" onClick={onConfirm}>
+        Confirm persistent storage
+      </button>
+      <button ref={declineButtonRef} type="button" onClick={onDecline}>
+        Decline
+      </button>
+    </div>
+  );
+}
+
 export function StorageModeSelector({
   token,
   maskedIdentifier = "",
@@ -136,17 +187,14 @@ export function StorageModeSelector({
         return;
       }
       event.preventDefault();
-      const currentIndex = focusableButtons.findIndex(
-        (button) => button === document.activeElement,
+      const activeIndex = focusableButtons.indexOf(
+        document.activeElement as HTMLButtonElement,
       );
       const delta = event.shiftKey ? -1 : 1;
-      const nextIndex =
-        currentIndex === -1
-          ? event.shiftKey
-            ? focusableButtons.length - 1
-            : 0
-          : (currentIndex + delta + focusableButtons.length) %
-            focusableButtons.length;
+      const baseIndex =
+        activeIndex === -1 ? (event.shiftKey ? -1 : 0) : activeIndex;
+      const offset = event.shiftKey ? focusableButtons.length : 0;
+      const nextIndex = (baseIndex + delta + offset) % focusableButtons.length;
       focusableButtons[nextIndex]?.focus();
     },
     [declinePersistent],
@@ -173,7 +221,7 @@ export function StorageModeSelector({
           onChange={() => {
             void selectSession();
           }}
-        />
+        />{" "}
         Session-only
       </label>
       <p>
@@ -188,7 +236,7 @@ export function StorageModeSelector({
           value="persistent"
           checked={selectedMode === "persistent"}
           onChange={requestPersistent}
-        />
+        />{" "}
         Persistent
       </label>
       <p>
@@ -196,47 +244,13 @@ export function StorageModeSelector({
       </p>
 
       {confirmationOpen && (
-        <div
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="persistent-storage-title"
-          aria-describedby="persistent-storage-disclosure"
-          data-testid="persistent-confirmation"
+        <PersistentStorageDialog
+          onConfirm={() => void confirmPersistent()}
+          onDecline={() => void declinePersistent()}
+          confirmButtonRef={confirmButtonRef}
+          declineButtonRef={declineButtonRef}
           onKeyDown={onDialogKeyDown}
-        >
-          <h3 id="persistent-storage-title">Confirm persistent storage</h3>
-          <div id="persistent-storage-disclosure">
-            <p>
-              Your Asana personal access token is sensitive. Anyone who obtains
-              it may access the Asana data allowed by that token.
-            </p>
-            <p>
-              The token is encrypted at rest with AES-GCM and a non-extractable
-              key. This reduces opportunistic access to copied browser storage,
-              but it cannot protect the token from an attacker who can execute
-              scripts in this application&apos;s origin.
-            </p>
-            <p>
-              The stored token remains on this device and in this browser
-              profile until you switch to session-only storage or clear local
-              data.
-            </p>
-          </div>
-          <button
-            ref={confirmButtonRef}
-            type="button"
-            onClick={() => void confirmPersistent()}
-          >
-            Confirm persistent storage
-          </button>
-          <button
-            ref={declineButtonRef}
-            type="button"
-            onClick={() => void declinePersistent()}
-          >
-            Decline
-          </button>
-        </div>
+        />
       )}
     </fieldset>
   );

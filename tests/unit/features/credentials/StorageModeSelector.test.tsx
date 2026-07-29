@@ -179,7 +179,9 @@ describe("StorageModeSelector", () => {
     expect(
       screen.getByRole("radio", { name: /session[- ]only/i }),
     ).not.toBeChecked();
-    expect(screen.getByRole("radio", { name: /persistent/i })).not.toBeChecked();
+    expect(
+      screen.getByRole("radio", { name: /persistent/i }),
+    ).not.toBeChecked();
 
     useCredentialsMock.mockReturnValue({
       state: "ready",
@@ -224,5 +226,4 @@ describe("StorageModeSelector", () => {
       screen.getByRole("radio", { name: /session[- ]only/i }),
     ).toBeChecked();
   });
-
 });

@@ -44,7 +44,9 @@ export function StorageModeSelector({
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const declineButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
-  const identifier = maskedIdentifierFor(token.length > 0 ? token : maskedIdentifier);
+  const identifier = maskedIdentifierFor(
+    token.length > 0 ? token : maskedIdentifier,
+  );
 
   useEffect(() => {
     setSelectedMode(credentials.mode);
@@ -102,7 +104,14 @@ export function StorageModeSelector({
     } finally {
       setPending(false);
     }
-  }, [credentials, identifier, onModeSelected, pending, restoreTriggerFocus, token]);
+  }, [
+    credentials,
+    identifier,
+    onModeSelected,
+    pending,
+    restoreTriggerFocus,
+    token,
+  ]);
 
   const declinePersistent = useCallback(async (): Promise<void> => {
     await selectSession();
@@ -119,8 +128,10 @@ export function StorageModeSelector({
       if (event.key !== "Tab") {
         return;
       }
-      const focusableButtons = [confirmButtonRef.current, declineButtonRef.current]
-        .filter((value): value is HTMLButtonElement => value !== null);
+      const focusableButtons = [
+        confirmButtonRef.current,
+        declineButtonRef.current,
+      ].filter((value): value is HTMLButtonElement => value !== null);
       if (focusableButtons.length === 0) {
         return;
       }

@@ -334,7 +334,9 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
           <span data-testid="action-state">{value.state}</span>
           <span data-testid="action-mode">{value.mode ?? "none"}</span>
           <span data-testid="action-masked">{value.maskedIdentifier}</span>
-          <span data-testid="action-token">{value.getPlaintextToken() ?? "none"}</span>
+          <span data-testid="action-token">
+            {value.getPlaintextToken() ?? "none"}
+          </span>
         </div>
       );
     }
@@ -403,7 +405,10 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
             <button
               type="button"
               onClick={() => {
-                void value.setSessionToken("fixture-session-token-1234", "1234");
+                void value.setSessionToken(
+                  "fixture-session-token-1234",
+                  "1234",
+                );
               }}
             >
               Set session token
@@ -416,7 +421,9 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
             >
               Clear all
             </button>
-            <span data-testid="setter-token">{value.getPlaintextToken() ?? "none"}</span>
+            <span data-testid="setter-token">
+              {value.getPlaintextToken() ?? "none"}
+            </span>
             <span data-testid="setter-state">{value.state}</span>
           </div>
         );
@@ -429,7 +436,9 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId("setter-state").textContent).toBe("first_run");
+        expect(screen.getByTestId("setter-state").textContent).toBe(
+          "first_run",
+        );
       });
 
       screen.getByRole("button", { name: /set session token/i }).click();
@@ -444,10 +453,10 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
 
       await waitFor(() => {
         expect(screen.getByTestId("setter-token").textContent).toBe("none");
-        expect(screen.getByTestId("setter-state").textContent).toBe("first_run");
+        expect(screen.getByTestId("setter-state").textContent).toBe(
+          "first_run",
+        );
       });
     });
-
   });
-
 });

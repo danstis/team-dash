@@ -31,6 +31,7 @@ describe("StorageModeSelector", () => {
       state: "first_run",
       mode: null,
       maskedIdentifier: "",
+      getPlaintextToken: () => null,
       setSessionToken,
       setPersistentToken,
       clearToSessionOnly: vi.fn(async () => undefined),
@@ -115,7 +116,7 @@ describe("StorageModeSelector", () => {
     expect(setPersistentToken).not.toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByRole("radio", { name: /session[- ]only/i })).toHaveFocus(),
+      expect(screen.getByRole("radio", { name: /persistent/i })).toHaveFocus(),
     );
   });
 
@@ -184,6 +185,7 @@ describe("StorageModeSelector", () => {
       state: "ready",
       mode: "persistent",
       maskedIdentifier: "wxyz",
+      getPlaintextToken: () => TOKEN,
       setSessionToken,
       setPersistentToken,
       clearToSessionOnly: vi.fn(async () => undefined),
@@ -197,4 +199,30 @@ describe("StorageModeSelector", () => {
       screen.getByRole("radio", { name: /session[- ]only/i }),
     ).not.toBeChecked();
   });
+
+  it("closes an open confirmation when credential mode changes externally", () => {
+    const { rerender } = render(<StorageModeSelector token={TOKEN} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: /persistent/i }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    useCredentialsMock.mockReturnValue({
+      state: "ready",
+      mode: "session",
+      maskedIdentifier: "wxyz",
+      getPlaintextToken: () => TOKEN,
+      setSessionToken,
+      setPersistentToken,
+      clearToSessionOnly: vi.fn(async () => undefined),
+      clearAll: vi.fn(async () => undefined),
+    });
+
+    rerender(<StorageModeSelector token={TOKEN} />);
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("radio", { name: /session[- ]only/i }),
+    ).toBeChecked();
+  });
+
 });

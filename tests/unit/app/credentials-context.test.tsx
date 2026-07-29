@@ -323,9 +323,18 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
           >
             Clear to session
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              void value.clearAll();
+            }}
+          >
+            Clear all
+          </button>
           <span data-testid="action-state">{value.state}</span>
           <span data-testid="action-mode">{value.mode ?? "none"}</span>
           <span data-testid="action-masked">{value.maskedIdentifier}</span>
+          <span data-testid="action-token">{value.getPlaintextToken() ?? "none"}</span>
         </div>
       );
     }
@@ -376,6 +385,7 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
         expect(screen.getByTestId("action-state").textContent).toBe("ready");
       });
       expect(screen.getByTestId("action-mode").textContent).toBe("persistent");
+      expect(screen.getByTestId("action-token").textContent).toBe(token);
 
       screen.getByRole("button", { name: /clear to session/i }).click();
 
@@ -385,6 +395,59 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
       });
       expect(await db.credentials.get("persistent")).toBeUndefined();
     });
+    it("exposes the plaintext token through a non-serialized provider method and clears it on clearAll", async () => {
+      function SetterHarness(): React.ReactElement {
+        const value = useCredentials();
+        return (
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                void value.setSessionToken("fixture-session-token-1234", "1234");
+              }}
+            >
+              Set session token
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void value.clearAll();
+              }}
+            >
+              Clear all
+            </button>
+            <span data-testid="setter-token">{value.getPlaintextToken() ?? "none"}</span>
+            <span data-testid="setter-state">{value.state}</span>
+          </div>
+        );
+      }
+
+      render(
+        <CredentialsProvider>
+          <SetterHarness />
+        </CredentialsProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("setter-state").textContent).toBe("first_run");
+      });
+
+      screen.getByRole("button", { name: /set session token/i }).click();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("setter-token").textContent).toBe(
+          "fixture-session-token-1234",
+        );
+      });
+
+      screen.getByRole("button", { name: /clear all/i }).click();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("setter-token").textContent).toBe("none");
+        expect(screen.getByTestId("setter-state").textContent).toBe("first_run");
+      });
+    });
+
   });
 
 });

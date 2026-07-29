@@ -77,10 +77,16 @@ export function StorageModeSelector({
     if (token.length === 0 || pending) {
       return;
     }
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    previousFocusRef.current = persistentRadioRef.current;
     setSelectedMode("persistent");
     setConfirmationOpen(true);
   }, [pending, token]);
+
+  const restoreTriggerFocus = useCallback((): void => {
+    setTimeout(() => {
+      previousFocusRef.current?.focus();
+    }, 0);
+  }, []);
 
   const confirmPersistent = useCallback(async (): Promise<void> => {
     if (token.length === 0 || pending) {
@@ -92,18 +98,16 @@ export function StorageModeSelector({
       setSelectedMode("persistent");
       setConfirmationOpen(false);
       onModeSelected?.("persistent");
-      persistentRadioRef.current?.focus();
+      restoreTriggerFocus();
     } finally {
       setPending(false);
     }
-  }, [credentials, identifier, onModeSelected, pending, token]);
+  }, [credentials, identifier, onModeSelected, pending, restoreTriggerFocus, token]);
 
   const declinePersistent = useCallback(async (): Promise<void> => {
     await selectSession();
-    setTimeout(() => {
-      sessionRadioRef.current?.focus();
-    }, 0);
-  }, [selectSession]);
+    restoreTriggerFocus();
+  }, [restoreTriggerFocus, selectSession]);
 
   const onDialogKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>): void => {

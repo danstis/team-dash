@@ -101,6 +101,7 @@ export interface CredentialsContextValue {
   state: ViewState;
   mode: CredentialsMode;
   maskedIdentifier: string;
+  getPlaintextToken: () => string | null;
   setSessionToken: (token: string, maskedIdentifier: string) => Promise<void>;
   setPersistentToken: (
     token: string,
@@ -114,6 +115,7 @@ const CREDENTIALS_CONTEXT_DEFAULT: CredentialsContextValue = {
   state: "loading",
   mode: null,
   maskedIdentifier: "",
+  getPlaintextToken: () => null,
   setSessionToken: async () => {
     throw new Error(
       "CredentialsProvider.setSessionToken called outside a provider",
@@ -211,6 +213,10 @@ export function CredentialsProvider({
     };
   }, []);
 
+  const getPlaintextToken = useCallback((): string | null => {
+    return privateTokenRef.current;
+  }, []);
+
   const setSessionToken = useCallback(
     async (token: string, nextMaskedIdentifier: string): Promise<void> => {
       await credentialRepository.setSessionToken(token);
@@ -261,6 +267,7 @@ export function CredentialsProvider({
       state,
       mode,
       maskedIdentifier,
+      getPlaintextToken,
       setSessionToken,
       setPersistentToken,
       clearToSessionOnly,
@@ -270,6 +277,7 @@ export function CredentialsProvider({
       state,
       mode,
       maskedIdentifier,
+      getPlaintextToken,
       setSessionToken,
       setPersistentToken,
       clearToSessionOnly,

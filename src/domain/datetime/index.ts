@@ -451,6 +451,10 @@ function buildIsoDate(year: number, month: number, day: number): ISODate {
   return formatIsoDate(year, month, day);
 }
 
+function daysSinceMonday(date: Date): number {
+  return (date.getUTCDay() + 6) % 7;
+}
+
 /**
  * Monday of the ISO week containing `value` (FR-031, fixed week start).
  * Accepts any of `ISODate`, `ISODateTime`, or `Date`; the calendar
@@ -465,7 +469,7 @@ export function startOfWeekInTimezone(
   // `new Date(Date.UTC(y, m-1, d)).getUTCDay()` returns 0 for Sunday and
   // 1 for Monday, so the offset to Monday is `(getUTCDay() + 6) % 7`.
   const utc = new Date(Date.UTC(year, month - 1, day));
-  const offset = (utc.getUTCDay() + 6) % 7;
+  const offset = daysSinceMonday(utc);
   utc.setUTCDate(utc.getUTCDate() - offset);
   return buildIsoDate(
     utc.getUTCFullYear(),
@@ -693,7 +697,7 @@ export function generateBuckets(
 function previousOrSameMonday(date: ISODate): ISODate {
   const { year, month, day } = parseIsoDate(date);
   const utc = new Date(Date.UTC(year, month - 1, day));
-  const offset = (utc.getUTCDay() + 6) % 7;
+  const offset = daysSinceMonday(utc);
   if (offset === 0) {
     return date;
   }

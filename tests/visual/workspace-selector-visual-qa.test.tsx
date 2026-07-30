@@ -16,7 +16,7 @@ import { cleanup, render } from "@testing-library/react";
 import { type ReactElement, createElement, StrictMode } from "react";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterAll, describe, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/app/workspace-context", () => ({
   useWorkspace: () => workspaceContextMock,
@@ -184,6 +184,7 @@ const SPECS: readonly CaptureSpec[] = [
 describe("WorkspaceSelector visual QA — review artefacts", () => {
   it("emits one HTML artefact per state to tmp/visual-qa/", () => {
     mkdirSync(OUTPUT_DIR, { recursive: true });
+    const emittedPages: string[] = [];
 
     for (const spec of SPECS) {
       workspaceContextMock.workspace = spec.contextWorkspace;
@@ -197,13 +198,14 @@ describe("WorkspaceSelector visual QA — review artefacts", () => {
         ) as ReactElement,
       );
       const body = result.container.outerHTML;
-      writeFileSync(
-        resolve(OUTPUT_DIR, `${spec.slug}.html`),
-        page(spec.title, body),
-        "utf8",
-      );
+      expect(body).toContain("td-workspace-selector");
+      const html = page(spec.title, body);
+      writeFileSync(resolve(OUTPUT_DIR, spec.slug + ".html"), html, "utf8");
+      emittedPages.push(html);
       cleanup();
     }
+
+    expect(emittedPages).toHaveLength(SPECS.length);
   });
 });
 

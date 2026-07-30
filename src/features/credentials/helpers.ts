@@ -63,5 +63,8 @@ export function maskedIdentifierFor(token: string): string {
   if (token.length === 0) {
     return "";
   }
+  if (token.length <= 4) {
+    return "••••";
+  }
   return token.slice(-4);
 }

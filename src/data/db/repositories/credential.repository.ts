@@ -173,8 +173,11 @@ export interface CredentialRepository {
  * duplicate the last-four rule.
  */
 export function maskTokenIdentifier(token: string): string {
+  if (token.length === 0) {
+    return "";
+  }
   if (token.length <= 4) {
-    return token;
+    return "••••";
   }
   return token.slice(-4);
 }

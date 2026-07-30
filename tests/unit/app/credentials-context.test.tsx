@@ -56,7 +56,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "../../../src/data/db/schema";
 import {
+  encryptToken,
+  generateTokenKey,
+} from "../../../src/data/crypto/token-crypto";
+import {
   CredentialsProvider,
+  useCredentialTokenAccessor,
   useCredentials,
 } from "../../../src/app/credentials-context";
 
@@ -303,6 +308,158 @@ describe("T031 CredentialsProvider (T031 app shell contract)", () => {
           <Probe />
         </CredentialsProvider>,
       );
+    });
+  });
+
+  describe("session-mode transitions", () => {
+    function ActionsHarness(): React.ReactElement {
+      const value = useCredentials();
+      const tokenAccessor = useCredentialTokenAccessor();
+      return (
+        <div>
+          <button
+            type="button"
+            onClick={() => {
+              void value.clearToSessionOnly();
+            }}
+          >
+            Clear to session
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void value.clearAll();
+            }}
+          >
+            Clear all
+          </button>
+          <span data-testid="action-state">{value.state}</span>
+          <span data-testid="action-mode">{value.mode ?? "none"}</span>
+          <span data-testid="action-masked">{value.maskedIdentifier}</span>
+          <span data-testid="action-token">
+            {tokenAccessor.getPlaintextToken() ?? "none"}
+          </span>
+        </div>
+      );
+    }
+
+    it("falls back to first_run when switching to session-only without a usable token", async () => {
+      render(
+        <CredentialsProvider>
+          <ActionsHarness />
+        </CredentialsProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("action-state").textContent).toBe(
+          "first_run",
+        );
+      });
+
+      screen.getByRole("button", { name: /clear to session/i }).click();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("action-state").textContent).toBe(
+          "first_run",
+        );
+      });
+      expect(screen.getByTestId("action-mode").textContent).toBe("none");
+      expect(screen.getByTestId("action-masked").textContent).toBe("");
+    });
+
+    it("retains a decrypted persistent token when switching to session-only", async () => {
+      const token = "fixture-persistent-token-wxyz";
+      const key = await generateTokenKey();
+      const encryptedTokenRecord = await encryptToken(token, key);
+      await db.credentials.put({
+        mode: "persistent",
+        encryptedTokenRecord: { ...encryptedTokenRecord, keyRef: key },
+        maskedIdentifier: "wxyz",
+        lastValidatedAt: null,
+        lastValidationResult: null,
+      });
+
+      render(
+        <CredentialsProvider>
+          <ActionsHarness />
+        </CredentialsProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("action-state").textContent).toBe("ready");
+      });
+      expect(screen.getByTestId("action-mode").textContent).toBe("persistent");
+      expect(screen.getByTestId("action-token").textContent).toBe(token);
+
+      screen.getByRole("button", { name: /clear to session/i }).click();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("action-state").textContent).toBe("ready");
+        expect(screen.getByTestId("action-mode").textContent).toBe("session");
+      });
+      expect(await db.credentials.get("persistent")).toBeUndefined();
+    });
+    it("exposes the plaintext token through a non-serialized provider method and clears it on clearAll", async () => {
+      function SetterHarness(): React.ReactElement {
+        const value = useCredentials();
+        const tokenAccessor = useCredentialTokenAccessor();
+        return (
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                void value.setSessionToken(
+                  "fixture-session-token-1234",
+                  "1234",
+                );
+              }}
+            >
+              Set session token
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void value.clearAll();
+              }}
+            >
+              Clear all
+            </button>
+            <span data-testid="setter-token">
+              {tokenAccessor.getPlaintextToken() ?? "none"}
+            </span>
+            <span data-testid="setter-state">{value.state}</span>
+          </div>
+        );
+      }
+
+      render(
+        <CredentialsProvider>
+          <SetterHarness />
+        </CredentialsProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("setter-state").textContent).toBe(
+          "first_run",
+        );
+      });
+
+      screen.getByRole("button", { name: /set session token/i }).click();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("setter-token").textContent).toBe(
+          "fixture-session-token-1234",
+        );
+      });
+
+      screen.getByRole("button", { name: /clear all/i }).click();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("setter-token").textContent).toBe("none");
+        expect(screen.getByTestId("setter-state").textContent).toBe(
+          "first_run",
+        );
+      });
     });
   });
 });

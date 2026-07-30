@@ -3,7 +3,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type KeyboardEvent,
   type ReactElement,
 } from "react";
 
@@ -28,12 +27,26 @@ function displayIdentifier(identifier: string): string {
   return `…${identifier}`;
 }
 
+function computeNextFocusIndex(
+  activeIndex: number,
+  shiftKey: boolean,
+  total: number,
+): number {
+  if (total <= 0) {
+    return 0;
+  }
+  if (activeIndex === -1) {
+    return shiftKey ? total - 1 : 0;
+  }
+  const delta = shiftKey ? -1 : 1;
+  return (((activeIndex + delta) % total) + total) % total;
+}
+
 interface PersistentStorageDialogProps {
   readonly onConfirm: () => void;
   readonly onDecline: () => void;
   readonly confirmButtonRef: React.RefObject<HTMLButtonElement | null>;
   readonly declineButtonRef: React.RefObject<HTMLButtonElement | null>;
-  readonly onKeyDown: (event: KeyboardEvent<HTMLFormElement>) => void;
 }
 
 function PersistentStorageDialog({
@@ -41,7 +54,6 @@ function PersistentStorageDialog({
   onDecline,
   confirmButtonRef,
   declineButtonRef,
-  onKeyDown,
 }: Readonly<PersistentStorageDialogProps>): ReactElement {
   return (
     <form
@@ -50,7 +62,6 @@ function PersistentStorageDialog({
       aria-labelledby="persistent-storage-title"
       aria-describedby="persistent-storage-disclosure"
       data-testid="persistent-confirmation"
-      onKeyDown={onKeyDown}
     >
       <h3 id="persistent-storage-title">Confirm persistent storage</h3>
       <div id="persistent-storage-disclosure">
@@ -169,8 +180,11 @@ export function StorageModeSelector({
     restoreTriggerFocus();
   }, [restoreTriggerFocus, selectSession]);
 
-  const onDialogKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLFormElement>): void => {
+  useEffect(() => {
+    if (!confirmationOpen) {
+      return;
+    }
+    const handler = (event: globalThis.KeyboardEvent): void => {
       if (event.key === "Escape") {
         event.preventDefault();
         void declinePersistent();
@@ -190,19 +204,18 @@ export function StorageModeSelector({
       const activeIndex = focusableButtons.indexOf(
         document.activeElement as HTMLButtonElement,
       );
-      let nextIndex = 0;
-      if (activeIndex === -1) {
-        nextIndex = event.shiftKey ? focusableButtons.length - 1 : 0;
-      } else {
-        const delta = event.shiftKey ? -1 : 1;
-        nextIndex =
-          (activeIndex + delta + focusableButtons.length) %
-          focusableButtons.length;
-      }
+      const nextIndex = computeNextFocusIndex(
+        activeIndex,
+        event.shiftKey,
+        focusableButtons.length,
+      );
       focusableButtons[nextIndex]?.focus();
-    },
-    [declinePersistent],
-  );
+    };
+    document.addEventListener("keydown", handler);
+    return () => {
+      document.removeEventListener("keydown", handler);
+    };
+  }, [confirmationOpen, declinePersistent]);
 
   return (
     <fieldset
@@ -253,7 +266,6 @@ export function StorageModeSelector({
           onDecline={() => void declinePersistent()}
           confirmButtonRef={confirmButtonRef}
           declineButtonRef={declineButtonRef}
-          onKeyDown={onDialogKeyDown}
         />
       )}
     </fieldset>

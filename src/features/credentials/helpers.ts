@@ -3,6 +3,14 @@ import type { z } from "zod";
 import { asanaUserSchema } from "../../data/asana/schemas";
 import type { AsanaClientResult } from "../../data/asana/types";
 
+/**
+ * Milliseconds in one second. Converts the `retryAfterMs` carried by
+ * the `rate_limited` outcome into a whole-second display value, matching
+ * the project-wide unit-convention documented in
+ * `src/data/asana/client.ts` and `src/shared/states/RateLimitedState.tsx`.
+ */
+const MS_PER_SECOND = 1_000;
+
 export type CredentialValidationOutcomeKind =
   | "valid"
   | "invalid_token"
@@ -42,7 +50,7 @@ export function summariseUserValidationResult(
       return {
         kind: "rate_limited",
         message: `Rate limited by Asana. Retry after ${Math.round(
-          result.retryAfterMs / 1000,
+          result.retryAfterMs / MS_PER_SECOND,
         )}s.`,
       };
     case "network_error":

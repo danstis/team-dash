@@ -213,11 +213,16 @@ export function WorkspaceSelector({
         aria-labelledby={labelId}
       >
         <h3 id={labelId}>Choose a workspace</h3>
-        <p role="status">
+        {/* SonarQube typescript:S6819 — use the native <output> element
+            (whose implicit ARIA role is "status") instead of overlaying
+            role="status" on a <p> so the empty-state copy is announced
+            consistently across assistive technology and the lint rule
+            stays green. */}
+        <output>
           No accessible workspaces were returned for this token. Confirm the
           token has at least one workspace membership, then test the token
           again.
-        </p>
+        </output>
       </section>
     );
   }

@@ -12,15 +12,8 @@
  * coverage it provides is asserted by attaching the artefacts, not
  * by CI assertions.
  */
-import {
-  cleanup,
-  render,
-} from "@testing-library/react";
-import {
-  type ReactElement,
-  createElement,
-  StrictMode,
-} from "react";
+import { cleanup, render } from "@testing-library/react";
+import { type ReactElement, createElement, StrictMode } from "react";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterAll, describe, it, vi } from "vitest";
@@ -177,7 +170,8 @@ const SPECS: readonly CaptureSpec[] = [
   },
   {
     slug: "03-populated-pre-selected",
-    title: "Populated — three workspaces, Acme Sandbox pre-selected from context",
+    title:
+      "Populated — three workspaces, Acme Sandbox pre-selected from context",
     workspaces: WORKSPACES,
     contextWorkspace: {
       gid: WORKSPACES[1].gid,

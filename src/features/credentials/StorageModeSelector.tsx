@@ -33,7 +33,7 @@ interface PersistentStorageDialogProps {
   readonly onDecline: () => void;
   readonly confirmButtonRef: React.RefObject<HTMLButtonElement | null>;
   readonly declineButtonRef: React.RefObject<HTMLButtonElement | null>;
-  readonly onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+  readonly onKeyDown: (event: KeyboardEvent<HTMLFormElement>) => void;
 }
 
 function PersistentStorageDialog({
@@ -44,7 +44,7 @@ function PersistentStorageDialog({
   onKeyDown,
 }: Readonly<PersistentStorageDialogProps>): ReactElement {
   return (
-    <div
+    <form
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="persistent-storage-title"
@@ -75,7 +75,7 @@ function PersistentStorageDialog({
       <button ref={declineButtonRef} type="button" onClick={onDecline}>
         Decline
       </button>
-    </div>
+    </form>
   );
 }
 
@@ -170,7 +170,7 @@ export function StorageModeSelector({
   }, [restoreTriggerFocus, selectSession]);
 
   const onDialogKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>): void => {
+    (event: KeyboardEvent<HTMLFormElement>): void => {
       if (event.key === "Escape") {
         event.preventDefault();
         void declinePersistent();
@@ -190,11 +190,15 @@ export function StorageModeSelector({
       const activeIndex = focusableButtons.indexOf(
         document.activeElement as HTMLButtonElement,
       );
-      const delta = event.shiftKey ? -1 : 1;
-      const baseIndex =
-        activeIndex === -1 ? (event.shiftKey ? -1 : 0) : activeIndex;
-      const offset = event.shiftKey ? focusableButtons.length : 0;
-      const nextIndex = (baseIndex + delta + offset) % focusableButtons.length;
+      let nextIndex = 0;
+      if (activeIndex === -1) {
+        nextIndex = event.shiftKey ? focusableButtons.length - 1 : 0;
+      } else {
+        const delta = event.shiftKey ? -1 : 1;
+        nextIndex =
+          (activeIndex + delta + focusableButtons.length) %
+          focusableButtons.length;
+      }
       focusableButtons[nextIndex]?.focus();
     },
     [declinePersistent],

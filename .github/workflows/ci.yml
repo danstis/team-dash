@@ -271,7 +271,17 @@ jobs:
 
   sonar:
     name: SonarQube scan
-    needs: [lint, format-check, typecheck, test-unit, test-contract, pwa-check, docker-build, test-e2e]
+    needs:
+      [
+        lint,
+        format-check,
+        typecheck,
+        test-unit,
+        test-contract,
+        pwa-check,
+        docker-build,
+        test-e2e,
+      ]
     runs-on: ubuntu-latest
     permissions:
       contents: read

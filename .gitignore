@@ -137,6 +137,9 @@ dist-ssr/
 # Test coverage output (vitest --coverage, jest --coverage, nyc, etc.)
 coverage/
 
+# Local scratch + ad-hoc tooling output (visual QA artefacts, etc.)
+tmp/
+
 # Environment
 .env.local
 .env.development.local

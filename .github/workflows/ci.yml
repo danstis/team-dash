@@ -175,6 +175,25 @@ jobs:
             test-results/contract-sonar.xml
           if-no-files-found: error
 
+  test-integration:
+    name: Integration tests
+    needs: install
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Run integration tests
+        run: npm run test:integration
+
   build:
     name: Build
     needs: install
@@ -278,6 +297,7 @@ jobs:
         typecheck,
         test-unit,
         test-contract,
+        test-integration,
         pwa-check,
         docker-build,
         test-e2e,

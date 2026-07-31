@@ -90,12 +90,7 @@ npm run build           # production Vite build + PWA/service-worker output
 npm run test:e2e        # Playwright — offline mode, PWA install, first-run flow
 ```
 
-`npm run test:integration` is a required CI gate and must not be configured with
-`continue-on-error`. Before T046 (BSOD-174) lands, the four test-first route
-guard assertions in `tests/integration/credentials/first-run.test.tsx` are
-intentionally RED at lines 531, 581, 623, and 726. That failure is expected for
-the pre-T046 plumbing stage; the same command must pass once the route guard is
-implemented.
+`npm run test:integration` is a required CI gate (peers with `test-unit`/`test-contract`/`build`, runs in parallel via the BSOD-261 parallelised workflow). It exercises every `tests/integration/**` suite — including the T046 route-guard assertions in `tests/integration/credentials/first-run.test.tsx`, which turn Green once both the credential and workspace providers report `ready` and the gate dispatches to the reporting placeholder.
 
 Every other command above MUST pass without network access to a real Asana
 workspace (NFR-005). `npm run test:unit -- domain/metrics` alone is

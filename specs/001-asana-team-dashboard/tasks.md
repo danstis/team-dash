@@ -42,6 +42,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [x] [BSOD-140] T012 [P] Create `docker/nginx.conf` (SPA fallback routing; service-worker file served `Cache-Control: no-cache`; hashed assets long-cache)
 - [x] [BSOD-141] T013 Add npm scripts to `package.json`: `dev`, `build`, `lint`, `format:check`, `typecheck`, `test:unit`, `test:contract`, `test:e2e`
 - [x] [BSOD-142] T014 [P] Create `.github/workflows/ci.yml` running, per Principle III: install → lint → format:check → typecheck → test:unit → test:contract → build → PWA/service-worker output check → docker build → test:e2e
+- [x] [BSOD-261] T014.1 [P] Parallelise `.github/workflows/ci.yml` so the Principle III gate fans out: 6 jobs off `install` (lint, format:check, typecheck, test:unit, test:contract, build), 2 jobs off `build` (pwa-check, docker-build) with `test:e2e` also waiting for `docker-build` (artifact dependency), then `sonar` → quality-gate — preserves all artifact wiring and SHA pins from T014, no `continue-on-error` / `if: always()` on required jobs
 - [x] [BSOD-143] T015 [P] Write `README.md` covering product boundary, prerequisites, PAT risks, local dev, testing, Docker deployment, browser-storage implications, offline limitations, data-clearing steps, and troubleshooting (Constitution Principle VIII)
 
 **Checkpoint**: `npm run dev` serves an empty shell; `npm run lint`/`typecheck`/`build` all pass on a trivial app.

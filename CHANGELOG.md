@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/danstis/team-dash/compare/v0.3.0...v0.4.0) (2026-07-31)
+
+
+### Features
+
+* **credentials:** add CredentialRepository (BSOD-168) ([#92](https://github.com/danstis/team-dash/issues/92)) ([bf552cd](https://github.com/danstis/team-dash/commit/bf552cd687fc5c422bb01a4bf12b38570f074869))
+* **credentials:** add storage mode selector (BSOD-170) ([#97](https://github.com/danstis/team-dash/issues/97)) ([fd532b8](https://github.com/danstis/team-dash/commit/fd532b894a7ee34b935f9ae451634f54b3c56d37))
+* **credentials:** add TokenEntryForm and TestTokenButton (BSOD-169) ([#94](https://github.com/danstis/team-dash/issues/94)) ([8de117d](https://github.com/danstis/team-dash/commit/8de117d19b85e7d9b710828cca17e00ce429f64f))
+* **credentials:** add WorkspaceSelector (BSOD-171) ([#102](https://github.com/danstis/team-dash/issues/102)) ([a400f27](https://github.com/danstis/team-dash/commit/a400f2748d92d899bdc4d19f83cb7b5f7b9e4c28))
+
+
+### Bug fixes
+
+* **asana-client:** name MS_PER_SECOND unit-conversion constant (BSOD-291) ([#95](https://github.com/danstis/team-dash/issues/95)) ([eb70e4f](https://github.com/danstis/team-dash/commit/eb70e4f0c77e2dff7353d51e409c5d8e8a17671f))
+* **credentials:** name MS_PER_SECOND unit-conversion constant (BSOD-293) ([#105](https://github.com/danstis/team-dash/issues/105)) ([3d9ad9e](https://github.com/danstis/team-dash/commit/3d9ad9e42a4d8724ba8c922c8e814065e81f6a48))
+
 ## [0.3.0](https://github.com/danstis/team-dash/compare/v0.2.0...v0.3.0) (2026-07-28)
 
 

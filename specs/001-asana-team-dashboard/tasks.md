@@ -139,21 +139,14 @@ Each row below is one atomic deliverable: write the failing test for the intende
 
 **Independent Test**: Open the task table, apply date-range + assignee filters together, confirm row count changes and filters stay listed, clear filters, open a multi-project task's detail.
 
-### Tests for User Story 3
+### User Story 3 — single-task red→green delivery
 
-- [ ] [BSOD-193] T065 [P] [US3] Unit tests for composable `FilterCriteria` predicates (date range, assignee incl. "unassigned", project, completion state, and combinations) in `tests/unit/domain/filtering/filters.test.ts`
-- [ ] [BSOD-194] T066 [P] [US3] Integration test: combined date-range + assignee filter updates row count, active filters remain listed, clear-all restores the full list in `tests/integration/tasks/task-table-filters.test.tsx`
-- [ ] [BSOD-195] T067 [P] [US3] Integration test: task detail shows all project memberships and an Open-in-Asana link with no token present in the URL/request in `tests/integration/tasks/task-detail-drilldown.test.tsx`
-- [ ] [BSOD-196] T068 [P] [US3] Integration test: a zero-match filter combination shows an explicit no-results state in `tests/integration/tasks/no-results.test.tsx`
+Each row below is one atomic deliverable: write the failing test for the intended reason, then implement so the test passes. The whole row closes as one PR with CI green at every commit. Cross-task "stub to unblock CI" commits are forbidden per `plan.md:51` and `constitution.md:248–253`.
 
-### Implementation for User Story 3
-
-- [ ] [BSOD-197] T069 [US3] Implement composable `FilterCriteria` predicates in `src/domain/filtering/filters.ts`
-- [ ] [BSOD-198] T070 [US3] Implement `TaskTable` (name, assignee, project(s), priority, dates, completion state, estimate/actual) in `src/features/tasks/TaskTable.tsx`
-- [ ] [BSOD-199] T071 [US3] Implement `FilterBar` (date-range presets incl. custom, assignee, project, completion state) in `src/features/tasks/FilterBar.tsx`
-- [ ] [BSOD-200] T072 [US3] Implement `ActiveFiltersList` with a clear-all action in `src/features/tasks/ActiveFiltersList.tsx`
-- [ ] [BSOD-201] T073 [US3] Implement the `NoResultsState` component in `src/features/tasks/NoResultsState.tsx`
-- [ ] [BSOD-202] T074 [US3] Implement `TaskDetailDrawer` (all project memberships, dependencies, Open-in-Asana link builder that never embeds the token) in `src/features/tasks/TaskDetailDrawer.tsx`
+- [ ] T065 [P] [US3] `FilterCriteria` predicates red→green — write the composable-predicate unit tests in `tests/unit/domain/filtering/filters.test.ts` (date range, assignee incl. "unassigned", project, completion state, combinations); confirm they fail for the intended reason; then implement the composable `FilterCriteria` predicates in `src/domain/filtering/filters.ts` so all cases pass.
+- [ ] T066 [P] [US3] Task-list filter UI red→green — write the combined-filter integration test in `tests/integration/tasks/task-table-filters.test.tsx` (combined date-range + assignee filter updates row count, active filters remain listed, clear-all restores the full list); confirm it fails; then implement `TaskTable` (name, assignee, project(s), priority, dates, completion state, estimate/actual) in `src/features/tasks/TaskTable.tsx`, `FilterBar` (date-range presets incl. custom, assignee, project, completion state) in `src/features/tasks/FilterBar.tsx`, and `ActiveFiltersList` (clear-all action) in `src/features/tasks/ActiveFiltersList.tsx` so the test passes.
+- [ ] T067 [P] [US3] `TaskDetailDrawer` red→green — write the task-detail integration test in `tests/integration/tasks/task-detail-drilldown.test.tsx` (all project memberships, dependencies, Open-in-Asana link with no token in URL/request); confirm it fails; then implement `TaskDetailDrawer` (all project memberships, dependencies, Open-in-Asana link builder that never embeds the token) in `src/features/tasks/TaskDetailDrawer.tsx` so the test passes.
+- [ ] T068 [P] [US3] `NoResultsState` red→green — write the no-results integration test in `tests/integration/tasks/no-results.test.tsx` (zero-match filter combination shows explicit no-results state); confirm it fails; then implement `NoResultsState` in `src/features/tasks/NoResultsState.tsx` so the test passes.
 
 **Checkpoint**: User Stories 1–3 all work independently.
 
@@ -165,18 +158,14 @@ Each row below is one atomic deliverable: write the failing test for the intende
 
 **Independent Test**: Select "last 30 days," verify created/completed counts and effort sums against a hand-computed fixture, switch to the effort view, group by team member, drill into one chart point.
 
-### Tests for User Story 4
+### User Story 4 — single-task red→green delivery
 
-- [ ] [BSOD-203] T075 [P] [US4] Unit test `calculateWorkAddedVsCompleted`: exact figures against a hand-computed fixture, dedup for a multi-project task, drill-down parity, unestimated-exclusion disclosure, `groupBy` incl. explicit `unassigned`/`no_priority` keys in `tests/unit/domain/metrics/workAddedCompleted.test.ts`
-- [ ] [BSOD-204] T076 [P] [US4] Integration test: chart renders created/completed per bucket, count↔effort toggle, `groupBy` split, drill-down list matches the displayed figure in `tests/integration/metrics/work-added-completed.test.tsx`
-- [ ] [BSOD-205] T077 [P] [US4] Create `fixtures/asana/small-dataset/expected-metrics.json` with hand-computed reference values for quickstart.md step 8 / SC-005
+Each row below is one atomic deliverable: write the failing test for the intended reason, then implement so the test passes. The whole row closes as one PR with CI green at every commit. Cross-task "stub to unblock CI" commits are forbidden per `plan.md:51` and `constitution.md:248–253`.
 
-### Implementation for User Story 4
-
-- [ ] [BSOD-206] T078 [US4] Implement `calculateWorkAddedVsCompleted` per contracts/metrics-engine.md (auto-sized buckets, independent created/completed scans, `groupBy`, `dedupeByGid`-backed dedup) in `src/domain/metrics/workAddedCompleted.ts`
-- [ ] [BSOD-207] T079 [US4] Implement `WorkAddedCompletedChart` (Recharts, paired with an accessible data-table alternative) in `src/features/metrics/WorkAddedCompletedChart.tsx`
-- [ ] [BSOD-208] T080 [US4] Implement `CountEffortToggle` and `GroupBySelector` (assignee/team/project/portfolio/priority) in `src/features/metrics/ChartControls.tsx`
-- [ ] [BSOD-209] T081 [US4] Implement the chart-point/series drill-down panel, reusing `TaskTable`/`TaskDetailDrawer`, in `src/features/metrics/DrillDownPanel.tsx`
+- [ ] T075 [P] [US4] `calculateWorkAddedVsCompleted` metric + reference fixture red→green — create `fixtures/asana/small-dataset/expected-metrics.json` with hand-computed reference values for quickstart.md step 8 / SC-005; write the `calculateWorkAddedVsCompleted` unit test in `tests/unit/domain/metrics/workAddedCompleted.test.ts` (exact figures against the hand-computed fixture, dedup for a multi-project task, drill-down parity, unestimated-exclusion disclosure, `groupBy` incl. explicit `unassigned`/`no_priority` keys); confirm it fails for the intended reason; then implement `calculateWorkAddedVsCompleted` per contracts/metrics-engine.md (auto-sized buckets, independent created/completed scans, `groupBy`, `dedupeByGid`-backed dedup) in `src/domain/metrics/workAddedCompleted.ts` so the test passes.
+- [ ] T076 [P] [US4] `WorkAddedCompletedChart` integration red→green — write the integration test in `tests/integration/metrics/work-added-completed.test.tsx` (chart renders created/completed per bucket, count↔effort toggle, `groupBy` split, drill-down list matches the displayed figure); confirm it fails; then implement `WorkAddedCompletedChart` (Recharts, paired with an accessible data-table alternative) in `src/features/metrics/WorkAddedCompletedChart.tsx` so the test passes.
+- [ ] T080 [P] [US4] `ChartControls` red→green — write the chart-controls integration test in `tests/integration/metrics/chart-controls.test.tsx` (count↔effort toggle and `groupBy` selector render and dispatch the right state changes; reused by US5 backlog and US8 delivery views); confirm it fails; then implement `CountEffortToggle` and `GroupBySelector` (assignee/team/project/portfolio/priority) in `src/features/metrics/ChartControls.tsx` so the test passes.
+- [ ] T081 [P] [US4] `DrillDownPanel` red→green — write the integration test in `tests/integration/metrics/drill-down-panel.test.tsx` (chart-point/series drill-down panel reuses `TaskTable`/`TaskDetailDrawer` and the rendered list matches the displayed figure); confirm it fails; then implement `DrillDownPanel` in `src/features/metrics/DrillDownPanel.tsx` so the test passes.
 
 **Checkpoint**: User Stories 1–4 all work independently.
 
@@ -188,17 +177,14 @@ Each row below is one atomic deliverable: write the failing test for the intende
 
 **Independent Test**: With a single completed refresh, load the backlog view, confirm current incomplete count/effort, confirm the trend reconstructs from task dates alone, filter to one project, confirm unestimated backlog is shown separately.
 
-### Tests for User Story 5
+### User Story 5 — single-task red→green delivery
 
-- [ ] [BSOD-210] T082 [P] [US5] Unit test `calculateBacklogCurrent` and `calculateBacklogDirection`: reconstruction predicate (`createdAt <= d && (completedAt == null || completedAt > d)`), retroactive-current-estimate disclosure, up/down/flat trend, dedup, per-point drill-down parity in `tests/unit/domain/metrics/backlog.test.ts`
-- [ ] [BSOD-211] T083 [P] [US5] Integration test: backlog view from a single refresh shows current figures and a reconstructed trend with no prior-day refresh required; project filter shows unestimated backlog separately in `tests/integration/metrics/backlog.test.tsx`
+Each row below is one atomic deliverable: write the failing test for the intended reason, then implement so the test passes. The whole row closes as one PR with CI green at every commit. Cross-task "stub to unblock CI" commits are forbidden per `plan.md:51` and `constitution.md:248–253`.
 
-### Implementation for User Story 5
-
-- [ ] [BSOD-212] T084 [US5] Implement `calculateBacklogCurrent` and `calculateBacklogDirection` as the single reconstruction-predicate implementation (research.md §11) in `src/domain/metrics/backlog.ts`
-- [ ] [BSOD-213] T085 [US5] Wire `SnapshotRepository.backfillSnapshots` to call `calculateBacklogDirection` as its sole computation path (no parallel reimplementation) in `src/data/db/repositories/snapshot.repository.ts`
-- [ ] [BSOD-214] T086 [US5] Implement `BacklogView` (current count/effort cards, unestimated-separate figure, directional trend chart, workspace/reporting-team/Asana-team/project/portfolio/assignee scoping) in `src/features/metrics/BacklogView.tsx`
-- [ ] [BSOD-215] T087 [US5] Implement backlog drill-down (per-point contributing incomplete-task list) in `src/features/metrics/BacklogDrillDown.tsx`
+- [ ] T082 [P] [US5] Backlog metric red→green — write the unit test in `tests/unit/domain/metrics/backlog.test.ts` for `calculateBacklogCurrent` and `calculateBacklogDirection` (reconstruction predicate `createdAt <= d && (completedAt == null || completedAt > d)`, retroactive-current-estimate disclosure, up/down/flat trend, dedup, per-point drill-down parity); confirm it fails for the intended reason; then implement both calculators as the single reconstruction-predicate implementation (research.md §11) in `src/domain/metrics/backlog.ts` so the test passes.
+- [ ] T085 [P] [US5] `SnapshotRepository.backfillSnapshots` wiring red→green — write the contract test in `tests/contract/snapshot-backfill.test.ts` (a successful commit on `RefreshStagingRepository` invokes `backfillSnapshots`, which calls `calculateBacklogDirection` as its sole computation path — no parallel reimplementation); confirm it fails; then wire `SnapshotRepository.backfillSnapshots` to call `calculateBacklogDirection` in `src/data/db/repositories/snapshot.repository.ts` so the test passes. **Sequential after T082** — the wiring needs the metric to exist.
+- [ ] T087 [P] [US5] `BacklogDrillDown` red→green — write the integration test in `tests/integration/metrics/backlog-drill-down.test.tsx` (per-point contributing incomplete-task list renders with working drill-back to `TaskDetailDrawer`); confirm it fails; then implement `BacklogDrillDown` in `src/features/metrics/BacklogDrillDown.tsx` so the test passes. **Sequential after T082** — uses the metric's data shape.
+- [ ] T083 [US5] `BacklogView` integration red→green — write the integration test in `tests/integration/metrics/backlog.test.tsx` (a single completed refresh shows current count/effort, unestimated-separate figure, and a reconstructed trend with no prior-day refresh required; project filter works; drill-down works); confirm it fails; then implement `BacklogView` (current count/effort cards, unestimated-separate figure, directional trend chart, workspace/reporting-team/Asana-team/project/portfolio/assignee scoping) in `src/features/metrics/BacklogView.tsx` so the test passes. **Sequential after T082, T085, T087.**
 
 **Checkpoint**: P1 vertical slice (User Stories 1–5) complete — MVP ready to demo.
 

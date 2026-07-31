@@ -245,6 +245,12 @@ record the outcome for every applicable item:
       calculation and data-quality context (Principle II)
 - [ ] Tests were written first (Red), fail for the intended reason, then
       pass (Green), with any refactor preserving behaviour (Principle III)
+- [ ] Each behaviour-changing task ships as a single red→green PR; the
+      failing test and the implementation that makes it green land in the
+      same task. A task MUST NOT close while any required quality gate
+      is failing, and a follow-up commit that exists only to "unblock CI"
+      after a red test's merge is a hard rejection of the task
+      deliverable (Principle III)
 - [ ] CI is green: format, lint, strict TypeScript, unit, metric/data-
       contract tests, production build, PWA/service-worker, Docker build,
       browser smoke test (Principle III)

@@ -292,7 +292,9 @@ describe("T055 CacheRepository (contracts/storage-repository.md)", () => {
         }),
       ]);
 
-      await expect(db.priorityFields.orderBy("projectGid").toArray()).resolves.toEqual([
+      await expect(
+        db.priorityFields.orderBy("projectGid").toArray(),
+      ).resolves.toEqual([
         makePriorityField({
           projectGid: ACTIVE_PROJECT_GID,
           expectedOptionIds: ["p1", "p2"],
@@ -327,9 +329,7 @@ describe("T055 CacheRepository (contracts/storage-repository.md)", () => {
       ]);
 
       await expect(
-        db.dependencies
-          .orderBy("[taskGid+dependsOnTaskGid]")
-          .toArray(),
+        db.dependencies.orderBy("[taskGid+dependsOnTaskGid]").toArray(),
       ).resolves.toEqual([
         makeDependency({
           taskGid: "task-1",
@@ -407,10 +407,7 @@ describe("T055 CacheRepository (contracts/storage-repository.md)", () => {
         makeTask({ gid: "task-2", outOfScopeReason: null }),
       ]);
 
-      await cacheRepository.markTasksOutOfScope(
-        ["task-1"],
-        "project_archived",
-      );
+      await cacheRepository.markTasksOutOfScope(["task-1"], "project_archived");
 
       await expect(db.tasks.orderBy("gid").toArray()).resolves.toEqual([
         makeTask({ gid: "task-1", outOfScopeReason: "project_archived" }),
@@ -462,7 +459,9 @@ describe("T055 CacheRepository (contracts/storage-repository.md)", () => {
         ]),
       );
       expect(gids).toHaveLength(3);
-      expect(gids.filter((gid) => gid === "multi-project-task")).toHaveLength(1);
+      expect(gids.filter((gid) => gid === "multi-project-task")).toHaveLength(
+        1,
+      );
     });
 
     it("reads projects and tasks from one readonly Dexie snapshot", async () => {
@@ -475,40 +474,44 @@ describe("T055 CacheRepository (contracts/storage-repository.md)", () => {
 
       const writerDb = new TeamDashDatabase(db.name);
       let writerPromise: Promise<unknown> | undefined;
-      const originalWhere = db.projects.where.bind(db.projects) as (...args: any[]) => any;
+      const originalWhere = db.projects.where.bind(db.projects) as (
+        ...args: any[]
+      ) => any;
 
-      vi.spyOn(db.projects as any, "where").mockImplementation((...args: unknown[]) => {
-        const index = args[0];
-        const collection = originalWhere(index) as any;
-        if (index !== "workspaceGid") {
-          return collection;
-        }
+      vi.spyOn(db.projects as any, "where").mockImplementation(
+        (...args: unknown[]) => {
+          const index = args[0];
+          const collection = originalWhere(index) as any;
+          if (index !== "workspaceGid") {
+            return collection;
+          }
 
-        const originalEquals = collection.equals.bind(collection);
-        collection.equals = (value: string) => {
-          const scoped = originalEquals(value);
-          const originalAnd = scoped.and.bind(scoped);
+          const originalEquals = collection.equals.bind(collection);
+          collection.equals = (value: string) => {
+            const scoped = originalEquals(value);
+            const originalAnd = scoped.and.bind(scoped);
 
-          scoped.and = (predicate: (project: Project) => boolean) => {
-            const filtered = originalAnd(predicate);
-            const originalToArray = filtered.toArray.bind(filtered);
+            scoped.and = (predicate: (project: Project) => boolean) => {
+              const filtered = originalAnd(predicate);
+              const originalToArray = filtered.toArray.bind(filtered);
 
-            filtered.toArray = (async () => {
-              const rows = await originalToArray();
-              writerPromise ??= writerDb.projects.update(ACTIVE_PROJECT_GID, {
-                archived: true,
-              });
-              return rows;
-            }) as typeof filtered.toArray;
+              filtered.toArray = (async () => {
+                const rows = await originalToArray();
+                writerPromise ??= writerDb.projects.update(ACTIVE_PROJECT_GID, {
+                  archived: true,
+                });
+                return rows;
+              }) as typeof filtered.toArray;
 
-            return filtered;
+              return filtered;
+            };
+
+            return scoped;
           };
 
-          return scoped;
-        };
-
-        return collection;
-      });
+          return collection;
+        },
+      );
 
       const result = await cacheRepository.getInScopeTasks(WORKSPACE_GID);
       await writerPromise;

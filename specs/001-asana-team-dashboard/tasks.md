@@ -196,16 +196,13 @@ Each row below is one atomic deliverable: write the failing test for the intende
 
 **Independent Test**: Override one project's reporting team, confirm team-level charts immediately reflect it, confirm "locally overridden" labelling, confirm persistence after reload.
 
-### Tests for User Story 6
+### User Story 6 — single-task red→green delivery
 
-- [ ] [BSOD-216] T088 [P] [US6] Unit test reporting-team resolution (override precedence over Asana default, synthetic "No Asana Team" fallback bucket) in `tests/unit/domain/team-mapping.test.ts`
-- [ ] [BSOD-217] T089 [P] [US6] Integration test: setting/removing an override updates team-level charts immediately, labels the source correctly, and persists across reload in `tests/integration/team-mapping/override.test.tsx`
+Each row below is one atomic deliverable: write the failing test for the intended reason, then implement so the test passes. The whole row closes as one PR with CI green at every commit. Cross-task "stub to unblock CI" commits are forbidden per `plan.md:51` and `constitution.md:248–253`.
 
-### Implementation for User Story 6
-
-- [ ] [BSOD-218] T090 [US6] Implement `TeamMappingRepository` (`getOverrides`/`setOverride`/`removeOverride`, never touched by refresh) in `src/data/db/repositories/team-mapping.repository.ts`
-- [ ] [BSOD-219] T091 [US6] Implement the reporting-team resolution helper (`override?.reportingTeamGid ?? project.asanaTeamGid`, with `source: 'asana' | 'override'`) in `src/domain/team-mapping.ts`
-- [ ] [BSOD-220] T092 [US6] Implement the Team Mapping settings UI (per-project override list with source labels) in `src/features/team-mapping/TeamMappingSettings.tsx`
+- [ ] T088 [P] [US6] Reporting-team resolution red→green — write the unit test in `tests/unit/domain/team-mapping.test.ts` (override precedence over Asana default, synthetic "No Asana Team" fallback bucket); confirm it fails for the intended reason; then implement the reporting-team resolution helper (`override?.reportingTeamGid ?? project.asanaTeamGid`, with `source: 'asana' | 'override'`) in `src/domain/team-mapping.ts` so the test passes.
+- [ ] T090 [P] [US6] `TeamMappingRepository` red→green — write the contract test in `tests/contract/team-mapping-repository.test.ts` (`getOverrides`/`setOverride`/`removeOverride`; the repo is never touched by `RefreshStagingRepository.commit()`); confirm it fails; then implement `TeamMappingRepository` in `src/data/db/repositories/team-mapping.repository.ts` so the test passes.
+- [ ] T089 [P] [US6] `TeamMappingSettings` integration red→green — write the integration test in `tests/integration/team-mapping/override.test.tsx` (setting/removing an override updates team-level charts immediately, labels the source correctly, and persists across reload); confirm it fails; then implement the Team Mapping settings UI (per-project override list with source labels) in `src/features/team-mapping/TeamMappingSettings.tsx` so the test passes.
 
 **Checkpoint**: User Stories 1–6 all work independently.
 
@@ -217,15 +214,12 @@ Each row below is one atomic deliverable: write the failing test for the intende
 
 **Independent Test**: Open the workload view, confirm each assignee's count/effort (incl. Unassigned) matches the fixture, drill into one assignee.
 
-### Tests for User Story 7
+### User Story 7 — single-task red→green delivery
 
-- [ ] [BSOD-221] T093 [P] [US7] Unit test `calculateAssignedWorkload`: per-assignee count/effort, explicit Unassigned bucket, dedup, drill-down in `tests/unit/domain/metrics/assignedWorkload.test.ts`
-- [ ] [BSOD-222] T094 [P] [US7] Integration test: workload view matches fixture figures incl. Unassigned row, per-assignee drill-down in `tests/integration/metrics/workload.test.tsx`
+Each row below is one atomic deliverable: write the failing test for the intended reason, then implement so the test passes. The whole row closes as one PR with CI green at every commit. Cross-task "stub to unblock CI" commits are forbidden per `plan.md:51` and `constitution.md:248–253`.
 
-### Implementation for User Story 7
-
-- [ ] [BSOD-223] T095 [US7] Implement `calculateAssignedWorkload` per the shared metric contract in `src/domain/metrics/assignedWorkload.ts`
-- [ ] [BSOD-224] T096 [US7] Implement `WorkloadView` (per-assignee cards/table incl. Unassigned, drill-down) in `src/features/metrics/WorkloadView.tsx`
+- [ ] T093 [P] [US7] `calculateAssignedWorkload` red→green — write the unit test in `tests/unit/domain/metrics/assignedWorkload.test.ts` (per-assignee count/effort, explicit Unassigned bucket, dedup, drill-down); confirm it fails for the intended reason; then implement `calculateAssignedWorkload` per the shared metric contract in `src/domain/metrics/assignedWorkload.ts` so the test passes.
+- [ ] T094 [P] [US7] `WorkloadView` integration red→green — write the integration test in `tests/integration/metrics/workload.test.tsx` (workload view matches fixture figures incl. Unassigned row, per-assignee drill-down); confirm it fails; then implement `WorkloadView` (per-assignee cards/table incl. Unassigned, drill-down) in `src/features/metrics/WorkloadView.tsx` so the test passes. **Sequential after T093** — the integration test exercises the metric.
 
 **Checkpoint**: User Stories 1–7 all work independently.
 
@@ -237,18 +231,17 @@ Each row below is one atomic deliverable: write the failing test for the intende
 
 **Independent Test**: With on-time/overdue/no-due-date fixture tasks, verify overdue only counts incomplete-past-due tasks, verify the on-time-rate denominator excludes no-due-date tasks, verify priority-grouped totals sum to the ungrouped total.
 
-### Tests for User Story 8
+### User Story 8 — single-task red→green delivery
 
-- [ ] [BSOD-225] T097 [P] [US8] Unit test `calculateCompletedOverTime` (mirrors Work Completed definition) in `tests/unit/domain/metrics/completedOverTime.test.ts`
-- [ ] [BSOD-226] T098 [P] [US8] Unit test `calculateOverdue` (incomplete + due-date-in-past under selected timezone only; completed tasks never overdue) in `tests/unit/domain/metrics/overdue.test.ts`
-- [ ] [BSOD-227] T099 [P] [US8] Unit test `calculateOnTimeRate` (denominator = completed-with-due-date, excluded no-due-date count shown, `{ notApplicable: true }` on zero denominator) in `tests/unit/domain/metrics/onTimeRate.test.ts`
-- [ ] [BSOD-228] T100 [P] [US8] Unit test `calculateCompletedByPriority` ("No priority" group, group sums equal the ungrouped total) in `tests/unit/domain/metrics/completedByPriority.test.ts`
-- [ ] [BSOD-229] T101 [P] [US8] Integration test: completed/overdue/on-time-rate/priority-breakdown views render fixture-expected figures in `tests/integration/metrics/delivery-quality.test.tsx`
+Each row below is one atomic deliverable: write the failing test for the intended reason, then implement so the test passes. The whole row closes as one PR with CI green at every commit. Cross-task "stub to unblock CI" commits are forbidden per `plan.md:51` and `constitution.md:248–253`.
 
-### Implementation for User Story 8
+The four delivery calculators all live in `src/domain/metrics/delivery.ts`, so the calculator rows form a sequential chain — each row adds one calculator to the existing module. T097 ships first; subsequent calculators can only land once their predecessors have closed.
 
-- [ ] [BSOD-230] T102 [US8] Implement `calculateCompletedOverTime`, `calculateOverdue`, `calculateOnTimeRate`, `calculateCompletedByPriority` in `src/domain/metrics/delivery.ts`
-- [ ] [BSOD-231] T103 [US8] Implement `CompletedOverTimeView`, `OverdueView`, `OnTimeRateView`, `PriorityBreakdownView` in `src/features/metrics/DeliveryQualityViews.tsx`
+- [ ] T097 [P] [US8] `calculateCompletedOverTime` red→green — write the unit test in `tests/unit/domain/metrics/completedOverTime.test.ts` (mirrors Work Completed definition); confirm it fails; then implement `calculateCompletedOverTime` in `src/domain/metrics/delivery.ts` so the test passes.
+- [ ] T098 [P] [US8] `calculateOverdue` red→green — write the unit test in `tests/unit/domain/metrics/overdue.test.ts` (incomplete + due-date-in-past under selected timezone only; completed tasks never overdue); confirm it fails; then implement `calculateOverdue` in `src/domain/metrics/delivery.ts` so the test passes. **Sequential after T097.**
+- [ ] T099 [P] [US8] `calculateOnTimeRate` red→green — write the unit test in `tests/unit/domain/metrics/onTimeRate.test.ts` (denominator = completed-with-due-date, excluded no-due-date count shown, `{ notApplicable: true }` on zero denominator); confirm it fails; then implement `calculateOnTimeRate` in `src/domain/metrics/delivery.ts` so the test passes. **Sequential after T098.**
+- [ ] T100 [P] [US8] `calculateCompletedByPriority` red→green — write the unit test in `tests/unit/domain/metrics/completedByPriority.test.ts` ("No priority" group, group sums equal the ungrouped total); confirm it fails; then implement `calculateCompletedByPriority` in `src/domain/metrics/delivery.ts` so the test passes. **Sequential after T099.**
+- [ ] T101 [P] [US8] `DeliveryQualityViews` integration red→green — write the integration test in `tests/integration/metrics/delivery-quality.test.tsx` (completed/overdue/on-time-rate/priority-breakdown views render fixture-expected figures); confirm it fails; then implement `CompletedOverTimeView`, `OverdueView`, `OnTimeRateView`, `PriorityBreakdownView` in `src/features/metrics/DeliveryQualityViews.tsx` so the test passes. **Sequential after T100.**
 
 **Checkpoint**: User Stories 1–8 all work independently.
 
@@ -260,17 +253,16 @@ Each row below is one atomic deliverable: write the failing test for the intende
 
 **Independent Test**: Verify variance handling of matching/over/under/zero/missing estimates, verify dependency-based blocked flagging, verify configurable stalled threshold.
 
-### Tests for User Story 9
+### User Story 9 — single-task red→green delivery
 
-- [ ] [BSOD-232] T104 [P] [US9] Unit test `calculateEstimateVariance` (absolute/percentage variance, `'not comparable'` for zero/missing estimate or actual, excluded from averages but counted in totals) in `tests/unit/domain/metrics/estimateVariance.test.ts`
-- [ ] [BSOD-233] T105 [P] [US9] Unit test `calculateBlocked` (incomplete dependency triggers blocked; a dependency outside token access/scope is conservatively treated as still-blocking and disclosed) in `tests/unit/domain/metrics/blocked.test.ts`
-- [ ] [BSOD-234] T106 [P] [US9] Unit test `calculateStalled` (configurable threshold, documented default of 14 days, re-evaluates when the threshold changes) in `tests/unit/domain/metrics/stalled.test.ts`
-- [ ] [BSOD-235] T107 [P] [US9] Integration test: variance/blocked/stalled views plus the configurable stalled-threshold control in `tests/integration/metrics/diagnostics.test.tsx`
+Each row below is one atomic deliverable: write the failing test for the intended reason, then implement so the test passes. The whole row closes as one PR with CI green at every commit. Cross-task "stub to unblock CI" commits are forbidden per `plan.md:51` and `constitution.md:248–253`.
 
-### Implementation for User Story 9
+The three diagnostics calculators all live in `src/domain/metrics/diagnostics.ts`, so the calculator rows form a sequential chain — each row adds one calculator to the existing module. T104 ships first; subsequent calculators can only land once their predecessors have closed.
 
-- [ ] [BSOD-236] T108 [US9] Implement `calculateEstimateVariance`, `calculateBlocked`, `calculateStalled` in `src/domain/metrics/diagnostics.ts`
-- [ ] [BSOD-237] T109 [US9] Implement `EstimateVarianceView`, `BlockedWorkView`, `StalledWorkView`, and the stalled-threshold setting control in `src/features/metrics/DiagnosticsViews.tsx`
+- [ ] T104 [P] [US9] `calculateEstimateVariance` red→green — write the unit test in `tests/unit/domain/metrics/estimateVariance.test.ts` (absolute/percentage variance, `'not comparable'` for zero/missing estimate or actual, excluded from averages but counted in totals); confirm it fails; then implement `calculateEstimateVariance` in `src/domain/metrics/diagnostics.ts` so the test passes.
+- [ ] T105 [P] [US9] `calculateBlocked` red→green — write the unit test in `tests/unit/domain/metrics/blocked.test.ts` (incomplete dependency triggers blocked; a dependency outside token access/scope is conservatively treated as still-blocking and disclosed); confirm it fails; then implement `calculateBlocked` in `src/domain/metrics/diagnostics.ts` so the test passes. **Sequential after T104.**
+- [ ] T106 [P] [US9] `calculateStalled` red→green — write the unit test in `tests/unit/domain/metrics/stalled.test.ts` (configurable threshold, documented default of 14 days, re-evaluates when the threshold changes); confirm it fails; then implement `calculateStalled` in `src/domain/metrics/diagnostics.ts` so the test passes. **Sequential after T105.**
+- [ ] T107 [P] [US9] `DiagnosticsViews` integration red→green — write the integration test in `tests/integration/metrics/diagnostics.test.tsx` (variance/blocked/stalled views plus the configurable stalled-threshold control render fixture-expected figures and re-evaluate when the threshold changes); confirm it fails; then implement `EstimateVarianceView`, `BlockedWorkView`, `StalledWorkView`, and the stalled-threshold setting control in `src/features/metrics/DiagnosticsViews.tsx` so the test passes. **Sequential after T106.**
 
 **Checkpoint**: User Stories 1–9 all work independently.
 
@@ -282,17 +274,16 @@ Each row below is one atomic deliverable: write the failing test for the intende
 
 **Independent Test**: Verify average-age and cycle-time figures against hand calculations; verify the data-quality panel matches a manual tally of fixture gaps.
 
-### Tests for User Story 10
+### User Story 10 — single-task red→green delivery
 
-- [ ] [BSOD-238] T110 [P] [US10] Unit test `calculateAverageAge` (mean of now − creation date, dedup) in `tests/unit/domain/metrics/averageAge.test.ts`
-- [ ] [BSOD-239] T111 [P] [US10] Unit test `calculateCycleTime` (completion date − creation date, dedup) in `tests/unit/domain/metrics/cycleTime.test.ts`
-- [ ] [BSOD-240] T112 [P] [US10] Unit test `calculateDataQuality` (counts of missing assignee/estimate/priority/due-date/actual-time, each drillable) in `tests/unit/domain/metrics/dataQuality.test.ts`
-- [ ] [BSOD-241] T113 [P] [US10] Integration test: average-age, cycle-time, and data-quality panel render fixture-expected figures with working drill-down in `tests/integration/metrics/task-health.test.tsx`
+Each row below is one atomic deliverable: write the failing test for the intended reason, then implement so the test passes. The whole row closes as one PR with CI green at every commit. Cross-task "stub to unblock CI" commits are forbidden per `plan.md:51` and `constitution.md:248–253`.
 
-### Implementation for User Story 10
+The three task-health calculators all live in `src/domain/metrics/taskHealth.ts`, so the calculator rows form a sequential chain — each row adds one calculator to the existing module. T110 ships first; subsequent calculators can only land once their predecessors have closed.
 
-- [ ] [BSOD-242] T114 [US10] Implement `calculateAverageAge`, `calculateCycleTime`, `calculateDataQuality` in `src/domain/metrics/taskHealth.ts`
-- [ ] [BSOD-243] T115 [US10] Implement `AverageAgeView`, `CycleTimeView`, `DataQualityPanel` in `src/features/metrics/TaskHealthViews.tsx`
+- [ ] T110 [P] [US10] `calculateAverageAge` red→green — write the unit test in `tests/unit/domain/metrics/averageAge.test.ts` (mean of now − creation date, dedup); confirm it fails; then implement `calculateAverageAge` in `src/domain/metrics/taskHealth.ts` so the test passes.
+- [ ] T111 [P] [US10] `calculateCycleTime` red→green — write the unit test in `tests/unit/domain/metrics/cycleTime.test.ts` (completion date − creation date, dedup); confirm it fails; then implement `calculateCycleTime` in `src/domain/metrics/taskHealth.ts` so the test passes. **Sequential after T110.**
+- [ ] T112 [P] [US10] `calculateDataQuality` red→green — write the unit test in `tests/unit/domain/metrics/dataQuality.test.ts` (counts of missing assignee/estimate/priority/due-date/actual-time, each drillable); confirm it fails; then implement `calculateDataQuality` in `src/domain/metrics/taskHealth.ts` so the test passes. **Sequential after T111.**
+- [ ] T113 [P] [US10] `TaskHealthViews` integration red→green — write the integration test in `tests/integration/metrics/task-health.test.tsx` (average-age, cycle-time, and data-quality panel render fixture-expected figures with working drill-down); confirm it fails; then implement `AverageAgeView`, `CycleTimeView`, `DataQualityPanel` in `src/features/metrics/TaskHealthViews.tsx` so the test passes. **Sequential after T112.**
 
 **Checkpoint**: All ten user stories independently functional.
 

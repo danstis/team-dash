@@ -56,6 +56,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 
 import { db } from "../data/db/schema";
 import type { ViewState, ISODateTime } from "../domain/types";
@@ -153,26 +154,38 @@ export function WorkspaceProvider({
       if (cancelled) {
         return;
       }
-      if (all.length === 0) {
-        setState("first_run");
-        return;
-      }
-      const mostRecent = all.reduce((acc, row) =>
-        acc.selectedAt > row.selectedAt ? acc : row,
-      );
-      // `selectedAt` is a branded `ISODateTime` at the type level but
-      // arrives from Dexie as a plain `string` (Dexie does not preserve
-      // branded primitives across the IndexedDB round-trip). The cast
-      // is safe: the row was written as an ISO-8601 string in
-      // `selectWorkspace` below, so the value satisfies the brand
-      // shape at runtime. A future migration to typed Dexie columns
-      // can drop the cast.
-      setWorkspace({
-        gid: mostRecent.gid,
-        name: mostRecent.name,
-        selectedAt: mostRecent.selectedAt as ISODateTime,
+      // `flushSync` forces the `setState` / `setWorkspace` batch to
+      // commit synchronously before this async IIFE returns. Without
+      // it the same race that affects the credentials provider can
+      // surface here: a test's `waitFor` (or a real consumer's
+      // `useEffect`) that observes the resulting `'ready'` state on
+      // the DOM may run before the descendants' effects fire, leaving
+      // `handlesRef.current.workspace.workspace` at `null` even though
+      // the IndexedDB row was already loaded. The race is documented
+      // alongside the credentials-side fix in
+      // `docs/architecture-decisions/credentials-flush-sync.md`.
+      flushSync(() => {
+        if (all.length === 0) {
+          setState("first_run");
+          return;
+        }
+        const mostRecent = all.reduce((acc, row) =>
+          acc.selectedAt > row.selectedAt ? acc : row,
+        );
+        // `selectedAt` is a branded `ISODateTime` at the type level but
+        // arrives from Dexie as a plain `string` (Dexie does not preserve
+        // branded primitives across the IndexedDB round-trip). The cast
+        // is safe: the row was written as an ISO-8601 string in
+        // `selectWorkspace` below, so the value satisfies the brand
+        // shape at runtime. A future migration to typed Dexie columns
+        // can drop the cast.
+        setWorkspace({
+          gid: mostRecent.gid,
+          name: mostRecent.name,
+          selectedAt: mostRecent.selectedAt as ISODateTime,
+        });
+        setState("ready");
       });
-      setState("ready");
     })();
     return () => {
       cancelled = true;
@@ -190,8 +203,17 @@ export function WorkspaceProvider({
         name: next.name,
         selectedAt: next.selectedAt as string,
       });
-      setWorkspace(next);
-      setState("ready");
+      // `flushSync` commits the state update synchronously so any
+      // descendant `useEffect` (the test-side `FirstRunGateProbe` or
+      // the production `RouteGuard`) sees the new workspace selection
+      // in the same React tick that resolves this promise. Without
+      // it the same race documented alongside the credentials
+      // provider's flushSync fix can surface — see
+      // `docs/architecture-decisions/credentials-flush-sync.md`.
+      flushSync(() => {
+        setWorkspace(next);
+        setState("ready");
+      });
     },
     [],
   );
@@ -202,8 +224,12 @@ export function WorkspaceProvider({
     // already representable in the schema) does not leave a stale
     // selection visible after a "switch workspace" flow.
     await db.workspaces.clear();
-    setWorkspace(null);
-    setState("first_run");
+    // `flushSync` commits the state update synchronously; the route
+    // guard's `composeRouteGuardState` re-evaluates in the same tick.
+    flushSync(() => {
+      setWorkspace(null);
+      setState("first_run");
+    });
   }, []);
 
   const value = useMemo<WorkspaceContextValue>(

@@ -82,6 +82,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 
 import { decryptToken, isTokenCryptoError } from "../data/crypto/token-crypto";
 import {
@@ -194,42 +195,46 @@ export function CredentialsProvider({
       if (cancelled) {
         return;
       }
-      if (stored === null) {
-        privateTokenRef.current = null;
-        setMode(null);
-        setMaskedIdentifier("");
-        setState("first_run");
+      // The IndexedDB round-trip is the only async step that survives
+      // the `flushSync` boundary — the state transition that follows is
+      // committed synchronously so descendants' effects fire in the
+      // same React tick (see the action-level `flushSync` rationale for
+      // the race that motivates this).
+      let resolvedPlaintext: string | null = null;
+      let resolvedAsFirstRun = stored === null;
+      if (stored !== null) {
+        try {
+          resolvedPlaintext = await decryptToken(
+            stored.encryptedTokenRecord.ciphertext,
+            stored.encryptedTokenRecord.iv,
+            stored.encryptedTokenRecord.keyRef,
+          );
+        } catch (error) {
+          if (isTokenCryptoError(error)) {
+            void credentialRepository.clearToSessionOnly().catch(() => {
+              // Best-effort cleanup; the next write path is the
+              // canonical owner of this row's lifecycle.
+            });
+          }
+          resolvedAsFirstRun = true;
+        }
+      }
+      if (cancelled) {
         return;
       }
-
-      try {
-        const plaintext = await decryptToken(
-          stored.encryptedTokenRecord.ciphertext,
-          stored.encryptedTokenRecord.iv,
-          stored.encryptedTokenRecord.keyRef,
-        );
-        if (cancelled) {
+      flushSync(() => {
+        if (resolvedAsFirstRun) {
+          privateTokenRef.current = null;
+          setMode(null);
+          setMaskedIdentifier("");
+          setState("first_run");
           return;
         }
-        privateTokenRef.current = plaintext;
+        privateTokenRef.current = resolvedPlaintext;
         setMode("persistent");
-        setMaskedIdentifier(maskTokenIdentifier(plaintext));
+        setMaskedIdentifier(maskTokenIdentifier(resolvedPlaintext ?? ""));
         setState("ready");
-      } catch (error) {
-        if (isTokenCryptoError(error)) {
-          await credentialRepository.clearToSessionOnly().catch(() => {
-            // Best-effort cleanup; the next write path is the canonical
-            // owner of this row's lifecycle.
-          });
-        }
-        if (cancelled) {
-          return;
-        }
-        privateTokenRef.current = null;
-        setMode(null);
-        setMaskedIdentifier("");
-        setState("first_run");
-      }
+      });
     })();
     return () => {
       cancelled = true;
@@ -244,9 +249,22 @@ export function CredentialsProvider({
     async (token: string, nextMaskedIdentifier: string): Promise<void> => {
       await credentialRepository.setSessionToken(token);
       privateTokenRef.current = token;
-      setMode("session");
-      setMaskedIdentifier(nextMaskedIdentifier || maskTokenIdentifier(token));
-      setState("ready");
+      // `flushSync` forces the three batched setState calls to commit
+      // synchronously before this async function's promise resolves.
+      // Without it, the re-render + the descendants' `useEffect` (e.g.
+      // the test-side `FirstRunGateProbe`'s effect that publishes
+      // `handlesRef.current`) can lag the test's `waitFor` observer on
+      // the same DOM update — the test resolves on `state === 'ready'`
+      // before the effect publishes the matching `mode === 'session'`.
+      // Credential lifecycle actions are user-initiated and infrequent;
+      // forcing a synchronous commit here is acceptable. See
+      // `docs/architecture-decisions/credentials-flush-sync.md` for the
+      // race reproduction that motivated the change.
+      flushSync(() => {
+        setMode("session");
+        setMaskedIdentifier(nextMaskedIdentifier || maskTokenIdentifier(token));
+        setState("ready");
+      });
     },
     [],
   );
@@ -255,9 +273,16 @@ export function CredentialsProvider({
     async (token: string, nextMaskedIdentifier: string): Promise<void> => {
       await credentialRepository.setPersistentToken(token);
       privateTokenRef.current = token;
-      setMode("persistent");
-      setMaskedIdentifier(nextMaskedIdentifier || maskTokenIdentifier(token));
-      setState("ready");
+      // See `setSessionToken` for the `flushSync` rationale — the same
+      // commit-before-resolve contract applies to all four credential
+      // lifecycle actions so downstream effects (the probe, the route
+      // guard, every `useCredentials` consumer) see the new state in the
+      // same React tick that resolves this promise.
+      flushSync(() => {
+        setMode("persistent");
+        setMaskedIdentifier(nextMaskedIdentifier || maskTokenIdentifier(token));
+        setState("ready");
+      });
     },
     [],
   );
@@ -265,24 +290,39 @@ export function CredentialsProvider({
   const clearToSessionOnly = useCallback(async (): Promise<void> => {
     await credentialRepository.clearToSessionOnly();
 
-    if (privateTokenRef.current === null) {
-      setMode(null);
-      setMaskedIdentifier("");
-      setState("first_run");
-      return;
-    }
-
-    setMode("session");
-    setMaskedIdentifier(maskTokenIdentifier(privateTokenRef.current));
-    setState("ready");
+    // See `setSessionToken` for the `flushSync` rationale. The
+    // conditional branch below picks the post-clear state; both
+    // branches must commit synchronously so the FR-007 single-action
+    // wipe's subsequent `useCredentials()` reads see a settled state.
+    flushSync(() => {
+      if (privateTokenRef.current === null) {
+        setMode(null);
+        setMaskedIdentifier("");
+        setState("first_run");
+        return;
+      }
+      setMode("session");
+      setMaskedIdentifier(maskTokenIdentifier(privateTokenRef.current));
+      setState("ready");
+    });
   }, []);
 
   const clearAll = useCallback(async (): Promise<void> => {
     await credentialRepository.clearAll();
     privateTokenRef.current = null;
-    setMode(null);
-    setMaskedIdentifier("");
-    setState("first_run");
+    // See `setSessionToken` for the `flushSync` rationale. FR-007
+    // requires that the credentials + cache + snapshots + team
+    // mappings + named Person Groups wipe is a single Dexie transaction
+    // — `clearAll` already enforces that at the repository layer. The
+    // `flushSync` here ensures the credentials context's `state` and
+    // `mode` flip to `'first_run'` / `null` synchronously so the route
+    // guard re-closes (back to `<FirstRunState />`) before the calling
+    // code's next render observes the wipe.
+    flushSync(() => {
+      setMode(null);
+      setMaskedIdentifier("");
+      setState("first_run");
+    });
   }, []);
 
   const value = useMemo<CredentialsContextValue>(

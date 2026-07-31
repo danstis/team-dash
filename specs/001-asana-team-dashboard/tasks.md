@@ -99,7 +99,7 @@ Single frontend project per plan.md: `src/`, `tests/`, `fixtures/`, `docker/` at
 - [x] [BSOD-169] T041 [US1] Implement `TokenEntryForm` and `TestTokenButton` in `src/features/credentials/TokenEntry.tsx`
 - [x] [BSOD-170] T042 [US1] Implement `StorageModeSelector` with risk disclosure and explicit confirmation step in `src/features/credentials/StorageModeSelector.tsx`
 - [x] [BSOD-171] T043 [US1] Implement `WorkspaceSelector` (single-select from the validated token's accessible workspaces) in `src/features/credentials/WorkspaceSelector.tsx`
-- [ ] [BSOD-172] T044 [US1] Implement the shared masked-token display component (last-4-characters only) in `src/shared/components/MaskedToken.tsx`
+- [x] [BSOD-172] T044 [US1] Implement the shared masked-token display component (last-4-characters only) in `src/shared/components/MaskedToken.tsx`
 - [x] [BSOD-173] T045 [US1] Implement the Settings credentials panel (retest, replace, switch storage mode, single clear-all action) in `src/features/credentials/SettingsCredentialsPanel.tsx`
 - [ ] [BSOD-174] T046 [US1] Wire a route guard in `src/app/router.tsx` blocking reporting routes until token+workspace are validated
 

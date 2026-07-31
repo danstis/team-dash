@@ -195,46 +195,42 @@ export function CredentialsProvider({
       if (cancelled) {
         return;
       }
-      // The IndexedDB round-trip is the only async step that survives
-      // the `flushSync` boundary — the state transition that follows is
-      // committed synchronously so descendants' effects fire in the
-      // same React tick (see the action-level `flushSync` rationale for
-      // the race that motivates this).
-      let resolvedPlaintext: string | null = null;
-      let resolvedAsFirstRun = stored === null;
-      if (stored !== null) {
-        try {
-          resolvedPlaintext = await decryptToken(
-            stored.encryptedTokenRecord.ciphertext,
-            stored.encryptedTokenRecord.iv,
-            stored.encryptedTokenRecord.keyRef,
-          );
-        } catch (error) {
-          if (isTokenCryptoError(error)) {
-            void credentialRepository.clearToSessionOnly().catch(() => {
-              // Best-effort cleanup; the next write path is the
-              // canonical owner of this row's lifecycle.
-            });
-          }
-          resolvedAsFirstRun = true;
-        }
-      }
-      if (cancelled) {
+      if (stored === null) {
+        privateTokenRef.current = null;
+        setMode(null);
+        setMaskedIdentifier("");
+        setState("first_run");
         return;
       }
-      flushSync(() => {
-        if (resolvedAsFirstRun) {
-          privateTokenRef.current = null;
-          setMode(null);
-          setMaskedIdentifier("");
-          setState("first_run");
+
+      try {
+        const plaintext = await decryptToken(
+          stored.encryptedTokenRecord.ciphertext,
+          stored.encryptedTokenRecord.iv,
+          stored.encryptedTokenRecord.keyRef,
+        );
+        if (cancelled) {
           return;
         }
-        privateTokenRef.current = resolvedPlaintext;
+        privateTokenRef.current = plaintext;
         setMode("persistent");
-        setMaskedIdentifier(maskTokenIdentifier(resolvedPlaintext ?? ""));
+        setMaskedIdentifier(maskTokenIdentifier(plaintext));
         setState("ready");
-      });
+      } catch (error) {
+        if (isTokenCryptoError(error)) {
+          void credentialRepository.clearToSessionOnly().catch(() => {
+            // Best-effort cleanup; the next write path is the
+            // canonical owner of this row's lifecycle.
+          });
+        }
+        if (cancelled) {
+          return;
+        }
+        privateTokenRef.current = null;
+        setMode(null);
+        setMaskedIdentifier("");
+        setState("first_run");
+      }
     })();
     return () => {
       cancelled = true;

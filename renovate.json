@@ -11,6 +11,7 @@
     "enabled": true
   },
   "labels": ["dependencies"],
+  "platformAutomerge": true,
   "packageRules": [
     {
       "matchPackageNames": ["react", "react-dom"],
@@ -18,6 +19,11 @@
       "groupSlug": "react-packages",
       "separateMajorMinor": false,
       "separateMultipleMajor": false
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "automergeType": "pr"
     }
   ],
   "separateMajorMinor": true,

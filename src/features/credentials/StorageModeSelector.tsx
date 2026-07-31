@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { useCredentials } from "../../app/credentials-context";
+import { MaskedToken } from "../../shared/components/MaskedToken";
 import { maskedIdentifierFor } from "./helpers";
 
 export type StorageMode = "session" | "persistent";
@@ -15,16 +16,6 @@ export interface StorageModeSelectorProps {
   readonly token: string;
   readonly maskedIdentifier?: string;
   readonly onModeSelected?: (mode: StorageMode) => void;
-}
-
-function displayIdentifier(identifier: string): string {
-  if (identifier.length === 0) {
-    return "";
-  }
-  if (identifier === "••••") {
-    return identifier;
-  }
-  return `…${identifier}`;
 }
 
 function computeNextFocusIndex(
@@ -225,8 +216,13 @@ export function StorageModeSelector({
     >
       <legend>Token storage</legend>
       <p>
-        Token identifier: <code>{displayIdentifier(identifier)}</code>. Only the
-        last four characters are shown.
+        Token identifier:{" "}
+        {identifier.length === 0 ? (
+          <em>not set</em>
+        ) : (
+          <MaskedToken maskedIdentifier={identifier} />
+        )}
+        . Only the last four characters are shown.
       </p>
       <label>
         <input

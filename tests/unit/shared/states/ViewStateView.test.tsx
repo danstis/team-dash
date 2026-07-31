@@ -168,8 +168,15 @@ describe("T032 shared ViewState-driven UI primitives", () => {
       // user to the credential entry screen (US1) — the body text must
       // say so explicitly, not rely on iconography alone (Principle VII
       // non-colour-only meaning + screen-reader honesty).
+      //
+      // Heading hierarchy: the first-run surface is the document's
+      // top-level landing page while the T046 route guard is closed
+      // (US1 acceptance scenario 1 + FR-001). An `<h2>` here would
+      // skip a level (WCAG 1.3.1) since no other heading sits above
+      // it on the gate-closed screen, so the primitive renders its
+      // title as `<h1>`.
       expect(
-        screen.getByRole("heading", { level: 2, name: /first run|first-run/i }),
+        screen.getByRole("heading", { level: 1, name: /first run|first-run/i }),
       ).toBeInTheDocument();
       expect(
         screen.getAllByText(/personal access token|token/i).length,

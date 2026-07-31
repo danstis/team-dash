@@ -13,6 +13,19 @@
  * across first-run, post-clear-data, and decrypt-failure flows that
  * all converge on the same landing screen.
  *
+ * Heading hierarchy
+ * -----------------
+ * The primitive renders its title as `<h1>` because the first-run
+ * surface is the document's top-level landing page while the T046
+ * route guard is closed (US1 acceptance scenario 1 + FR-001):
+ * no other heading exists above it on the gate-closed screen, so an
+ * `<h2>` would skip a level (WAI-ARIA Authoring Practices / WCAG 1.3.1
+ * "info and relationships"). When the gate is open the reporting
+ * surface's own `<h1>` (the T010/T031 placeholder, soon US2's
+ * dashboard chrome) takes the top-level role, and the first-run
+ * primitive is no longer in the document. The renderer's single
+ * `<h1>` keeps the heading outline honest in both states.
+ *
  * Props are consumed as `Readonly<ViewStatePrimitiveProps>` per the
  * SonarCloud `typescript:S6759` project-wide convention
  * (`src/shared/states/types.ts`).
@@ -35,7 +48,7 @@ export function FirstRunState({
       aria-live="polite"
       aria-label={ariaLabel ?? "First run"}
     >
-      <h2>First-run setup</h2>
+      <h1>First-run setup</h1>
       <p>
         To start, enter your Asana personal access token. The token stays on
         this device and is only used to read your Asana workspace.

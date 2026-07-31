@@ -41,7 +41,41 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { App } from "../../../src/app/App";
 import { db } from "../../../src/data/db/schema";
+import {
+  encryptToken,
+  generateTokenKey,
+} from "../../../src/data/crypto/token-crypto";
 import { router } from "../../../src/app/router";
+
+/**
+ * Seed IndexedDB so the T046 route guard (BSOD-174) reports the
+ * `'ready'` state for both `CredentialsProvider` and
+ * `WorkspaceProvider` — the gate only opens when BOTH contexts are
+ * ready, and the T031 assertions below exercise the gate-open
+ * reporting surface (the `<h1>Team Dash</h1>` placeholder).
+ *
+ * The seed uses a persistent credential (with a freshly generated
+ * non-extractable AES-GCM key — the documented FR-002a contract) so
+ * the provider decrypts it on mount rather than relying on a
+ * session-only token that would not survive the render boundary.
+ */
+async function seedReadyGateState(): Promise<void> {
+  const token = "t031-shell-test-token-abcd";
+  const key = await generateTokenKey();
+  const { ciphertext, iv } = await encryptToken(token, key);
+  await db.credentials.put({
+    mode: "persistent",
+    encryptedTokenRecord: { ciphertext, iv, keyRef: key },
+    maskedIdentifier: "abcd",
+    lastValidatedAt: null,
+    lastValidationResult: null,
+  });
+  await db.workspaces.put({
+    gid: "11111111-test-workspace",
+    name: "Test Workspace",
+    selectedAt: "2026-07-31T00:00:00.000Z",
+  });
+}
 
 describe("T031 <App /> (provider tree + router composition)", () => {
   afterEach(async () => {
@@ -61,15 +95,21 @@ describe("T031 <App /> (provider tree + router composition)", () => {
     expect(main?.getAttribute("lang")).toBe("en-AU");
   });
 
-  it("renders the router's fallback for an unmatched initial URL", () => {
-    // The router MUST register at least one route. Even when no
-    // feature has shipped yet (T031), the shell renders the placeholder
-    // instead of crashing. This test pins the placeholder content so a
-    // future contributor who deletes the placeholder (and breaks
-    // SC-001's "app remains usable at first launch") fails the test.
+  it("renders the router's fallback for an unmatched initial URL when the gate is open", async () => {
+    // The router MUST register at least one route, and the placeholder
+    // is the gate-open reporting surface (US2's eventual dashboard
+    // chrome will replace it). T046's route guard hides the
+    // placeholder when either provider is not `'ready'`; the test
+    // seeds the gate-open state so the placeholder remains the
+    // rendered surface and a future contributor who deletes the
+    // placeholder (and breaks SC-001's "app remains usable at first
+    // launch") still fails the test.
+    await seedReadyGateState();
     render(<App />);
 
-    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: /team dash/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/team dash/i)).toBeInTheDocument();
   });
 

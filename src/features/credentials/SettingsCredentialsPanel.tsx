@@ -77,6 +77,7 @@ import {
 
 import { useCredentials } from "../../app/credentials-context";
 import { testToken } from "../../data/asana/client";
+import { MaskedToken } from "../../shared/components/MaskedToken";
 import {
   maskedIdentifierFor,
   summariseUserValidationResult,
@@ -293,7 +294,8 @@ export function SettingsCredentialsPanel(): ReactElement {
           {credentials.maskedIdentifier.length > 0 && (
             <>
               {" "}
-              Active token: <code>…{credentials.maskedIdentifier}</code>.
+              Active token:{" "}
+              <MaskedToken maskedIdentifier={credentials.maskedIdentifier} />.
             </>
           )}
         </p>

@@ -63,9 +63,9 @@
  *    raw array literal were used as the Map key, breaking the
  *    "upsert-keyed" invariant and risking unbounded memory growth at
  *    the 25k-task NFR-001 scale. The buffer therefore keys every
- *    store by a stringified form (`` `${taskGid}\0${dependsOnTaskGid}` ``,
- *    where `\0` is a separator that is not a valid Asana gid
- *    character). The contract test
+ *    store by a stringified form (`` `${taskGid}\0${dependsOnTaskGid}` ``)
+ *    with a reserved separator byte between the two opaque identity
+ *    components. The contract test
  *    `tests/contract/refresh-staging.test.ts` "compound-key staging
  *    dedupes successive stageUpsert calls" pins this.
  *
@@ -417,9 +417,7 @@ export const refreshStagingRepository: RefreshStagingRepository = {
       }
     }
 
-    const tableNames: string[] = Array.from(stores).sort((a, b) =>
-      a < b ? -1 : a > b ? 1 : 0,
-    );
+    const tableNames = Array.from(stores).sort(compareStoreNames);
 
     await db.transaction("rw", tableNames, async () => {
       for (const store of orderedStores(currentBuffer)) {

@@ -97,12 +97,13 @@
  *
  * `412 Precondition Failed` (Asana's documented sync-token-expired
  * signal — `contracts/asana-client.md` § "Incremental sync fallback
- * contract") falls through to `outcome: 'network_error'` with
- * `message: "Unexpected HTTP 412"`. The orchestrator is expected to
- * substring-match on that status code (or be refactored later to a
- * dedicated outcome) — the current shape keeps the outcome union
- * stable for US2's incremental-sync fallback work without growing the
- * base client's surface area for a single Asana-specific status.
+ * contract", FR-024) is mapped to `outcome: 'permission_failure'` with
+ * `resource: path` so the refresh orchestrator can identify the
+ * sync-token-expired fallback trigger without substring-matching on a
+ * `network_error.message`. The mapping lives at the base plumbing layer
+ * because 412 is an Asana-wide semantic signal (any future endpoint
+ * that uses a sync-token parameter would benefit from the same
+ * outcome-shape), not just an Events-API quirk.
  *
  * Module boundary
  * ---------------
@@ -115,8 +116,16 @@
  */
 
 import type { ZodTypeAny, z } from "zod";
+import { z as zod } from "zod";
 
-import { asanaUserSchema, asanaWorkspaceListResponseSchema } from "./schemas";
+import {
+  asanaEventsResponseSchema,
+  asanaProjectListResponseSchema,
+  asanaTaskListResponseSchema,
+  asanaTaskSchema,
+  asanaUserSchema,
+  asanaWorkspaceListResponseSchema,
+} from "./schemas";
 import type { AsanaClientResult } from "./types";
 
 /* -------------------------------------------------------------------------- */
@@ -198,6 +207,19 @@ export async function asanaGet<Schema extends ZodTypeAny>(
 
   if (response.status === 403) {
     return { outcome: "permission_failure" };
+  }
+
+  if (response.status === 412) {
+    // Asana's documented sync-token-expired signal (FR-024,
+    // contracts/asana-client.md § "Incremental sync fallback contract").
+    // Returned as `permission_failure` with the request path as the
+    // `resource` hint so the orchestrator can identify the caller
+    // (`fetchEventsSince` is the only known caller today) without a
+    // substring match on `network_error.message`. The path is taken
+    // straight from the supplied `path` parameter; it MUST NOT include
+    // the token (per FR-008 / FR-010) — `buildAsanaUrl` does not embed
+    // the token in the URL.
+    return { outcome: "permission_failure", resource: path };
   }
 
   if (response.status === 429) {
@@ -284,6 +306,272 @@ export async function listWorkspaces(
     },
     options,
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* US2 resource-specific wrappers (T048 — pagination + events-since)           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Project-resource field selection (`contracts/asana-client.md` §
+ * "Endpoints consumed (all `GET`)"). The `archived` field is the FR-012
+ * exclusion flag and is required by `asanaProjectSchema`. The
+ * `workspace`/`team` references are listed so the cache can resolve
+ * project→AsanaTeam ownership (FR-041) without a second round trip
+ * per project. The `custom_field_settings` is intentionally absent
+ * here — the cache materialises it lazily for projects that participate
+ * in the FR-081 priority-field validation (T082 / T084), and listing
+ * it on every projects page would needlessly grow the response.
+ */
+const PROJECT_FIELDS =
+  "gid,name,resource_type,archived,workspace.gid,workspace.name,team.gid,team.name";
+
+/**
+ * Task-resource field selection. Includes the custom-fields blob so the
+ * FR-081/FR-082 validation can fire at the boundary (Principle II /
+ * III). Includes `assignee`, `parent`, `projects[]` (compact
+ * references — the cache normalises parent→subtask project
+ * membership at ingestion time per FR-014), and the date fields the
+ * reporting metrics need at the data-acquisition boundary so neither
+ * the cache nor a later refresh round trip is required to populate them.
+ */
+const TASK_FIELDS =
+  "gid,name,resource_type,resource_subtype,assignee.gid,assignee.name,parent.gid,parent.name,projects.gid,projects.name,created_at,modified_at,completed_at,completed,due_at,due_on,custom_fields,dependencies,notes";
+
+/**
+ * Task-detail field selection. Mirrors `TASK_FIELDS` so a task fetched
+ * via `fetchTaskDetail` (for drill-down or staged dependent-task
+ * hydration) carries the same shape as one fetched via
+ * `fetchTasksPage`. Identical opt_fields ensures the cache upsert path
+ * doesn't have to reconcile two shapes per `gid`.
+ */
+const TASK_DETAIL_FIELDS = TASK_FIELDS;
+
+/**
+ * T048 (US2) — fetch one page of projects for a workspace.
+ *
+ * Calls `GET /projects?workspace={gid}&archived=false&offset=…`. The
+ * client is stateless per call (per `contracts/asana-client.md` §
+ * "Pagination"); the refresh orchestrator (T051) drives the loop by
+ * calling this function again with the previous response's
+ * `next_page.offset` until it is `null`. The pagination walk itself
+ * is exercised by the contract test (`asana-client.pagination.test.ts`
+ * "completes a multi-page walk by following next_page.offset until
+ * null").
+ *
+ * `@param` workspaceGid — Asana's opaque `gid` for the workspace to
+ * enumerate; validated as a non-empty string by the caller (per
+ * FR-017, `gid` is opaque so no further parsing is performed here).
+ *
+ * `@param` options.offset — opaque `next_page.offset` from the prior
+ * page; `undefined` on the first call.
+ *
+ * The function never issues a write method; verified by the static +
+ * runtime scan in `tests/contract/asana-client.readonly.test.ts`
+ * (T026). A 401 maps to `auth_failure`, a 403 to `permission_failure`,
+ * a 429 to `rate_limited`, a transport-level failure to `network_error`
+ * (with the token scrubbed per FR-008/FR-010), and a Zod mismatch on
+ * the `data[]` shape to `validation_error` with structured `ZodIssue[]`
+ * (FR-081/FR-082/FR-083).
+ */
+export async function fetchProjectsPage(
+  token: string,
+  workspaceGid: string,
+  options?: ClientRequestOptions,
+): Promise<AsanaClientResult<z.infer<typeof asanaProjectListResponseSchema>>> {
+  return asanaGet(
+    "/projects",
+    asanaProjectListResponseSchema,
+    token,
+    {
+      opt_fields: PROJECT_FIELDS,
+      workspace: workspaceGid,
+      archived: "false",
+      offset: options?.offset,
+    },
+    options,
+  );
+}
+
+/**
+ * T048 (US2) — fetch one page of tasks for a project.
+ *
+ * Calls `GET /projects/{gid}/tasks?opt_fields=…&offset=…`. The
+ * pagination walk is orchestrator-driven, identical shape to
+ * `fetchProjectsPage`. Tested by
+ * `asana-client.pagination.test.ts`'s "completes a multi-page task
+ * walk" case.
+ *
+ * `@param` projectGid — the opaque Asana `gid` of the project whose
+ * task list is being fetched. The client interpolates it into the
+ * path; callers MUST supply a non-empty, already-encoded `gid` (the
+ * small-dataset fixture's `gid` strings are already URL-safe).
+ */
+export async function fetchTasksPage(
+  token: string,
+  projectGid: string,
+  options?: ClientRequestOptions,
+): Promise<AsanaClientResult<z.infer<typeof asanaTaskListResponseSchema>>> {
+  return asanaGet(
+    `/projects/${projectGid}/tasks`,
+    asanaTaskListResponseSchema,
+    token,
+    {
+      opt_fields: TASK_FIELDS,
+      offset: options?.offset,
+    },
+    options,
+  );
+}
+
+/**
+ * T048 (US2) — fetch the full detail for a single task.
+ *
+ * Calls `GET /tasks/{gid}?opt_fields=…`. The Asana detail endpoint
+ * returns the task resource directly (not wrapped in a
+ * `{ data, next_page }` envelope); the schema used here is the
+ * resource-level `asanaTaskSchema`, matching the contract's note
+ * that "Asana's `/users/me` returns the user resource directly (not
+ * wrapped in a `{ data }` envelope)" pattern in
+ * `tests/contract/asana-client.base.test.ts`.
+ *
+ * Used by the refresh orchestrator for subtask and dependency
+ * hydration (where the task list page's compact-reference shape is
+ * insufficient — see `contracts/asana-client.md` § "Task detail"), and
+ * by the US3 task-detail drill-down's "Open in Asana" link resolution.
+ *
+ * A 404 (unknown task gid) is not enumerated as a dedicated outcome
+ * variant per the contract's closed union; it surfaces through the
+ * base client's generic `!response.ok` path as `network_error` with
+ * `message: "Unexpected HTTP 404"` — see the contract test
+ * "maps an unknown task to `network_error`" case, which pins this
+ * shape so a future regression that promotes 404 to a dedicated
+ * outcome either widens the union deliberately or updates the test.
+ */
+export async function fetchTaskDetail(
+  token: string,
+  taskGid: string,
+  options?: Pick<ClientRequestOptions, "signal">,
+): Promise<AsanaClientResult<z.infer<typeof asanaTaskSchema>>> {
+  return asanaGet(
+    `/tasks/${taskGid}`,
+    asanaTaskSchema,
+    token,
+    { opt_fields: TASK_DETAIL_FIELDS },
+    options,
+  );
+}
+
+/**
+ * The success payload for `fetchEventsSince`. The wire shape Asana
+ * returns is `{ data: Event[], sync: string }`; the wrapper renames
+ * `sync` to `newSyncToken` on the union's `ok.data` variant so the
+ * wire field name doesn't leak past the client boundary and a future
+ * Asana-side rename can be absorbed at the wrapper rather than every
+ * call site.
+ */
+type AsanaEventsBatch = z.infer<typeof asanaEventsResponseSchema>;
+type EventsSuccessPayload = {
+  events: AsanaEventsBatch["data"];
+  newSyncToken: AsanaEventsBatch["sync"];
+};
+
+/**
+ * T048 (US2) — FR-024 incremental sync entry point.
+ *
+ * Calls `GET /events?sync={token}` per the contract's § "Incremental
+ * sync fallback contract". Three "stale/invalid incremental state"
+ * outcomes, all of which the orchestrator treats as a trigger for a
+ * full reconciliation rather than a hard failure:
+ *
+ * - **No prior sync token** (or empty-string `syncToken`): the
+ *   function returns `validation_error` with a structured `ZodIssue`
+ *   **without** issuing a network request. The ZodIssue path points
+ *   at the `sync` field so the FR-084 data-quality panel attributes
+ *   the gap correctly (see
+ *   `asana-client.pagination.test.ts`'s `no sync token is supplied`
+ *   and `sync token is empty` cases).
+ *
+ * - **Schema mismatch on the response body**: the base client's Zod
+ *   boundary returns `validation_error` with structured `ZodIssue[]`
+ *   (FR-081/FR-082/FR-083). The payload in this case carries no
+ *   newSyncToken; the orchestrator should fall back to a full refresh
+ *   and surface a new sync token from the next `data[]` ingestion
+ *   pass per data-model.md.
+ *
+ * - **Asana's documented `412 Precondition Failed`** (expired sync
+ *   token): the base client maps 412 to `permission_failure` with
+ *   `resource: "/events"` (see `asanaGet`'s 412 branch — wired at
+ *   the plumbing layer so any future sync-token-bearing endpoint
+ *   benefits from the same outcome shape).
+ *
+ * On success the wrapper renames the wire's `sync` field to
+ * `newSyncToken` on the result's `data` variant so the orchestrator
+ * can persist it as the next call's `syncToken` without binding to
+ * the wire naming.
+ *
+ * `@param` syncToken — opaque Asana sync token persisted from the
+ * last successful `fetchEventsSince` call (or, on the orchestrator's
+ * bootstrap, a fresh-token from the corresponding full refresh).
+ * `undefined` or empty string means "no prior sync token stored for
+ * the current workspace" per FR-024 / data-model.md, and triggers
+ * the validation-error path above without a network round trip.
+ */
+export async function fetchEventsSince(
+  token: string,
+  syncToken?: string,
+  options?: Pick<ClientRequestOptions, "signal">,
+): Promise<AsanaClientResult<EventsSuccessPayload>> {
+  if (syncToken === undefined || syncToken === "") {
+    // No prior sync token persisted for the workspace — FR-024's
+    // "absence of any previously stored sync token ⇒ full
+    // reconciliation" trigger. Constructed via a synthetic Zod
+    // parse so the surface is identical to a real validation_error
+    // (structured `ZodIssue[]`, discriminant `validation_error`),
+    // matches the contract's call-site pattern of switching on
+    // `outcome` without a token-specific branch, and routes cleanly
+    // into the FR-084 data-quality panel if the orchestrator chooses
+    // to surface the gap rather than immediately cascading to a full
+    // refresh.
+    const issue = zod.ZodIssueCode.custom;
+    const message =
+      syncToken === ""
+        ? "Sync token is empty; a prior successful sync is required before incremental fetch."
+        : "No prior sync token stored for this workspace; a full reconciliation is required before incremental fetch.";
+    return {
+      outcome: "validation_error",
+      issues: [
+        {
+          code: issue,
+          path: ["sync"],
+          message,
+        },
+      ],
+    };
+  }
+
+  const wire = await asanaGet(
+    "/events",
+    asanaEventsResponseSchema,
+    token,
+    { sync: syncToken },
+    options,
+  );
+
+  if (wire.outcome !== "ok") {
+    return wire;
+  }
+
+  // Rename `sync` → `newSyncToken` so the wire field name doesn't leak
+  // past the client boundary. The orchestrator persists this on success
+  // and supplies it as the next call's `syncToken`.
+  return {
+    outcome: "ok",
+    data: {
+      events: wire.data.data,
+      newSyncToken: wire.data.sync,
+    },
+  };
 }
 
 /* -------------------------------------------------------------------------- */

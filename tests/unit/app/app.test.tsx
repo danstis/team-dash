@@ -36,52 +36,42 @@
  *   would crash at runtime, e.g. a malformed `path` value).
  */
 import { cleanup, render, screen } from "@testing-library/react";
-import { StrictMode } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { StrictMode, type ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../../src/app/credentials-context", () => ({
+  CredentialsProvider: ({ children }: { children: ReactNode }) => children,
+  useCredentials: () => ({
+    state: "ready" as const,
+    mode: "persistent" as const,
+    maskedIdentifier: "abcd",
+    setSessionToken: vi.fn(),
+    setPersistentToken: vi.fn(),
+    clearToSessionOnly: vi.fn(),
+    clearAll: vi.fn(),
+  }),
+}));
+
+vi.mock("../../../src/app/workspace-context", () => ({
+  WorkspaceProvider: ({ children }: { children: ReactNode }) => children,
+  useWorkspace: () => ({
+    state: "ready" as const,
+    workspace: {
+      gid: "11111111-test-workspace",
+      name: "Test Workspace",
+      selectedAt: "2026-07-31T00:00:00.000Z",
+    },
+    selectWorkspace: vi.fn(),
+    clearSelection: vi.fn(),
+  }),
+}));
 
 import { App } from "../../../src/app/App";
-import { db } from "../../../src/data/db/schema";
-import {
-  encryptToken,
-  generateTokenKey,
-} from "../../../src/data/crypto/token-crypto";
 import { router } from "../../../src/app/router";
 
-/**
- * Seed IndexedDB so the T046 route guard (BSOD-174) reports the
- * `'ready'` state for both `CredentialsProvider` and
- * `WorkspaceProvider` — the gate only opens when BOTH contexts are
- * ready, and the T031 assertions below exercise the gate-open
- * reporting surface (the `<h1>Team Dash</h1>` placeholder).
- *
- * The seed uses a persistent credential (with a freshly generated
- * non-extractable AES-GCM key — the documented FR-002a contract) so
- * the provider decrypts it on mount rather than relying on a
- * session-only token that would not survive the render boundary.
- */
-async function seedReadyGateState(): Promise<void> {
-  const token = "t031-shell-test-token-abcd";
-  const key = await generateTokenKey();
-  const { ciphertext, iv } = await encryptToken(token, key);
-  await db.credentials.put({
-    mode: "persistent",
-    encryptedTokenRecord: { ciphertext, iv, keyRef: key },
-    maskedIdentifier: "abcd",
-    lastValidatedAt: null,
-    lastValidationResult: null,
-  });
-  await db.workspaces.put({
-    gid: "11111111-test-workspace",
-    name: "Test Workspace",
-    selectedAt: "2026-07-31T00:00:00.000Z",
-  });
-}
-
 describe("T031 <App /> (provider tree + router composition)", () => {
-  afterEach(async () => {
+  afterEach(() => {
     cleanup();
-    await db.credentials.clear();
-    await db.workspaces.clear();
   });
 
   it("renders without throwing (Constitution Principle I: app must boot)", () => {
@@ -96,15 +86,6 @@ describe("T031 <App /> (provider tree + router composition)", () => {
   });
 
   it("renders the router's fallback for an unmatched initial URL when the gate is open", async () => {
-    // The router MUST register at least one route, and the placeholder
-    // is the gate-open reporting surface (US2's eventual dashboard
-    // chrome will replace it). T046's route guard hides the
-    // placeholder when either provider is not `'ready'`; the test
-    // seeds the gate-open state so the placeholder remains the
-    // rendered surface and a future contributor who deletes the
-    // placeholder (and breaks SC-001's "app remains usable at first
-    // launch") still fails the test.
-    await seedReadyGateState();
     render(<App />);
 
     expect(
@@ -114,10 +95,6 @@ describe("T031 <App /> (provider tree + router composition)", () => {
   });
 
   it("mounts under StrictMode (Principle I + dev safety)", () => {
-    // T010's existing shell test (`tests/unit/app/main.test.tsx`)
-    // already asserts the entry point renders under StrictMode;
-    // T031's <App /> must remain StrictMode-safe so the entry point
-    // can wrap it the same way.
     expect(() =>
       render(
         <StrictMode>
@@ -129,14 +106,11 @@ describe("T031 <App /> (provider tree + router composition)", () => {
 });
 
 describe("T031 router (dumb route configuration)", () => {
-  afterEach(async () => {
-    await db.delete();
+  afterEach(() => {
+    cleanup();
   });
 
   it("exports a non-null `router` object consumable by RouterProvider", () => {
-    // React Router 8's createBrowserRouter / createMemoryRouter return
-    // an object with at minimum a `routes` array and a `subscribe`
-    // method. Asserting on the shape pins the API the shell mounts.
     expect(router).toBeDefined();
     expect(Array.isArray(router.routes)).toBe(true);
     expect(typeof router.subscribe).toBe("function");

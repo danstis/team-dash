@@ -309,6 +309,14 @@ The three task-health calculators all live in `src/domain/metrics/taskHealth.ts`
 
 ---
 
+## Phase 14: First-run UI Wiring Bug Fix
+
+**Purpose**: BSOD-347 — the live `/` first-run route renders only a status block; the existing Phase 3 components (`TokenEntryForm` + `TestTokenButton`, `StorageModeSelector`, `WorkspaceSelector`) are not composed into the gate-closed surface so a real user cannot enter a token, choose a storage mode, or pick an Asana workspace on first run. This phase closes the wiring gap so the gate-closed surface is itself the credential entry / workspace selection flow (FR-001, US1 scenarios 1–5), and BSOD-350's first-run Playwright coverage can land on top.
+
+- [x] [BSOD-347] T128 [P] [US1] First-run UI composition red→green — write the integration test in `tests/integration/credentials/first-run-setup.test.tsx` that drives the live `/` route through TokenEntry → StorageMode (session) → WorkspaceSelector over the real `CredentialsProvider`/`WorkspaceProvider` tree and asserts the gate lifts; confirm it fails for the intended reason; then compose the three existing Phase 3 components (`TokenEntryForm`/`TestTokenButton`, `StorageModeSelector`, `WorkspaceSelector`) over a local phase machine in `src/features/credentials/FirstRunSetup.tsx` and mount the composition from `src/app/router.tsx`'s `FirstRunRoute` (replace the presentation-only status block) so the test passes. **Sequential after T046** — the existing route guard decides when this composition is rendered.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

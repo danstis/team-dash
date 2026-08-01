@@ -169,10 +169,10 @@ type RefreshStagingRowByStore = {
  * The buffer's `Map<key, row>` key. Always a string so the in-memory
  * buffer dedupes across paginated `stageUpsert` calls for every
  * store — including the compound-key stores (`dependencies`,
- * `snapshots`) whose schema primary key is `[string, string]`. The
- * separator is the NUL character (`\0`); Asana `gid` values are
- * alphanumeric strings (data-model.md, FR-017) so the separator
- * cannot collide with a real `gid` substring.
+ * `snapshots`) whose schema primary key is `[string, string]`.
+ * Compound-key stores encode the ordered pair with `JSON.stringify`
+ * so opaque identity components remain unambiguous even when they
+ * contain embedded delimiters, quotes, or multibyte characters.
  */
 function bufferKeyOf<S extends RefreshStagingStoreName>(
   store: S,
@@ -192,7 +192,10 @@ function bufferKeyOf<S extends RefreshStagingStoreName>(
     case "priorityFields":
       return (row as PriorityField).projectGid;
     case "dependencies":
-      return `${(row as Dependency).taskGid}\0${(row as Dependency).dependsOnTaskGid}`;
+      return JSON.stringify([
+        (row as Dependency).taskGid,
+        (row as Dependency).dependsOnTaskGid,
+      ]);
     case "sections":
       return (row as Section).gid;
     case "tasks":
@@ -200,7 +203,10 @@ function bufferKeyOf<S extends RefreshStagingStoreName>(
     case "refreshSessions":
       return (row as RefreshSession).id;
     case "snapshots":
-      return `${(row as Snapshot).workspaceGid}\0${(row as Snapshot).localCalendarDate}`;
+      return JSON.stringify([
+        (row as Snapshot).workspaceGid,
+        (row as Snapshot).localCalendarDate,
+      ]);
   }
 }
 

@@ -468,6 +468,88 @@ describe("T047 RefreshStagingRepository (contracts/storage-repository.md)", () =
       const snapshots = await db.snapshots.toArray();
       expect(snapshots).toHaveLength(2);
     });
+
+    it("dependency staging preserves two opaque gid pairs that collide under delimiter concatenation", async () => {
+      await db.refreshSessions.put(makeRefreshSession({ id: SESSION_ID }));
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("dependencies", [
+        makeDependency({
+          taskGid: ' task\0dep "alpha" ',
+          dependsOnTaskGid: "x\\beta",
+        }),
+        makeDependency({
+          taskGid: " task ",
+          dependsOnTaskGid: 'dep\0x\\beta "alpha" ',
+        }),
+      ]);
+
+      await refreshStagingRepository.commit(SESSION_ID);
+
+      const dependencies = await db.dependencies
+        .orderBy("[taskGid+dependsOnTaskGid]")
+        .toArray();
+      expect(dependencies).toHaveLength(2);
+      expect(dependencies).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            taskGid: " task ",
+            dependsOnTaskGid: 'dep\0x\\beta "alpha" ',
+          }),
+          expect.objectContaining({
+            taskGid: ' task\0dep "alpha" ',
+            dependsOnTaskGid: "x\\beta",
+          }),
+        ]),
+      );
+    });
+
+    it("snapshot staging preserves two opaque key pairs that collide under delimiter concatenation", async () => {
+      await db.refreshSessions.put(makeRefreshSession({ id: SESSION_ID }));
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("snapshots", [
+        makeSnapshot({
+          workspaceGid: ' workspace\0東京 "north" ',
+          localCalendarDate: "x\\2026-08-01",
+          incompleteCount: 7,
+        }),
+        makeSnapshot({
+          workspaceGid: " workspace ",
+          localCalendarDate: '東京\0x\\2026-08-01 "north" ',
+          incompleteCount: 11,
+        }),
+      ]);
+
+      await refreshStagingRepository.commit(SESSION_ID);
+
+      const snapshots = await db.snapshots
+        .orderBy("[workspaceGid+localCalendarDate]")
+        .toArray();
+      expect(snapshots).toHaveLength(2);
+      expect(snapshots).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            workspaceGid: " workspace ",
+            localCalendarDate: '東京\0x\\2026-08-01 "north" ',
+            incompleteCount: 11,
+          }),
+          expect.objectContaining({
+            workspaceGid: ' workspace\0東京 "north" ',
+            localCalendarDate: "x\\2026-08-01",
+            incompleteCount: 7,
+          }),
+        ]),
+      );
+    });
   });
 
   describe("commit() commits every staged cache store in the single transaction", () => {

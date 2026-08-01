@@ -173,3 +173,134 @@ describe("T010 renderApp (bootstrap helper, T031 wires it to <App />)", () => {
     expect(container.querySelectorAll("h1")).toHaveLength(1);
   });
 });
+
+describe("T031 mountRootApp (BSOD-348 dev-server boot sequence)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.resetModules();
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    document.body.innerHTML = "";
+  });
+
+  it("runs bootstrapDevMocks then renderApp(rootElement) when VITE_USE_MOCKS=1 (BSOD-348, Sonar new-code coverage)", async () => {
+    vi.stubEnv("DEV", true);
+    vi.stubEnv("VITE_USE_MOCKS", "1");
+
+    const startDevWorker = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("../../../src/mocks/browser", () => ({
+      startDevWorker,
+    }));
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+
+    const { mountRootApp } = await import("../../../src/main");
+
+    await act(async () => {
+      await mountRootApp(container);
+    });
+
+    // bootstrapDevMocks fired and consulted the worker (mocked).
+    expect(startDevWorker).toHaveBeenCalledTimes(1);
+    // renderApp fired and the App shell mounted into the container.
+    await waitFor(
+      () => {
+        expect(container.querySelector("h1")).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
+    expect(container.querySelector("h1")?.textContent).toMatch(/team dash/i);
+  });
+
+  it("skips the MSW boot but still renders <App /> when VITE_USE_MOCKS is unset (BSOD-348, Sonar new-code coverage)", async () => {
+    vi.stubEnv("DEV", true);
+    // No VITE_USE_MOCKS stub: the new default-live path. The
+    // env-var gate in bootstrapDevMocks short-circuits, so the
+    // mocked worker is never consulted.
+    const startDevWorker = vi.fn();
+    vi.doMock("../../../src/mocks/browser", () => ({
+      startDevWorker,
+    }));
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+
+    const { mountRootApp } = await import("../../../src/main");
+
+    await act(async () => {
+      await mountRootApp(container);
+    });
+
+    expect(startDevWorker).not.toHaveBeenCalled();
+    // renderApp still ran — the dev server's default-live path
+    // must not block the app shell from mounting.
+    await waitFor(
+      () => {
+        expect(container.querySelector("h1")).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
+    expect(container.querySelector("h1")?.textContent).toMatch(/team dash/i);
+  });
+
+  it("runs the top-level #root boot sequence when the script is loaded against an index.html-style document (BSOD-348, Sonar new-code coverage)", async () => {
+    // Pin the env vars and the mocked worker BEFORE the dynamic
+    // import so the dynamic-import inside bootstrapDevMocks picks
+    // up the mocked module.
+    vi.stubEnv("DEV", true);
+    vi.stubEnv("VITE_USE_MOCKS", "1");
+
+    const startDevWorker = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("../../../src/mocks/browser", () => ({
+      startDevWorker,
+    }));
+
+    // index.html declares <div id="root"></div> at module
+    // evaluation time. Mirroring that here makes the module-top-
+    // level `if (rootElement) { await mountRootApp(...) }` block
+    // fire when src/main.tsx is dynamic-imported, which is the
+    // line SonarCloud's new-code coverage was flagging.
+    document.body.innerHTML = '<div id="root"></div>';
+
+    // Force a fresh module evaluation so the top-level block runs
+    // against the just-added #root, not the cached null from the
+    // test file's earlier static import.
+    vi.resetModules();
+    await act(async () => {
+      await import("../../../src/main");
+    });
+
+    const rootElement = document.getElementById("root");
+    expect(rootElement).not.toBeNull();
+    expect(startDevWorker).toHaveBeenCalledTimes(1);
+    await waitFor(
+      () => {
+        expect(rootElement?.querySelector("h1")).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
+    expect(rootElement?.querySelector("h1")?.textContent).toMatch(/team dash/i);
+  });
+
+  it("does not call mountRootApp at the top level when the document has no #root element (BSOD-348)", async () => {
+    vi.stubEnv("DEV", true);
+    vi.stubEnv("VITE_USE_MOCKS", "1");
+
+    const startDevWorker = vi.fn();
+    vi.doMock("../../../src/mocks/browser", () => ({
+      startDevWorker,
+    }));
+
+    // No #root in the document — the top-level guard must skip
+    // mountRootApp entirely. (Production builds skip too via the
+    // PROD guard, but a dev build against an unexpected document
+    // should also no-op rather than throw.)
+    document.body.innerHTML = "";
+
+    vi.resetModules();
+    await import("../../../src/main");
+
+    expect(startDevWorker).not.toHaveBeenCalled();
+  });
+});

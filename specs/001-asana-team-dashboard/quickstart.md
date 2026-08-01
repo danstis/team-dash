@@ -18,14 +18,38 @@ npm ci
 npm run dev
 ```
 
-Open the printed local URL. The dev server runs against the MSW-mocked
-Asana API by default (`fixtures/asana/small-dataset`), so the app behaves
-exactly as it would with a real workspace, deterministically.
+Open the printed local URL. The dev server defaults to **live network
+calls** (BSOD-348) — a real PAT is required and the browser hits
+`app.asana.com/api/1.0` directly, so the developer sees the same
+behaviour a user sees in production. Real Asana errors therefore
+surface in the browser console and network panel instead of being
+masked by fixture handlers.
+
+To run the offline / no-PAT P1 path against the deterministic MSW
+fixture surface (`fixtures/asana/small-dataset/`) instead, set the
+opt-in env var:
+
+```bash
+VITE_USE_MOCKS=1 npm run dev
+```
+
+Only the literal string `1` opts in. Any other value (including
+unset, empty string, `0`, or `true`) leaves the dev server live.
+The Vitest and Playwright test suites configure MSW on their own
+paths and continue to use the fixture handlers regardless of
+`VITE_USE_MOCKS` — leaving the env var unset in CI is safe.
 
 **Expected**: First-run credential entry screen (FR-001), no reporting
 screen reachable yet.
 
 ## 2. Walk the P1 path (US1–US4) manually
+
+> Steps 2–7 require the deterministic MSW fixture surface, so start
+> the dev server with `VITE_USE_MOCKS=1 npm run dev` for this section
+> (the live default added in BSOD-348 will reject the synthetic token
+> the fixture flow expects). With `VITE_USE_MOCKS` unset, use a real
+> PAT against `app.asana.com/api/1.0`; the rest of the manual flow
+> applies identically.
 
 1. Enter any non-empty token string, click "Test token" → success result
    listing the fixture's mock workspaces (US1, Scenario 2).

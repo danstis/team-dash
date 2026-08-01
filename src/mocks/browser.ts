@@ -6,11 +6,29 @@
  * -------
  * This module exposes the single MSW browser worker instance that the
  * small-dataset Asana fixture handlers (T029, `fixtures/asana/small-dataset/`)
- * are bound to at module-evaluation time. It exists so the local dev
- * server (`npm run dev`) and any browser-driven integration test (a
- * future Playwright `page.evaluate` hook, a Storybook-style harness)
- * boot the Asana API with a single import and a single `startDevWorker()`
- * call — never by manually constructing a `setupWorker` per call site.
+ * are bound to at module-evaluation time. It exists so a developer who
+ * explicitly opts into the fixture surface — by setting
+ * `VITE_USE_MOCKS=1` before `npm run dev` — and any browser-driven
+ * integration test (a future Playwright `page.evaluate` hook, a
+ * Storybook-style harness) boot the Asana API with a single import and
+ * a single `startDevWorker()` call — never by manually constructing a
+ * `setupWorker` per call site. The Vitest + Playwright test suites do
+ * not consult this env var: they wire MSW on their own paths (see
+ * `tests/setup.ts` for the Vitest Node server and the per-test MSW
+ * hooks) so leaving `VITE_USE_MOCKS` unset in CI does not break tests.
+ *
+ * Why the worker is opt-in rather than default-on
+ * -----------------------------------------------
+ * The original T030 wiring booted the fixture worker on every
+ * `npm run dev` run. That default hid real Asana errors from
+ * developers behind silent fixture handlers — the symptom tracked in
+ * BSOD-347 — and contradicted the Constitution's local-first stance
+ * (Principle IV): with MSW off, the dev server's network calls are the
+ * user's own browser → Asana requests, so no token or data is proxied
+ * through the project. The dev server now defaults to live Asana
+ * requests; the fixture surface stays one env var away for the cases
+ * that still need it (offline development, deterministic demos, CI
+ * scenarios that want to avoid a real workspace).
  *
  * Why this module is dev-only
  * ---------------------------
@@ -67,7 +85,38 @@ import { asanaHandlers } from "../../fixtures/asana/small-dataset/handlers";
 export const worker = setupWorker(...asanaHandlers);
 
 /**
- * Start the MSW worker in development builds only.
+ * The opt-in environment variable that switches the dev server onto the
+ * MSW fixture surface. Set to the literal string `"1"` to enable the
+ * fixture workers; any other value (including unset, empty string,
+ * `"true"`, `"yes"`, or `"0"`) leaves the dev server talking to the
+ * real Asana API. The exact-string check keeps the gate unambiguous in
+ * shell logs and CI matrices — a contributor who wants the fixtures
+ * sets `VITE_USE_MOCKS=1` and sees `VITE_USE_MOCKS=1` echoed back.
+ */
+export const DEV_MOCKS_ENV_VAR = "VITE_USE_MOCKS";
+
+/**
+ * Pure-function predicate that answers "should the dev server boot
+ * MSW right now?". Splitting the decision from the side-effecting
+ * `startDevWorker()` keeps the gate testable without a Service Worker
+ * registration — see `tests/integration/dev-server/mock-mode.test.ts`
+ * for the env-var matrix this function pins.
+ *
+ * Production builds never boot the worker regardless of the env var
+ * (the production `Error` throw in `startDevWorker()` enforces the
+ * hard rule; this function returns `false` in production so a caller
+ * that only consults the predicate still behaves correctly).
+ */
+export function shouldStartDevMocks(): boolean {
+  if (import.meta.env.PROD) {
+    return false;
+  }
+  return import.meta.env[DEV_MOCKS_ENV_VAR] === "1";
+}
+
+/**
+ * Start the MSW worker in development builds only, and only when the
+ * caller has explicitly opted in via `VITE_USE_MOCKS=1`.
  *
  * Throws in production builds (`import.meta.env.PROD === true`) so a
  * future contributor who wires this into `src/main.tsx` without a
@@ -77,12 +126,24 @@ export const worker = setupWorker(...asanaHandlers);
  * code reviewer at the contract (`contracts/asana-client.md`) without
  * requiring them to read the dev guard source.
  *
+ * Returns `undefined` without booting the worker when the env var is
+ * unset (the default). The dev server's normal request path then
+ * reaches the real Asana API directly, so a developer running
+ * `npm run dev` sees the API the user will see and is no longer
+ * insulated from real Asana errors by silent fixture handlers — the
+ * BSOD-347 motivation. To opt back into the fixture surface for a
+ * single run, set `VITE_USE_MOCKS=1` before `npm run dev`; the
+ * `bootstrapDevMocks()` early-return in `src/main.tsx` and the
+ * guard here are deliberate defence-in-depth so a regression in
+ * either layer still keeps the default-live behaviour intact.
+ *
  * The promise resolves with the activated `ServiceWorkerRegistration`
- * on success (or `undefined` if the worker was already active) and
- * rejects if the Service Worker registration fails (e.g. the
- * `mockServiceWorker.js` file is missing from `public/`). The
- * `{ onUnhandledRequest: "error" }` policy mirrors the canonical
- * Node server so a forgotten handler fails loudly in both runtimes.
+ * on success (or `undefined` if the worker was already active, or if
+ * the env-var gate short-circuited) and rejects if the Service Worker
+ * registration fails (e.g. the `mockServiceWorker.js` file is missing
+ * from `public/`). The `{ onUnhandledRequest: "error" }` policy
+ * mirrors the canonical Node server so a forgotten handler fails
+ * loudly in both runtimes.
  */
 export async function startDevWorker(): Promise<
   ServiceWorkerRegistration | undefined
@@ -94,6 +155,9 @@ export async function startDevWorker(): Promise<
         "the production PWA must call the real Asana API with a user-supplied PAT. " +
         "Guard the call site with `import.meta.env.DEV`.",
     );
+  }
+  if (!shouldStartDevMocks()) {
+    return undefined;
   }
   return worker.start({
     onUnhandledRequest: "error",

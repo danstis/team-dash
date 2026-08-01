@@ -49,7 +49,13 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. Development and test requests use the deterministic MSW fixture setup by default, so the first-run credential flow can be exercised without a live workspace. A real PAT is only needed when intentionally testing the direct Asana integration outside the fixture flow.
+Open the local URL printed by Vite. The dev server defaults to **live network calls** — a real PAT is required and the browser hits `app.asana.com/api/1.0` directly so a developer running `npm run dev` sees the same behaviour a user will see in production, including real Asana errors (BSOD-347 / BSOD-348). The deterministic MSW fixture surface (`fixtures/asana/small-dataset/`) is still available as an explicit opt-in:
+
+```bash
+VITE_USE_MOCKS=1 npm run dev
+```
+
+Only the literal string `1` opts in. Any other value (including unset, empty string, `0`, or `true`) leaves the dev server live. The Vitest and Playwright test suites do not consult `VITE_USE_MOCKS` — they configure MSW on their own paths (`tests/setup.ts` and the Playwright harness when it lands), so leaving the env var unset in CI does not break tests.
 
 The development application is expected to provide a first-run credential screen. The normal P1 path is:
 
@@ -60,7 +66,9 @@ The development application is expected to provide a first-run credential screen
 5. Open the task table, combine a date-range and assignee filter, clear the filters, and drill into a multi-project task.
 6. Open the work-added-versus-completed and backlog views and compare their values with the fixture expectations.
 
-No application environment file is required for the fixture flow. Do not add secrets to local configuration. If a future deployment needs configuration, use safe placeholders in committed examples and keep real values outside source control.
+For the offline / no-PAT path, set `VITE_USE_MOCKS=1 npm run dev` so the fixture surface stands in for Asana. Steps 1–2 above then use any non-empty synthetic token against `fixtures/asana/small-dataset` and the rest of the flow runs without network access.
+
+No application environment file is required for either flow. Do not add secrets to local configuration. If a future deployment needs configuration, use safe placeholders in committed examples and keep real values outside source control.
 
 ## Testing and quality checks
 
@@ -249,7 +257,7 @@ Run `npm ci` from the repository root and confirm the command is listed in `pack
 
 ### Test token fails in the fixture flow
 
-Use a non-empty synthetic token and ensure the mock service worker is active. A fixture failure is not evidence that a real PAT is valid. For a real Asana test, check that the token has access to at least one workspace and that the browser can reach Asana; never include the token in diagnostic output.
+Use a non-empty synthetic token and ensure the mock service worker is active. The dev server now defaults to **live** network calls, so a fixture flow only runs when `VITE_USE_MOCKS=1 npm run dev` is set explicitly. With the env var unset, `npm run dev` reaches `app.asana.com/api/1.0` directly and a non-empty synthetic token will fail to validate against the real Asana API — that is the expected default, not a fixture mismatch. A fixture failure is not evidence that a real PAT is valid. For a real Asana test, check that the token has access to at least one workspace and that the browser can reach Asana; never include the token in diagnostic output.
 
 ### The app shows cached data or Refresh is unavailable
 

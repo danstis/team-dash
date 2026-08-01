@@ -66,18 +66,6 @@ describe("BSOD-348 dev server default-to-live (VITE_USE_MOCKS env-var gate)", ()
   });
 
   describe("bootstrapDevMocks (src/main.tsx entry-point wiring)", () => {
-    it("does not start the MSW worker when VITE_USE_MOCKS is unset in a development build", async () => {
-      vi.stubEnv("DEV", true);
-      // No VITE_USE_MOCKS stub: the dev server's default is live.
-
-      const { bootstrapDevMocks } = await importMainModule();
-      const { worker } = await importMocksBrowser();
-
-      await bootstrapDevMocks();
-
-      expect(worker.start).not.toHaveBeenCalled();
-    });
-
     it("starts the MSW worker when VITE_USE_MOCKS=1 in a development build", async () => {
       vi.stubEnv("DEV", true);
       vi.stubEnv("VITE_USE_MOCKS", "1");
@@ -90,44 +78,43 @@ describe("BSOD-348 dev server default-to-live (VITE_USE_MOCKS env-var gate)", ()
       expect(worker.start).toHaveBeenCalledTimes(1);
     });
 
-    it("does not start the MSW worker when VITE_USE_MOCKS is the literal string '0'", async () => {
-      vi.stubEnv("DEV", true);
-      vi.stubEnv("VITE_USE_MOCKS", "0");
+    /**
+     * The env-var matrix that the dev-server's `bootstrapDevMocks()`
+     * entry-point gate MUST short-circuit: every value other than the
+     * literal string `"1"` leaves the dev server talking to the real
+     * Asana API. Parameterized via `it.each` because every case shares
+     * the same body shape — the only variable is the stubbed env-var
+     * value, and asserting the absence of `worker.start` for each is
+     * what pins the "only `"1"` opts in" contract.
+     *
+     * The `undefined` case is the dev-server default (no env var set);
+     * the `afterEach` `vi.unstubAllEnvs()` resets the stubs between
+     * cases so each iteration starts from a clean slate.
+     */
+    it.each([
+      { name: "unset (the dev-server default)", value: undefined },
+      { name: "the literal string '0'", value: "0" },
+      { name: "the literal string 'true'", value: "true" },
+      { name: "the empty string", value: "" },
+    ] as ReadonlyArray<{
+      readonly name: string;
+      readonly value: string | undefined;
+    }>)(
+      "does not start the MSW worker when VITE_USE_MOCKS is $name",
+      async ({ value }) => {
+        vi.stubEnv("DEV", true);
+        if (value !== undefined) {
+          vi.stubEnv("VITE_USE_MOCKS", value);
+        }
 
-      const { bootstrapDevMocks } = await importMainModule();
-      const { worker } = await importMocksBrowser();
+        const { bootstrapDevMocks } = await importMainModule();
+        const { worker } = await importMocksBrowser();
 
-      await bootstrapDevMocks();
+        await bootstrapDevMocks();
 
-      // "0" is not the opt-in sentinel; the dev server stays live.
-      expect(worker.start).not.toHaveBeenCalled();
-    });
-
-    it("does not start the MSW worker when VITE_USE_MOCKS is the literal string 'true'", async () => {
-      vi.stubEnv("DEV", true);
-      vi.stubEnv("VITE_USE_MOCKS", "true");
-
-      const { bootstrapDevMocks } = await importMainModule();
-      const { worker } = await importMocksBrowser();
-
-      await bootstrapDevMocks();
-
-      // Only the literal string "1" opts in; "true" is intentionally
-      // not honoured so the gate is unambiguous in shell logs.
-      expect(worker.start).not.toHaveBeenCalled();
-    });
-
-    it("does not start the MSW worker when VITE_USE_MOCKS is the empty string", async () => {
-      vi.stubEnv("DEV", true);
-      vi.stubEnv("VITE_USE_MOCKS", "");
-
-      const { bootstrapDevMocks } = await importMainModule();
-      const { worker } = await importMocksBrowser();
-
-      await bootstrapDevMocks();
-
-      expect(worker.start).not.toHaveBeenCalled();
-    });
+        expect(worker.start).not.toHaveBeenCalled();
+      },
+    );
 
     it("does not start the MSW worker when not in a development build, even with VITE_USE_MOCKS=1", async () => {
       vi.stubEnv("DEV", false);

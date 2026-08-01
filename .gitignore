@@ -137,6 +137,12 @@ dist-ssr/
 # Test coverage output (vitest --coverage, jest --coverage, nyc, etc.)
 coverage/
 
+# Playwright e2e test output (HTML report, trace files, failure artifacts).
+# Mirrors the `eslint.config.js` ignore list so working directory state
+# after a test run does not pollute `git status` (BSOD-349).
+/playwright-report/
+/test-results/
+
 # Local scratch + ad-hoc tooling output (visual QA artefacts, etc.)
 tmp/
 

@@ -54,7 +54,22 @@
  *    remembered which keys it staged and tried to roll them back)
  *    could not pass if the staging buffer had optimistically flushed.
  *
- * 5. **No writeable direct access from callers**: every storage side
+ * 5. **Buffer dedup is by stringified key, including for compound-key
+ *    stores**: JavaScript `Map` keys object/array values by reference,
+ *    not by value. The two compound-key stores (`dependencies` keyed
+ *    by `[taskGid, dependsOnTaskGid]`, `snapshots` keyed by
+ *    `[workspaceGid, localCalendarDate]`) would accumulate as
+ *    separate entries across paginated `stageUpsert` calls if the
+ *    raw array literal were used as the Map key, breaking the
+ *    "upsert-keyed" invariant and risking unbounded memory growth at
+ *    the 25k-task NFR-001 scale. The buffer therefore keys every
+ *    store by a stringified form (`` `${taskGid}\0${dependsOnTaskGid}` ``,
+ *    where `\0` is a separator that is not a valid Asana gid
+ *    character). The contract test
+ *    `tests/contract/refresh-staging.test.ts` "compound-key staging
+ *    dedupes successive stageUpsert calls" pins this.
+ *
+ * 6. **No writeable direct access from callers**: every storage side
  *    effect goes through this repository (Constitution Principle VI).
  *    The orchestrator (T051) reaches the surface via
  *    `refreshStagingRepository.<method>(...)`; the test suite
@@ -92,7 +107,6 @@
  * slice.
  */
 import { db } from "../schema";
-import type { Table } from "dexie";
 import type {
   AsanaTeam,
   Dependency,
@@ -152,93 +166,53 @@ type RefreshStagingRowByStore = {
 };
 
 /**
- * The Dexie primary-key shape for each cache store. Most stores are
- * keyed by a single string; the two multi-entry stores (`dependencies`
- * and `snapshots`) use a `[string, string]` compound key. The
- * `keyString` form is what the in-memory `Map` keys by; the
- * `dexiePrimaryKey` is what `bulkPut` ultimately targets. For single-
- * string primary keys the two are identical.
+ * The buffer's `Map<key, row>` key. Always a string so the in-memory
+ * buffer dedupes across paginated `stageUpsert` calls for every
+ * store — including the compound-key stores (`dependencies`,
+ * `snapshots`) whose schema primary key is `[string, string]`. The
+ * separator is the NUL character (`\0`); Asana `gid` values are
+ * alphanumeric strings (data-model.md, FR-017) so the separator
+ * cannot collide with a real `gid` substring.
  */
-type RefreshStagingKeyByStore = {
-  workspaces: string;
-  projects: string;
-  portfolios: string;
-  asanaTeams: string;
-  users: string;
-  priorityFields: string;
-  dependencies: [string, string];
-  sections: string;
-  tasks: string;
-  refreshSessions: string;
-  snapshots: [string, string];
-};
-
-/**
- * Extract the primary key for a staged row. The selection is purely
- * a structural lookup — Dexie itself is the identity authority at
- * commit time, so the only failure mode this protects against is a
- * stale `key` field on a row (e.g. an upsert whose `gid` does not
- * match the primary key the schema expects). Such a row would be
- * silently dropped by Dexie; the contract test does not cover that
- * scenario because the orchestrator is the only caller and constructs
- * rows from validated DTOs.
- */
-function primaryKeyOf<S extends RefreshStagingStoreName>(
+function bufferKeyOf<S extends RefreshStagingStoreName>(
   store: S,
   row: RefreshStagingRowByStore[S],
-): RefreshStagingKeyByStore[S] {
+): string {
   switch (store) {
-    case "workspaces": {
-      return (row as Workspace).gid as RefreshStagingKeyByStore[S];
-    }
-    case "projects": {
-      return (row as Project).gid as RefreshStagingKeyByStore[S];
-    }
-    case "portfolios": {
-      return (row as Portfolio).gid as RefreshStagingKeyByStore[S];
-    }
-    case "asanaTeams": {
-      return (row as AsanaTeam).gid as RefreshStagingKeyByStore[S];
-    }
-    case "users": {
-      return (row as User).gid as RefreshStagingKeyByStore[S];
-    }
-    case "priorityFields": {
-      return (row as PriorityField).projectGid as RefreshStagingKeyByStore[S];
-    }
-    case "dependencies": {
-      const dependency = row as Dependency;
-      return [
-        dependency.taskGid,
-        dependency.dependsOnTaskGid,
-      ] as RefreshStagingKeyByStore[S];
-    }
-    case "sections": {
-      return (row as Section).gid as RefreshStagingKeyByStore[S];
-    }
-    case "tasks": {
-      return (row as Task).gid as RefreshStagingKeyByStore[S];
-    }
-    case "refreshSessions": {
-      return (row as RefreshSession).id as RefreshStagingKeyByStore[S];
-    }
-    case "snapshots": {
-      const snapshot = row as Snapshot;
-      return [
-        snapshot.workspaceGid,
-        snapshot.localCalendarDate,
-      ] as RefreshStagingKeyByStore[S];
-    }
+    case "workspaces":
+      return (row as Workspace).gid;
+    case "projects":
+      return (row as Project).gid;
+    case "portfolios":
+      return (row as Portfolio).gid;
+    case "asanaTeams":
+      return (row as AsanaTeam).gid;
+    case "users":
+      return (row as User).gid;
+    case "priorityFields":
+      return (row as PriorityField).projectGid;
+    case "dependencies":
+      return `${(row as Dependency).taskGid}\0${(row as Dependency).dependsOnTaskGid}`;
+    case "sections":
+      return (row as Section).gid;
+    case "tasks":
+      return (row as Task).gid;
+    case "refreshSessions":
+      return (row as RefreshSession).id;
+    case "snapshots":
+      return `${(row as Snapshot).workspaceGid}\0${(row as Snapshot).localCalendarDate}`;
   }
 }
 
 /**
- * The in-memory staging buffer: per-store, per-key. The `unknown`
- * typing is the storage slot; the read-side helper
- * (`getStagedRows`) reasserts the row type when the orchestrator
- * iterates over a buffer in `commit()`.
+ * The in-memory staging buffer: per-store, per-key. The key is the
+ * stringified form (`bufferKeyOf`) so the two compound-key stores
+ * dedupe correctly; the row is the staged entity verbatim.
  */
-type StagingBuffer = Map<RefreshStagingStoreName, Map<unknown, unknown>>;
+type StagingBuffer = Map<
+  RefreshStagingStoreName,
+  Map<string, RefreshStagingRowByStore[RefreshStagingStoreName]>
+>;
 
 /**
  * The module-level staging area. The `RefreshStagingRepository`
@@ -253,39 +227,58 @@ let currentSessionId: string | null = null;
 let currentBuffer: StagingBuffer = new Map();
 
 /**
- * Resolve the Dexie `Table` for a given store name. The return type
- * is widened to `Table<any, any>` so the `bulkPut` overloads across
- * the union of cache-store tables collapse to a single callable
- * overload (Dexie's `bulkPut` is overloaded per EntityTable, and
- * TypeScript cannot unify those overloads in a heterogeneous union
- * without a manual widening). The per-store row identity is
- * preserved by the `RefreshStagingRowByStore` map at the
- * `stageUpsert` boundary, so the runtime side-effect is correct.
+ * Flush a store's staged rows to the live Dexie table. The per-store
+ * switch restores the per-store `EntityTable` typing — each branch
+ * calls the concretely-typed `bulkPut` directly, so the staging
+ * repository never needs to widen the heterogeneous union of cache
+ * tables to a single `Table<any, any>` shape (`typescript:S2871`
+ * resolved without losing the single-helper ergonomics).
+ *
+ * The row types are accepted as `readonly RefreshStagingRowByStore[S][]`
+ * at the call site (the calling loop already narrowed the store's
+ * row type) and re-casted to the concrete store's row type inside
+ * each branch — TypeScript cannot prove the union narrowing through
+ * the generic alias across the switch, so the casts are the narrowest
+ * possible bridge.
  */
-function dexieTableFor(store: RefreshStagingStoreName): Table<any, any> {
+async function flushStoreRows<S extends RefreshStagingStoreName>(
+  store: S,
+  rows: readonly RefreshStagingRowByStore[S][],
+): Promise<void> {
   switch (store) {
     case "workspaces":
-      return db.workspaces as unknown as Table<any, any>;
+      await db.workspaces.bulkPut(rows as readonly Workspace[]);
+      return;
     case "projects":
-      return db.projects as unknown as Table<any, any>;
+      await db.projects.bulkPut(rows as readonly Project[]);
+      return;
     case "portfolios":
-      return db.portfolios as unknown as Table<any, any>;
+      await db.portfolios.bulkPut(rows as readonly Portfolio[]);
+      return;
     case "asanaTeams":
-      return db.asanaTeams as unknown as Table<any, any>;
+      await db.asanaTeams.bulkPut(rows as readonly AsanaTeam[]);
+      return;
     case "users":
-      return db.users as unknown as Table<any, any>;
+      await db.users.bulkPut(rows as readonly User[]);
+      return;
     case "priorityFields":
-      return db.priorityFields as unknown as Table<any, any>;
+      await db.priorityFields.bulkPut(rows as readonly PriorityField[]);
+      return;
     case "dependencies":
-      return db.dependencies as unknown as Table<any, any>;
+      await db.dependencies.bulkPut(rows as readonly Dependency[]);
+      return;
     case "sections":
-      return db.sections as unknown as Table<any, any>;
+      await db.sections.bulkPut(rows as readonly Section[]);
+      return;
     case "tasks":
-      return db.tasks as unknown as Table<any, any>;
+      await db.tasks.bulkPut(rows as readonly Task[]);
+      return;
     case "refreshSessions":
-      return db.refreshSessions as unknown as Table<any, any>;
+      await db.refreshSessions.bulkPut(rows as readonly RefreshSession[]);
+      return;
     case "snapshots":
-      return db.snapshots as unknown as Table<any, any>;
+      await db.snapshots.bulkPut(rows as readonly Snapshot[]);
+      return;
   }
 }
 
@@ -298,11 +291,12 @@ function dexieTableFor(store: RefreshStagingStoreName): Table<any, any> {
  */
 export interface RefreshStagingRepository {
   /**
-   * Initialise an empty staging buffer for the given session.
-   * Idempotent: a second `beginStaging` for the same sessionId throws
-   * the prior buffer away (the orchestrator guarantees no overlapping
-   * sessions for the same `sessionId`, so a repeat call is a
-   * programming error).
+   * Initialise an empty staging buffer for the given session. The
+   * orchestrator guarantees no overlapping sessions for the same
+   * `sessionId`; a repeat call for the same sessionId re-initialises
+   * the buffer (the previous buffer is discarded as part of the
+   * switch, which is what the orchestrator wants when it begins the
+   * next chunk of a multi-batch refresh).
    */
   beginStaging(sessionId: string): Promise<void>;
 
@@ -310,6 +304,7 @@ export interface RefreshStagingRepository {
    * Buffer rows for a single store. The rows are NOT visible to
    * `getInScopeTasks()` until `commit()` runs; a `discard()` between
    * `stageUpsert` calls clears the buffer without touching the cache.
+   * Empty `rows` arrays are a no-op.
    */
   stageUpsert<S extends RefreshStagingStoreName>(
     store: S,
@@ -336,15 +331,35 @@ export interface RefreshStagingRepository {
 }
 
 /**
+ * String compare function for ordered store lists. Explicit
+ * comparator satisfies `typescript:S2871` (the default Array#sort
+ * without a comparator coerces entries to strings and falls back to
+ * alphabetical lexicographic order, which is fragile under locale
+ * settings and undefined entries).
+ */
+function compareStoreNames(
+  a: RefreshStagingStoreName,
+  b: RefreshStagingStoreName,
+): number {
+  if (a < b) {
+    return -1;
+  }
+  if (a > b) {
+    return 1;
+  }
+  return 0;
+}
+
+/**
  * Iterate the staging buffer in a deterministic order so the
  * `commit()` transaction's write order is reproducible across runs
  * (helpful for the contract test's `vi.spyOn` assertions and for
  * debugging the exact flush sequence). The store list is short
  * enough that an insertion-sort by enum declaration is wasteful —
- * `Array.from(map.keys()).sort()` is fine.
+ * `Array.from(map.keys()).sort(compareStoreNames)` is fine.
  */
 function orderedStores(buffer: StagingBuffer): RefreshStagingStoreName[] {
-  return Array.from(buffer.keys()).sort() as RefreshStagingStoreName[];
+  return Array.from(buffer.keys()).sort(compareStoreNames);
 }
 
 /**
@@ -377,7 +392,7 @@ export const refreshStagingRepository: RefreshStagingRepository = {
     }
 
     for (const row of rows) {
-      const key = primaryKeyOf(store, row);
+      const key = bufferKeyOf(store, row);
       storeBuffer.set(key, row);
     }
   },
@@ -402,7 +417,7 @@ export const refreshStagingRepository: RefreshStagingRepository = {
       }
     }
 
-    const tableNames = Array.from(stores).sort() as unknown as string[];
+    const tableNames: string[] = Array.from(stores).sort();
 
     await db.transaction("rw", tableNames, async () => {
       for (const store of orderedStores(currentBuffer)) {
@@ -410,8 +425,10 @@ export const refreshStagingRepository: RefreshStagingRepository = {
         if (storeBuffer === undefined || storeBuffer.size === 0) {
           continue;
         }
-        const rows = Array.from(storeBuffer.values());
-        await dexieTableFor(store).bulkPut(rows);
+        const rows = Array.from(
+          storeBuffer.values(),
+        ) as RefreshStagingRowByStore[RefreshStagingStoreName][];
+        await flushStoreRows(store, rows);
       }
 
       // Transition the RefreshSession to `succeeded` in the same

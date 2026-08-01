@@ -38,6 +38,14 @@
  *         survives the rollback (Dexie's native transaction atomicity
  *         is the enforcement mechanism).
  *
+ * - The compound-key stores (`dependencies`, `snapshots`) dedupe
+ *   successive `stageUpsert` calls on the same logical key. The
+ *   pre-fix implementation keyed the in-memory `Map` by the raw
+ *   `[taskGid, dependsOnTaskGid]` / `[workspaceGid, localCalendarDate]`
+ *   array literal, which `Map` references by identity; the fix
+ *   stringifies the compound key so the buffer's "upsert-keyed"
+ *   invariant holds for every store.
+ *
  * Why `tests/contract/` (not `tests/unit/`)
  * -----------------------------------------
  * The repository is the boundary the refresh orchestrator (T051) crosses
@@ -58,10 +66,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cacheRepository } from "../../src/data/db/repositories/cache.repository";
 import { db } from "../../src/data/db/schema";
-import type { Project, RefreshSession, Task } from "../../src/data/db/schema";
+import type {
+  AsanaTeam,
+  Dependency,
+  Portfolio,
+  PriorityField,
+  Project,
+  RefreshSession,
+  Section,
+  Snapshot,
+  Task,
+  User,
+  Workspace,
+} from "../../src/data/db/schema";
 
 const WORKSPACE_GID = "ws-1";
 const SESSION_ID = "session-1";
+
+function makeWorkspace(
+  overrides: Partial<Workspace> & Pick<Workspace, "gid">,
+): Workspace {
+  return {
+    name: "Workspace",
+    selectedAt: "2026-07-31T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 function makeProject(
   overrides: Partial<Project> & Pick<Project, "gid">,
@@ -72,6 +102,66 @@ function makeProject(
     asanaTeamGid: "team-1",
     portfolioGids: [],
     archived: false,
+    ...overrides,
+  };
+}
+
+function makePortfolio(
+  overrides: Partial<Portfolio> & Pick<Portfolio, "gid">,
+): Portfolio {
+  return {
+    name: "Portfolio",
+    workspaceGid: WORKSPACE_GID,
+    projectGids: ["proj-active"],
+    ...overrides,
+  };
+}
+
+function makeAsanaTeam(
+  overrides: Partial<AsanaTeam> & Pick<AsanaTeam, "gid">,
+): AsanaTeam {
+  return {
+    name: "Team",
+    workspaceGid: WORKSPACE_GID,
+    ...overrides,
+  };
+}
+
+function makeUser(overrides: Partial<User> & Pick<User, "gid">): User {
+  return {
+    name: "User",
+    email: "user@example.com",
+    workspaceGid: WORKSPACE_GID,
+    ...overrides,
+  };
+}
+
+function makePriorityField(
+  overrides: Partial<PriorityField> & Pick<PriorityField, "projectGid">,
+): PriorityField {
+  return {
+    expectedOptionIds: ["p1"],
+    status: "ok",
+    ...overrides,
+  };
+}
+
+function makeDependency(
+  overrides: Partial<Dependency> &
+    Pick<Dependency, "taskGid" | "dependsOnTaskGid">,
+): Dependency {
+  return {
+    dependsOnTaskAccessible: true,
+    ...overrides,
+  };
+}
+
+function makeSection(
+  overrides: Partial<Section> & Pick<Section, "gid">,
+): Section {
+  return {
+    name: "Section",
+    projectGid: "proj-active",
     ...overrides,
   };
 }
@@ -93,6 +183,20 @@ function makeTask(overrides: Partial<Task> & Pick<Task, "gid">): Task {
     dependsOnTaskGids: [],
     lastSeenInScopeAt: "2026-07-31T00:00:00.000Z",
     outOfScopeReason: null,
+    ...overrides,
+  };
+}
+
+function makeSnapshot(
+  overrides: Partial<Snapshot> &
+    Pick<Snapshot, "workspaceGid" | "localCalendarDate">,
+): Snapshot {
+  return {
+    incompleteCount: 0,
+    incompleteEstimatedMinutes: 0,
+    unestimatedIncompleteCount: 0,
+    computedFromRefreshId: SESSION_ID,
+    computedAt: "2026-07-31T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -191,6 +295,334 @@ describe("T047 RefreshStagingRepository (contracts/storage-repository.md)", () =
     expect(typeof repository.discard).toBe("function");
   });
 
+  describe("beginStaging / stageUpsert shape invariants", () => {
+    it("an empty rows array is a no-op (no buffer entry, no error)", async () => {
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await expect(
+        refreshStagingRepository.stageUpsert("tasks", []),
+      ).resolves.toBeUndefined();
+
+      // A clean commit should still succeed against the seeded-only
+      // session (no staged rows); the session transitions to succeeded
+      // and the cache is byte-identical to the pre-staging state.
+      await db.refreshSessions.put(makeRefreshSession({ id: SESSION_ID }));
+      await refreshStagingRepository.commit(SESSION_ID);
+
+      const session = await db.refreshSessions.get(SESSION_ID);
+      expect(session?.status).toBe("succeeded");
+    });
+
+    it("stageUpsert without a prior beginStaging throws a descriptive error", async () => {
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await expect(
+        refreshStagingRepository.stageUpsert("tasks", [
+          makeTask({ gid: "task-staged" }),
+        ]),
+      ).rejects.toThrow(/without a prior beginStaging/);
+    });
+
+    it("a second beginStaging re-initialises the buffer (the prior batch is discarded)", async () => {
+      await db.refreshSessions.put(makeRefreshSession({ id: SESSION_ID }));
+      await db.refreshSessions.put(makeRefreshSession({ id: "session-2" }));
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("tasks", [
+        makeTask({ gid: "task-first-batch" }),
+      ]);
+
+      // A different sessionId restarts the staging buffer; the first
+      // batch's rows do not survive into the second batch's commit.
+      await refreshStagingRepository.beginStaging("session-2");
+      await refreshStagingRepository.stageUpsert("tasks", [
+        makeTask({ gid: "task-second-batch" }),
+      ]);
+
+      await refreshStagingRepository.commit("session-2");
+
+      await expect(db.tasks.get("task-first-batch")).resolves.toBeUndefined();
+      await expect(db.tasks.get("task-second-batch")).resolves.toBeDefined();
+    });
+  });
+
+  describe("compound-key stores (dependencies, snapshots) dedupe across stageUpsert calls", () => {
+    it("two stageUpsert calls for the same logical dependency land as one buffer entry", async () => {
+      // The pre-fix bug: `primaryKeyOf` returned a freshly allocated
+      // `[taskGid, dependsOnTaskGid]` array literal, which `Map` keys
+      // by reference. Two `stageUpsert` calls for the same logical
+      // dependency therefore produced two buffer entries instead of
+      // upserting the first one. The fix stringifies the compound key
+      // so dedup works; this test pins the fix.
+      await db.refreshSessions.put(makeRefreshSession({ id: SESSION_ID }));
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("dependencies", [
+        makeDependency({
+          taskGid: "task-1",
+          dependsOnTaskGid: "task-2",
+          dependsOnTaskAccessible: true,
+        }),
+      ]);
+      await refreshStagingRepository.stageUpsert("dependencies", [
+        makeDependency({
+          taskGid: "task-1",
+          dependsOnTaskGid: "task-2",
+          dependsOnTaskAccessible: false,
+        }),
+      ]);
+
+      await refreshStagingRepository.commit(SESSION_ID);
+
+      // The second upsert overwrote the first; the persisted row is
+      // the latest. A non-deduping buffer would either throw a
+      // Dexie primary-key collision on `bulkPut` or persist two
+      // rows with the same compound key.
+      const dependencies = await db.dependencies
+        .where("[taskGid+dependsOnTaskGid]")
+        .equals(["task-1", "task-2"])
+        .toArray();
+      expect(dependencies).toHaveLength(1);
+      expect(dependencies[0]).toMatchObject({
+        taskGid: "task-1",
+        dependsOnTaskGid: "task-2",
+        dependsOnTaskAccessible: false,
+      });
+    });
+
+    it("two stageUpsert calls for the same logical snapshot land as one buffer entry", async () => {
+      // Same fix verification for the second compound-key store.
+      await db.refreshSessions.put(makeRefreshSession({ id: SESSION_ID }));
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("snapshots", [
+        makeSnapshot({
+          workspaceGid: WORKSPACE_GID,
+          localCalendarDate: "2026-07-31",
+          incompleteCount: 1,
+        }),
+      ]);
+      await refreshStagingRepository.stageUpsert("snapshots", [
+        makeSnapshot({
+          workspaceGid: WORKSPACE_GID,
+          localCalendarDate: "2026-07-31",
+          incompleteCount: 99,
+        }),
+      ]);
+
+      await refreshStagingRepository.commit(SESSION_ID);
+
+      const snapshots = await db.snapshots
+        .where("[workspaceGid+localCalendarDate]")
+        .equals([WORKSPACE_GID, "2026-07-31"])
+        .toArray();
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0]?.incompleteCount).toBe(99);
+    });
+
+    it("distinct compound keys both land in the persisted cache", async () => {
+      await db.refreshSessions.put(makeRefreshSession({ id: SESSION_ID }));
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("dependencies", [
+        makeDependency({ taskGid: "task-1", dependsOnTaskGid: "task-2" }),
+        makeDependency({ taskGid: "task-1", dependsOnTaskGid: "task-3" }),
+      ]);
+      await refreshStagingRepository.stageUpsert("snapshots", [
+        makeSnapshot({
+          workspaceGid: WORKSPACE_GID,
+          localCalendarDate: "2026-07-30",
+        }),
+        makeSnapshot({
+          workspaceGid: WORKSPACE_GID,
+          localCalendarDate: "2026-07-31",
+        }),
+      ]);
+
+      await refreshStagingRepository.commit(SESSION_ID);
+
+      const dependencies = await db.dependencies.toArray();
+      expect(dependencies).toHaveLength(2);
+
+      const snapshots = await db.snapshots.toArray();
+      expect(snapshots).toHaveLength(2);
+    });
+  });
+
+  describe("commit() commits every staged cache store in the single transaction", () => {
+    it("flushes every cache-store type (workspaces, projects, portfolios, asanaTeams, users, priorityFields, sections, dependencies, snapshots) through the same transaction", async () => {
+      await db.refreshSessions.put(makeRefreshSession({ id: SESSION_ID }));
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("workspaces", [
+        makeWorkspace({ gid: WORKSPACE_GID, name: "Workspace" }),
+      ]);
+      await refreshStagingRepository.stageUpsert("projects", [
+        makeProject({ gid: "proj-active", name: "Active project" }),
+      ]);
+      await refreshStagingRepository.stageUpsert("portfolios", [
+        makePortfolio({ gid: "port-1" }),
+      ]);
+      await refreshStagingRepository.stageUpsert("asanaTeams", [
+        makeAsanaTeam({ gid: "team-1" }),
+      ]);
+      await refreshStagingRepository.stageUpsert("users", [
+        makeUser({ gid: "user-1" }),
+      ]);
+      await refreshStagingRepository.stageUpsert("priorityFields", [
+        makePriorityField({ projectGid: "proj-active" }),
+      ]);
+      await refreshStagingRepository.stageUpsert("sections", [
+        makeSection({ gid: "section-1" }),
+      ]);
+      await refreshStagingRepository.stageUpsert("dependencies", [
+        makeDependency({ taskGid: "task-1", dependsOnTaskGid: "task-2" }),
+      ]);
+      await refreshStagingRepository.stageUpsert("snapshots", [
+        makeSnapshot({
+          workspaceGid: WORKSPACE_GID,
+          localCalendarDate: "2026-07-31",
+        }),
+      ]);
+
+      await refreshStagingRepository.commit(SESSION_ID);
+
+      await expect(db.workspaces.get(WORKSPACE_GID)).resolves.toBeDefined();
+      await expect(db.projects.get("proj-active")).resolves.toBeDefined();
+      await expect(db.portfolios.get("port-1")).resolves.toBeDefined();
+      await expect(db.asanaTeams.get("team-1")).resolves.toBeDefined();
+      await expect(db.users.get("user-1")).resolves.toBeDefined();
+      await expect(db.priorityFields.get("proj-active")).resolves.toBeDefined();
+      await expect(db.sections.get("section-1")).resolves.toBeDefined();
+      await expect(
+        db.dependencies.get(["task-1", "task-2"]),
+      ).resolves.toBeDefined();
+      await expect(
+        db.snapshots.get([WORKSPACE_GID, "2026-07-31"]),
+      ).resolves.toBeDefined();
+
+      const session = await db.refreshSessions.get(SESSION_ID);
+      expect(session?.status).toBe("succeeded");
+    });
+
+    it("rejects commit when the sessionId does not match the active staging session", async () => {
+      await db.refreshSessions.put(makeRefreshSession({ id: SESSION_ID }));
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("tasks", [
+        makeTask({ gid: "task-1" }),
+      ]);
+
+      await expect(
+        refreshStagingRepository.commit("wrong-session"),
+      ).rejects.toThrow(/active staging session/);
+
+      // The cache is still untouched by the rejected commit.
+      await expect(db.tasks.get("task-1")).resolves.toBeUndefined();
+    });
+
+    it("rejects commit when the seeded RefreshSession row is missing", async () => {
+      // The orchestrator owns session seeding; this is the catch when
+      // a future contributor forgets to seed the session before the
+      // staging buffer opens.
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("tasks", [
+        makeTask({ gid: "task-1" }),
+      ]);
+
+      await expect(refreshStagingRepository.commit(SESSION_ID)).rejects.toThrow(
+        /was not seeded/,
+      );
+    });
+
+    it("rejects discard when the sessionId does not match the active staging session", async () => {
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("tasks", [
+        makeTask({ gid: "task-1" }),
+      ]);
+
+      await expect(
+        refreshStagingRepository.discard("wrong-session"),
+      ).rejects.toThrow(/active staging session/);
+    });
+
+    it("preserves the existing session's workspaceGid, startedAt, and itemsRetrieved on commit", async () => {
+      // The session transition MUST preserve every other field on the
+      // existing seeded row, not replace the entire row. A future
+      // contributor who {@link db.refreshSessions.put} a brand-new
+      // row (instead of read-modify-write) would lose the workspace
+      // linkage and the in-flight item counter.
+      await db.refreshSessions.put(
+        makeRefreshSession({
+          id: SESSION_ID,
+          workspaceGid: "specific-workspace",
+          startedAt: "2026-07-30T12:00:00.000Z",
+          itemsRetrieved: 17,
+          syncMode: "incremental",
+        }),
+      );
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("tasks", [
+        makeTask({ gid: "task-1" }),
+      ]);
+
+      await refreshStagingRepository.commit(SESSION_ID);
+
+      const session = await db.refreshSessions.get(SESSION_ID);
+      expect(session).toMatchObject({
+        id: SESSION_ID,
+        workspaceGid: "specific-workspace",
+        startedAt: "2026-07-30T12:00:00.000Z",
+        itemsRetrieved: 17,
+        syncMode: "incremental",
+        status: "succeeded",
+      });
+      expect(session?.finishedAt).not.toBeNull();
+    });
+  });
+
   describe("discard() leaves getInScopeTasks() byte-identical to pre-staging", () => {
     it("does not surface staged upserts to getInScopeTasks() and does not mutate the cache after discard", async () => {
       await seedPreStagingState();
@@ -281,6 +713,27 @@ describe("T047 RefreshStagingRepository (contracts/storage-repository.md)", () =
       const after = await cacheRepository.getInScopeTasks(WORKSPACE_GID);
       expect(after).toEqual(before);
       await expect(db.tasks.get("task-staged")).resolves.toBeUndefined();
+    });
+
+    it("a discard after a successful commit is a no-op (the buffer was already cleared)", async () => {
+      await db.refreshSessions.put(makeRefreshSession({ id: SESSION_ID }));
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      await refreshStagingRepository.stageUpsert("tasks", [
+        makeTask({ gid: "task-1" }),
+      ]);
+
+      await refreshStagingRepository.commit(SESSION_ID);
+      await expect(
+        refreshStagingRepository.discard(SESSION_ID),
+      ).resolves.toBeUndefined();
+
+      // The successful commit's rows are still present.
+      await expect(db.tasks.get("task-1")).resolves.toBeDefined();
     });
   });
 

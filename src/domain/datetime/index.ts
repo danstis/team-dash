@@ -88,6 +88,16 @@ export const DAILY_BUCKET_THRESHOLD_DAYS = 45;
  */
 export const WEEK_START_DAY = 1 as const; // 1 = Monday in `Date.getUTCDay()`/`getDay()`
 
+/**
+ * Milliseconds in one calendar day (24 × 60 × 60 × 1_000). Held as a
+ * named constant so `diffInDaysInclusive` and `daysInQuarter` share one
+ * unit-conversion definition and the literal cannot drift between the
+ * two call sites. Matches the project-wide unit-convention used by
+ * `src/data/asana/client.ts` and `src/shared/states/RateLimitedState.tsx`
+ * (their `MS_PER_SECOND` constants).
+ */
+export const MS_PER_DAY = 86_400_000;
+
 /* -------------------------------------------------------------------------- */
 /* Local types                                                                */
 /* -------------------------------------------------------------------------- */
@@ -396,7 +406,7 @@ export function addDays(date: ISODate, days: number): ISODate {
 export function diffInDaysInclusive(start: ISODate, end: ISODate): number {
   const startMs = isoDateToUtcDate(start).getTime();
   const endMs = isoDateToUtcDate(end).getTime();
-  const days = Math.round((endMs - startMs) / 86_400_000);
+  const days = Math.round((endMs - startMs) / MS_PER_DAY);
   if (days < 0) {
     return 0;
   }
@@ -554,7 +564,7 @@ function daysInQuarter(date: ISODate): number {
   return Math.round(
     (nextQuarterStart.getTime() -
       new Date(Date.UTC(year, quarterStartMonth - 1, 1)).getTime()) /
-      86_400_000,
+      MS_PER_DAY,
   );
 }
 

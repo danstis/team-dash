@@ -85,9 +85,12 @@ npm run format:check    # Prettier
 npm run typecheck       # tsc --noEmit, strict
 npm run test:unit       # Vitest — domain/metrics, dedup, datetime
 npm run test:contract   # Vitest+MSW — asana-client, db-schema, refresh-staging
+npm run test:integration # Vitest — feature-level flows, including the US1 gate
 npm run build           # production Vite build + PWA/service-worker output
 npm run test:e2e        # Playwright — offline mode, PWA install, first-run flow
 ```
+
+`npm run test:integration` is a required CI gate (peers with `test-unit`/`test-contract`/`build`, runs in parallel via the parallelised workflow). It exercises every `tests/integration/**` suite — including the T046 route-guard assertions in `tests/integration/credentials/first-run.test.tsx`, which turn Green once both the credential and workspace providers report `ready` and the gate dispatches to the reporting placeholder.
 
 Every command above MUST pass without network access to a real Asana
 workspace (NFR-005). `npm run test:unit -- domain/metrics` alone is

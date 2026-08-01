@@ -417,7 +417,9 @@ export const refreshStagingRepository: RefreshStagingRepository = {
       }
     }
 
-    const tableNames: string[] = Array.from(stores).sort();
+    const tableNames: string[] = Array.from(stores).sort((a, b) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
 
     await db.transaction("rw", tableNames, async () => {
       for (const store of orderedStores(currentBuffer)) {

@@ -12,6 +12,14 @@ describe("Playwright configuration (T009)", () => {
     expect(config.testDir).toBe("./tests/e2e");
   });
 
+  it("retains failure evidence and publishes the HTML, list, and GitHub reporters", () => {
+    expect(config.reporter).toEqual([["html"], ["list"], ["github"]]);
+    expect(config.use).toMatchObject({
+      screenshot: "only-on-failure",
+      trace: "retain-on-failure",
+    });
+  });
+
   it("resolves to an existing tests/e2e directory under the repo root", () => {
     const testDir = config.testDir ?? "";
     expect(typeof testDir).toBe("string");

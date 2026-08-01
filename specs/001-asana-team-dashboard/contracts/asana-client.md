@@ -75,9 +75,11 @@ orchestrator.
 
 ## Incremental sync fallback contract
 
-`fetchEventsSince(syncToken)` returns `{ outcome: 'ok', data: { events, newSyncToken } }`
-on success. The orchestrator MUST treat the following as "stale/invalid
-incremental state" requiring a full reconciliation, per FR-024:
+`fetchEventsSince(resourceGid, syncToken)` returns
+`{ outcome: 'ok', data: { events, newSyncToken, hasMore } }` on success.
+The orchestrator MUST continue pulling while `hasMore` is `true`, and
+MUST treat the following as "stale/invalid incremental state" requiring
+a full reconciliation, per FR-024:
 
 - `outcome: 'validation_error'` on the events response,
 - Asana's documented `412 Precondition Failed` (expired sync token),

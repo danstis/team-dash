@@ -404,6 +404,54 @@ export const asanaTaskDependenciesResponseSchema =
   asanaListResponseSchema(asanaReferenceSchema);
 
 /* -------------------------------------------------------------------------- */
+/* Resource: Events (FR-024 incremental sync, T048 fetchEventsSince)         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The compact `{ gid, resource_type }` shape Asana's Events API
+ * returns on the `resource` field of each event. Asana documents the
+ * Events response as `data: Array<{ action, resource, … }>` where the
+ * `resource` is itself a minimal reference; richer fields may be
+ * included depending on the workspace's `opt_fields` but the schema
+ * stays minimal so the validation boundary accepts the documented
+ * shape without binding to optional event properties.
+ */
+export const asanaEventResourceSchema = asanaReferenceSchema;
+
+/**
+ * A single entry in the Events response's `data` array. The Events
+ * API exposes a documented set of action verbs (`changed`, `added`,
+ * `removed`, `deleted`, etc.); the schema deliberately accepts the
+ * shape Asana returns without enumerating the action literals, so a
+ * future Asana-side addition fails the ASANA-side contract surface
+ * (`contracts/asana-client.md`) but does not break the validation
+ * boundary for already-documented events. The orchestrator is
+ * responsible for translating the action into cache diffs.
+ */
+export const asanaEventSchema = z.object({
+  action: z.string().min(1),
+  resource: asanaEventResourceSchema,
+});
+
+/**
+ * The Events API response envelope (`GET /events?resource=…&sync=…`).
+ * `{ data: events[]; sync: newSyncToken; has_more: boolean }` — NOT the
+ * same as a list endpoint (`{ data, next_page }`). The `sync` field is
+ * the new sync token the server returned; the orchestrator persists it
+ * as the "current sync token" and supplies it on the next call.
+ * `has_more` is Asana's documented incremental-pagination signal when a
+ * sync window contains more than one batch. The `fetchEventsSince`
+ * wrapper in `client.ts` renames these to `newSyncToken` and `hasMore`
+ * on the union's `ok.data` variant so the wire field names do not leak
+ * past the client boundary.
+ */
+export const asanaEventsResponseSchema = z.object({
+  data: z.array(asanaEventSchema),
+  sync: z.string().min(1),
+  has_more: z.boolean(),
+});
+
+/* -------------------------------------------------------------------------- */
 /* Cache-normalised: Dependency (FR-016, US9)                                  */
 /* -------------------------------------------------------------------------- */
 

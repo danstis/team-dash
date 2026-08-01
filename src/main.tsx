@@ -66,8 +66,24 @@ export async function bootstrapDevMocks(): Promise<void> {
   }
 }
 
-const rootElement = document.getElementById("root");
-if (rootElement) {
+/**
+ * Run the dev-server boot sequence for a given root element:
+ * `bootstrapDevMocks()` first (so the MSW worker registers before React
+ * mounts and races a real network call), then `renderApp(rootElement)`
+ * to mount the T031 `<App />` shell into the T010 `#root` container.
+ *
+ * Extracted from the module-top-level invocation so the wiring is
+ * unit-testable in jsdom — see `tests/unit/app/main.test.tsx`. The
+ * module-top-level script calls this when an `#root` element exists
+ * (i.e. when the script is loaded from `index.html`, which is the only
+ * production entry path).
+ */
+export async function mountRootApp(rootElement: Element): Promise<void> {
   await bootstrapDevMocks();
   renderApp(rootElement);
+}
+
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  await mountRootApp(rootElement);
 }

@@ -266,16 +266,22 @@ describe("T035 [US1] first-run provider state-machine contract", () => {
       "…abcd",
     );
 
+    // Both the DOM text and the ref-published handles must settle inside
+    // the same retry — `waitFor(X)` then a synchronous `expect(ref)` reads
+    // a stale handleRef.current for one tick under React 18 StrictMode
+    // because the probe's `useEffect` fires after the DOM mutation. Folding
+    // the ref assertion into the retry callback removes the race by
+    // construction.
     await waitFor(() => {
       expect(screen.getByTestId("probe-credentials-state").textContent).toBe(
         "ready",
       );
+      expect(screen.getByTestId("probe-workspace-state").textContent).toBe(
+        "first_run",
+      );
+      expect(handlesRef.current?.credentials?.mode).toBe("session");
+      expect(handlesRef.current?.credentials?.maskedIdentifier).toBe("…abcd");
     });
-    expect(screen.getByTestId("probe-workspace-state").textContent).toBe(
-      "first_run",
-    );
-    expect(handlesRef.current?.credentials?.mode).toBe("session");
-    expect(handlesRef.current?.credentials?.maskedIdentifier).toBe("…abcd");
   });
 
   it("keeps the gate closed when only the workspace is selected (credential missing)", async () => {
@@ -301,18 +307,23 @@ describe("T035 [US1] first-run provider state-machine contract", () => {
 
     await handlesRef.current?.workspace?.selectWorkspace(SAMPLE_WORKSPACE);
 
+    // Fold the ref-published-handles assertion into the same retry as
+    // the DOM-text waitFor — see the matching comment in the previous
+    // test for the StrictMode race this sidesteps.
     await waitFor(() => {
       expect(screen.getByTestId("probe-workspace-state").textContent).toBe(
         "ready",
       );
+      // Credentials remain first_run because no token was provided; the gate
+      // is closed per FR-001 ("require a user-supplied … token before any
+      // reporting screen is accessible").
+      expect(screen.getByTestId("probe-credentials-state").textContent).toBe(
+        "first_run",
+      );
+      expect(handlesRef.current?.workspace?.workspace).toEqual(
+        SAMPLE_WORKSPACE,
+      );
     });
-    // Credentials remain first_run because no token was provided; the gate
-    // is closed per FR-001 ("require a user-supplied … token before any
-    // reporting screen is accessible").
-    expect(screen.getByTestId("probe-credentials-state").textContent).toBe(
-      "first_run",
-    );
-    expect(handlesRef.current?.workspace?.workspace).toEqual(SAMPLE_WORKSPACE);
   });
 
   it("lifts the gate only when BOTH credential and workspace are set", async () => {
@@ -340,24 +351,29 @@ describe("T035 [US1] first-run provider state-machine contract", () => {
       "test-token-value-efgh",
       "…efgh",
     );
+    // Folded into the retry callback so the DOM-text and ref assertions
+    // settle together — see the matching comment in the previous test.
     await waitFor(() => {
       expect(screen.getByTestId("probe-credentials-state").textContent).toBe(
         "ready",
       );
+      expect(screen.getByTestId("probe-workspace-state").textContent).toBe(
+        "first_run",
+      );
     });
-    expect(screen.getByTestId("probe-workspace-state").textContent).toBe(
-      "first_run",
-    );
 
     await handlesRef.current?.workspace?.selectWorkspace(SAMPLE_WORKSPACE);
+    // Wait for both providers' post-mutation state simultaneously so the
+    // race-prone pair of separate waitFors + bare-expects becomes a single
+    // deterministic retry.
     await waitFor(() => {
       expect(screen.getByTestId("probe-workspace-state").textContent).toBe(
         "ready",
       );
+      expect(screen.getByTestId("probe-credentials-state").textContent).toBe(
+        "ready",
+      );
     });
-    expect(screen.getByTestId("probe-credentials-state").textContent).toBe(
-      "ready",
-    );
   });
 
   it("returns both providers to 'first_run' after the FR-007 single-action clear", async () => {
@@ -396,7 +412,9 @@ describe("T035 [US1] first-run provider state-machine contract", () => {
     // panel's clear-all (T045) which composes both surfaces. Here we
     // assert the per-provider clear surfaces preserve the gate invariant
     // (both contexts back to first_run) — the contract the future
-    // Settings panel depends on.
+    // Settings panel depends on. The post-clear DOM-text assertion is
+    // folded into the same retry as the pre-clear `ready` check so neither
+    // read races the providers' clear-* transitions.
     await handlesRef.current?.credentials?.clearAll();
     await handlesRef.current?.workspace?.clearSelection();
 
@@ -404,10 +422,10 @@ describe("T035 [US1] first-run provider state-machine contract", () => {
       expect(screen.getByTestId("probe-credentials-state").textContent).toBe(
         "first_run",
       );
+      expect(screen.getByTestId("probe-workspace-state").textContent).toBe(
+        "first_run",
+      );
     });
-    expect(screen.getByTestId("probe-workspace-state").textContent).toBe(
-      "first_run",
-    );
   });
 
   it("persists the 'ready' gate state across remount when both contexts are stored", async () => {
@@ -459,21 +477,24 @@ describe("T035 [US1] first-run provider state-machine contract", () => {
       );
       // The remount re-reads IndexedDB; the workspace selection persists
       // (T031's `workspace-context.tsx` reads back the most-recent row),
-      // so the workspace side is ready across the remount.
+      // so the workspace side is ready across the remount. All three
+      // assertions (workspace DOM-text, credential DOM-text, ref-published
+      // workspace) settle inside the same retry — see the race note in
+      // the first test above.
       await waitFor(() => {
         expect(screen.getByTestId("probe-workspace-state").textContent).toBe(
           "ready",
         );
+        // Credentials remain first_run (session-only was dropped on remount,
+        // per the spec's first-run-with-no-persistent-record rule); the gate
+        // therefore stays closed from the user's perspective.
+        expect(screen.getByTestId("probe-credentials-state").textContent).toBe(
+          "first_run",
+        );
+        expect(handlesRef.current?.workspace?.workspace).toEqual(
+          SAMPLE_WORKSPACE,
+        );
       });
-      // Credentials remain first_run (session-only was dropped on remount,
-      // per the spec's first-run-with-no-persistent-record rule); the gate
-      // therefore stays closed from the user's perspective.
-      expect(screen.getByTestId("probe-credentials-state").textContent).toBe(
-        "first_run",
-      );
-      expect(handlesRef.current?.workspace?.workspace).toEqual(
-        SAMPLE_WORKSPACE,
-      );
     }
   });
 });

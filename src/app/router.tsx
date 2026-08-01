@@ -1,5 +1,5 @@
 /**
- * T031 + T046 — the app-shell router.
+ * T031 + T046 + BSOD-347 — the app-shell router.
  *
  * The shell's job (Constitution Principle I "remain runnable after every
  * completed delivery task", plan.md Project Structure) is to mount a
@@ -13,8 +13,8 @@
  *
  * - `<App />` mounts `<RouterProvider router={router} />`. Splitting
  *   the router out keeps the App component a thin composition layer
- *   and lets feature-level tests (T035, T046, T049) import just the
- *   router without dragging the provider tree.
+ *   and lets feature-level tests (T035, T046, BSOD-347, T049) import
+ *   just the router without dragging the provider tree.
  *
  * - React Router 8's data router APIs (`createBrowserRouter`,
  *   `createMemoryRouter`) return a single object the provider
@@ -27,23 +27,23 @@
  * ## What the router deliberately does not own
  *
  * - Feature components (`features/credentials/*`, `features/tasks/*`,
- *   …) are NOT imported here. By architectural convention the shell
- *   mounts providers and a router; features mount under the router.
- *   The `eslint-plugin-boundaries` configuration in `eslint.config.js`
- *   constrains `src/domain/**` only (Constitution Principle VI's
- *   lint-enforced half of the boundary); the "shell does not import
- *   features" rule is enforced by convention and code review, not by
- *   lint. Future stories extend the `routes` array; this module never
- *   grows beyond the placeholder route.
+ *   …) are NOT directly imported here. By architectural convention
+ *   the shell mounts providers and a router; features mount under
+ *   the router. The `eslint-plugin-boundaries` configuration in
+ *   `eslint.config.js` constrains `src/domain/**` only (Constitution
+ *   Principle VI's lint-enforced half of the boundary); the "shell
+ *   does not compose features" rule is enforced by convention and
+ *   code review, not by lint. Future stories extend the `routes`
+ *   array; this module never grows beyond the placeholder route.
  *
- * - The first-run surface itself is composed of presentation-only
- *   primitives the shared layer owns (`<FirstRunState />`,
- *   `<MaskedToken />`). The actual credential entry, storage-mode,
- *   and workspace-selection flows are feature components the user
- *   reaches through Settings / a dedicated credential route that
- *   downstream stories register. The route guard's job is the gate:
- *   hide the reporting surface until the shell providers report
- *   `'ready'`, and surface the first-run primitive otherwise.
+ * - The first-run surface itself is composed by the
+ *   `<FirstRunSetup />` feature component (`BSOD-347`,
+ *   `src/features/credentials/FirstRunSetup.tsx`), which orchestrates
+ *   the three existing Phase 3 components (`TokenEntryForm`,
+ *   `StorageModeSelector`, `WorkspaceSelector`) over a local phase
+ *   machine. The shell mounts the composition as an opaque surface;
+ *   it does not know about its internal phases or its credential
+ *   lifecycle.
  *
  * ## The T046 route guard
  *
@@ -68,29 +68,13 @@
  * invariants the test suite pins. The T035 integration test
  * (`tests/integration/credentials/first-run.test.tsx`) is the
  * source of truth for the gate's behaviour, and the T046 contract
- * is satisfied by the single boolean `gateClosed`.
+ * is satisfied by the single boolean `gateClosed`. BSOD-347's
+ * integration test
+ * (`tests/integration/credentials/first-run-setup.test.tsx`) walks
+ * the user-facing flow through the gate.
  *
- * ## FR-008 invariant in the first-run surface
+ * ## Determinism
  *
- * The first-run surface renders the current credential's masked
- * identifier via the shared `<MaskedToken />` component
- * (`src/shared/components/MaskedToken.tsx`, T044 / BSOD-172) so the
- * user can confirm "the credential currently loaded is the one I
- * think it is" without ever exposing the plaintext. The component
- * takes the already-computed masked identifier via its prop surface
- * — it does NOT derive one from a plaintext token, and its prop
- * signature cannot be widened to accept one (FR-008 invariant).
- *
- * The surface also surfaces the currently selected workspace
- * (gid + name) so the gate keeps an honest, accessible status
- * panel: a user who has persisted a credential but never finished
- * workspace selection sees "Current credential: …abcd" and an empty
- * workspace line; a user who selected a workspace but lost their
- * session-only credential (e.g. after a reload) sees the workspace
- * name and an empty credential line.
- *
- * Determinism
- * -----------
  * The router renders synchronously on first paint (no async init,
  * no IndexedDB read); the IndexedDB lookup the providers run on
  * mount resolves the state to `'first_run'` or `'ready'` on the
@@ -106,9 +90,8 @@ import {
 } from "react-router";
 
 import { useCredentials } from "./credentials-context";
-import { MaskedToken } from "../shared/components/MaskedToken";
-import { FirstRunState } from "../shared/states/FirstRunState";
 import { useWorkspace } from "./workspace-context";
+import { FirstRunSetup } from "../features/credentials/FirstRunSetup";
 
 /**
  * The T031 placeholder. Renders the existing T010 shell markup so
@@ -140,67 +123,28 @@ function PlaceholderRoute(): React.ReactElement {
 }
 
 /**
- * The T046 first-run surface — rendered by the route guard while the
- * gate is closed.
+ * The first-run surface — rendered by the route guard while the gate
+ * is closed.
  *
- * The surface is intentionally presentation-only: it composes the
- * shared `<FirstRunState />` primitive and the shared `<MaskedToken />`
- * component over the two provider state machines, and it never
- * imports from `src/features/**` (the architectural rule the
- * `src/app/**` shell boundary enforces by convention). The actual
- * credential entry, storage-mode, and workspace-selection flows are
- * feature components the user reaches through Settings (a dedicated
- * route downstream stories register) or a future dedicated
- * `/credentials` route.
+ * BSOD-347 wired the existing Phase 3 components (`TokenEntryForm`,
+ * `StorageModeSelector`, `WorkspaceSelector`) into the live `/`
+ * first-run route so a real user can enter a token, choose a storage
+ * mode, and pick an Asana workspace on first run. The composition
+ * lives in `<FirstRunSetup />` so the shell can mount it as an
+ * opaque surface without knowing about its three internal phases.
  *
- * The surface mirrors the T035 test's expectations: the
- * `data-view-state="first_run"` attribute the `<FirstRunState />`
- * primitive publishes is the gate's sentinel, so a test (or an
- * in-page inspection) can identify the gate-closed state without
- * coupling to the inner copy. The masked identifier rendering uses
- * `<MaskedToken />` so the credential status panel honours the
- * FR-008 "token never rendered" invariant — the masked identifier
- * the panel surfaces is the same string the credentials provider
- * already computed and stored, never a derivation from a plaintext
- * token.
- *
- * The shell boundary rule (`src/app/**` MUST NOT import from
- * `src/features/**`) is what keeps this surface narrow: a future
- * contributor who tries to drop a feature component here fails the
- * architectural review rather than slipping a feature dependency
- * into the shell.
+ * The composition keeps the T035 contract alive: the
+ * `data-view-state="first_run"` sentinel the shared `<FirstRunState />`
+ * primitive publishes is still rendered, the route guard's gate
+ * still derives the same `gateClosed` boolean from the two
+ * providers' state machines, and the existing T035 integration
+ * tests continue to pass without modification. The new
+ * `tests/integration/credentials/first-run-setup.test.tsx`
+ * (BSOD-347) walks the user-facing flow end-to-end on top of this
+ * surface.
  */
 function FirstRunRoute(): React.ReactElement {
-  const credentials = useCredentials();
-  const workspace = useWorkspace();
-  const hasMaskedIdentifier = credentials.maskedIdentifier.length > 0;
-  const hasWorkspace = workspace.workspace !== null;
-  return (
-    <main className="team-dash-shell team-dash-shell--first-run" lang="en-AU">
-      <FirstRunState />
-      <section
-        className="td-first-run-credential-status"
-        aria-label="Current credential and workspace"
-      >
-        <p>
-          Current credential:{" "}
-          {hasMaskedIdentifier ? (
-            <MaskedToken maskedIdentifier={credentials.maskedIdentifier} />
-          ) : (
-            <em>not set</em>
-          )}
-        </p>
-        <p>
-          Current workspace:{" "}
-          {hasWorkspace ? (
-            <code>{workspace.workspace?.name}</code>
-          ) : (
-            <em>not selected</em>
-          )}
-        </p>
-      </section>
-    </main>
-  );
+  return <FirstRunSetup />;
 }
 
 /**

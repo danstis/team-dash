@@ -511,10 +511,12 @@ describe("T048 Asana client pagination + events-since contract", () => {
 
   describe("fetchEventsSince", () => {
     it("returns `ok` with the events batch and new sync token on a successful response", async () => {
+      let observedResourceGid: string | null = null;
       let observedSyncToken: string | null = null;
       server.use(
         http.get("https://app.asana.com/api/1.0/events", ({ request }) => {
           const url = new URL(request.url);
+          observedResourceGid = url.searchParams.get("resource");
           observedSyncToken = url.searchParams.get("sync");
           return HttpResponse.json({
             data: [
@@ -524,12 +526,18 @@ describe("T048 Asana client pagination + events-since contract", () => {
               },
             ],
             sync: "new-sync-token-from-server",
+            has_more: false,
           });
         }),
       );
 
-      const result = await fetchEventsSince(token, "previous-sync-token");
+      const result = await fetchEventsSince(
+        token,
+        projectGid,
+        "previous-sync-token",
+      );
 
+      expect(observedResourceGid).toBe(projectGid);
       expect(observedSyncToken).toBe("previous-sync-token");
       expect(result.outcome).toBe("ok");
       if (result.outcome !== "ok") return;
@@ -540,6 +548,35 @@ describe("T048 Asana client pagination + events-since contract", () => {
         },
       ]);
       expect(result.data.newSyncToken).toBe("new-sync-token-from-server");
+      expect(result.data.hasMore).toBe(false);
+    });
+
+    it("preserves Asana's `has_more` signal so callers can keep pulling event batches until completion", async () => {
+      server.use(
+        http.get("https://app.asana.com/api/1.0/events", () =>
+          HttpResponse.json({
+            data: [
+              {
+                action: "changed",
+                resource: { gid: taskGid, resource_type: "task" },
+              },
+            ],
+            sync: "rolled-forward-sync-token",
+            has_more: true,
+          }),
+        ),
+      );
+
+      const result = await fetchEventsSince(
+        token,
+        projectGid,
+        "previous-sync-token",
+      );
+
+      expect(result.outcome).toBe("ok");
+      if (result.outcome !== "ok") return;
+      expect(result.data.newSyncToken).toBe("rolled-forward-sync-token");
+      expect(result.data.hasMore).toBe(true);
     });
 
     it("returns `validation_error` with structured ZodIssue[] when the events response body fails schema validation (FR-024 stale/invalid state)", async () => {
@@ -552,7 +589,11 @@ describe("T048 Asana client pagination + events-since contract", () => {
         ),
       );
 
-      const result = await fetchEventsSince(token, "previous-sync-token");
+      const result = await fetchEventsSince(
+        token,
+        projectGid,
+        "previous-sync-token",
+      );
 
       expect(result.outcome).toBe("validation_error");
       if (result.outcome !== "validation_error") return;
@@ -568,26 +609,53 @@ describe("T048 Asana client pagination + events-since contract", () => {
     });
 
     it("returns `permission_failure` on 412 Precondition Failed (FR-024 expired sync token)", async () => {
+      let observedResourceGid: string | null = null;
       let observedSyncToken: string | null = null;
       server.use(
         http.get("https://app.asana.com/api/1.0/events", ({ request }) => {
-          observedSyncToken = new URL(request.url).searchParams.get("sync");
+          const url = new URL(request.url);
+          observedResourceGid = url.searchParams.get("resource");
+          observedSyncToken = url.searchParams.get("sync");
           return new HttpResponse(null, { status: 412 });
         }),
       );
 
-      const result = await fetchEventsSince(token, "expired-sync-token");
+      const result = await fetchEventsSince(
+        token,
+        projectGid,
+        "expired-sync-token",
+      );
 
       // The 412 must reach the orchestrator as `permission_failure`,
       // not as the generic `network_error` the base client uses for
       // unknown statuses — the orchestrator's full-reconciliation
       // fallback (T051) triggers on this specific outcome per FR-024.
+      expect(observedResourceGid).toBe(projectGid);
       expect(observedSyncToken).toBe("expired-sync-token");
       expect(result.outcome).toBe("permission_failure");
     });
 
+    it("returns `validation_error` when no resource gid is supplied", async () => {
+      const result = await fetchEventsSince(token, undefined, "sync-token");
+
+      expect(result.outcome).toBe("validation_error");
+      if (result.outcome !== "validation_error") return;
+      const mentionsResource = result.issues.some((issue) =>
+        JSON.stringify(issue.path).toLowerCase().includes("resource"),
+      );
+      expect(mentionsResource).toBe(true);
+    });
+
+    it("returns `validation_error` when the supplied resource gid is empty", async () => {
+      const result = await fetchEventsSince(token, "", "sync-token");
+
+      expect(result.outcome).toBe("validation_error");
+      if (result.outcome !== "validation_error") return;
+      expect(result.issues.length).toBeGreaterThan(0);
+    });
+
     it("returns `validation_error` with a structured ZodIssue when no sync token is supplied (no prior sync token stored for the workspace)", async () => {
-      const result = await fetchEventsSince(token);
+      const result = await fetchEventsSince(token, projectGid);
 
       expect(result.outcome).toBe("validation_error");
       if (result.outcome !== "validation_error") return;
@@ -603,7 +671,7 @@ describe("T048 Asana client pagination + events-since contract", () => {
     });
 
     it("returns `validation_error` with a structured ZodIssue when the supplied sync token is empty", async () => {
-      const result = await fetchEventsSince(token, "");
+      const result = await fetchEventsSince(token, projectGid, "");
 
       expect(result.outcome).toBe("validation_error");
       if (result.outcome !== "validation_error") return;
@@ -619,7 +687,7 @@ describe("T048 Asana client pagination + events-since contract", () => {
         }),
       );
 
-      const result = await fetchEventsSince(token);
+      const result = await fetchEventsSince(token, projectGid);
 
       // No HTTP request should have been issued — the missing-token
       // case is caught at the function boundary (saving a round trip
@@ -627,6 +695,21 @@ describe("T048 Asana client pagination + events-since contract", () => {
       // guaranteed to never reach a real Asana server with a half-
       // constructed request). This also confirms the URL `/events`
       // path is reserved for the `syncToken`-supplied case.
+      expect(requestIssued).toBe(false);
+      expect(result.outcome).toBe("validation_error");
+    });
+
+    it("does not issue a request when the resource gid is missing — the scope check happens before network I/O", async () => {
+      let requestIssued = false;
+      server.use(
+        http.get("https://app.asana.com/api/1.0/events", () => {
+          requestIssued = true;
+          return HttpResponse.json({ data: [], sync: "x", has_more: false });
+        }),
+      );
+
+      const result = await fetchEventsSince(token, undefined, "sync-token");
+
       expect(requestIssued).toBe(false);
       expect(result.outcome).toBe("validation_error");
     });
@@ -639,7 +722,11 @@ describe("T048 Asana client pagination + events-since contract", () => {
         ),
       );
 
-      const result = await fetchEventsSince(token, "sensitive-sync-token");
+      const result = await fetchEventsSince(
+        token,
+        projectGid,
+        "sensitive-sync-token",
+      );
 
       expect(result.outcome).toBe("auth_failure");
       // The auth_failure variant carries no payload per `types.ts`;

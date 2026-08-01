@@ -435,17 +435,20 @@ export const asanaEventSchema = z.object({
 
 /**
  * The Events API response envelope (`GET /events?resource=…&sync=…`).
- * `{ data: events[]; sync: newSyncToken }` — NOT the same as a list
- * endpoint (`{ data, next_page }`). The `sync` field is the new sync
- * token the server returned; the orchestrator persists it as the
- * "current sync token" and supplies it on the next call. The
- * `fetchEventsSince` wrapper in `client.ts` renames `sync` to
- * `newSyncToken` on the union's `ok.data` variant so the wire field
- * name doesn't leak past the client boundary.
+ * `{ data: events[]; sync: newSyncToken; has_more: boolean }` — NOT the
+ * same as a list endpoint (`{ data, next_page }`). The `sync` field is
+ * the new sync token the server returned; the orchestrator persists it
+ * as the "current sync token" and supplies it on the next call.
+ * `has_more` is Asana's documented incremental-pagination signal when a
+ * sync window contains more than one batch. The `fetchEventsSince`
+ * wrapper in `client.ts` renames these to `newSyncToken` and `hasMore`
+ * on the union's `ok.data` variant so the wire field names do not leak
+ * past the client boundary.
  */
 export const asanaEventsResponseSchema = z.object({
   data: z.array(asanaEventSchema),
   sync: z.string().min(1),
+  has_more: z.boolean(),
 });
 
 /* -------------------------------------------------------------------------- */

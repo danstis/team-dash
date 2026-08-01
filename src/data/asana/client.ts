@@ -464,25 +464,32 @@ export async function fetchTaskDetail(
 
 /**
  * The success payload for `fetchEventsSince`. The wire shape Asana
- * returns is `{ data: Event[], sync: string }`; the wrapper renames
- * `sync` to `newSyncToken` on the union's `ok.data` variant so the
- * wire field name doesn't leak past the client boundary and a future
- * Asana-side rename can be absorbed at the wrapper rather than every
- * call site.
+ * returns is `{ data: Event[], sync: string, has_more: boolean }`; the
+ * wrapper renames `sync` to `newSyncToken` and `has_more` to `hasMore`
+ * on the union's `ok.data` variant so the wire field names do not leak
+ * past the client boundary and a future Asana-side rename can be
+ * absorbed at the wrapper rather than every call site.
  */
 type AsanaEventsBatch = z.infer<typeof asanaEventsResponseSchema>;
 type EventsSuccessPayload = {
   events: AsanaEventsBatch["data"];
   newSyncToken: AsanaEventsBatch["sync"];
+  hasMore: AsanaEventsBatch["has_more"];
 };
 
 /**
  * T048 (US2) — FR-024 incremental sync entry point.
  *
- * Calls `GET /events?sync={token}` per the contract's § "Incremental
- * sync fallback contract". Three "stale/invalid incremental state"
- * outcomes, all of which the orchestrator treats as a trigger for a
- * full reconciliation rather than a hard failure:
+ * Calls `GET /events?resource={gid}&sync={token}` per the contract's
+ * § "Incremental sync fallback contract". Four "stale/invalid
+ * incremental state" outcomes, all of which the orchestrator treats as
+ * a trigger for a full reconciliation rather than a hard failure:
+ *
+ * - **No resource gid** (or empty-string `resourceGid`): the function
+ *   returns `validation_error` with a structured `ZodIssue` **without**
+ *   issuing a network request. The ZodIssue path points at the
+ *   `resource` field so a missing scope is attributed to the request
+ *   contract rather than an Asana-side transport failure.
  *
  * - **No prior sync token** (or empty-string `syncToken`): the
  *   function returns `validation_error` with a structured `ZodIssue`
@@ -505,11 +512,13 @@ type EventsSuccessPayload = {
  *   the plumbing layer so any future sync-token-bearing endpoint
  *   benefits from the same outcome shape).
  *
- * On success the wrapper renames the wire's `sync` field to
- * `newSyncToken` on the result's `data` variant so the orchestrator
- * can persist it as the next call's `syncToken` without binding to
- * the wire naming.
+ * On success the wrapper renames the wire's `sync`/`has_more` fields to
+ * `newSyncToken`/`hasMore` on the result's `data` variant so the
+ * orchestrator can persist the next sync token and continue fetching
+ * while `hasMore` remains true without binding to the wire naming.
  *
+ * `@param` resourceGid — Asana gid for the resource whose event stream
+ * should be read. The Events API requires this scope on every call.
  * `@param` syncToken — opaque Asana sync token persisted from the
  * last successful `fetchEventsSince` call (or, on the orchestrator's
  * bootstrap, a fresh-token from the corresponding full refresh).
@@ -519,9 +528,28 @@ type EventsSuccessPayload = {
  */
 export async function fetchEventsSince(
   token: string,
+  resourceGid?: string,
   syncToken?: string,
   options?: Pick<ClientRequestOptions, "signal">,
 ): Promise<AsanaClientResult<EventsSuccessPayload>> {
+  if (resourceGid === undefined || resourceGid === "") {
+    const issue = zod.ZodIssueCode.custom;
+    const message =
+      resourceGid === ""
+        ? "Resource gid is empty; Events API requests require a resource scope."
+        : "No resource gid supplied; Events API requests require a resource scope.";
+    return {
+      outcome: "validation_error",
+      issues: [
+        {
+          code: issue,
+          path: ["resource"],
+          message,
+        },
+      ],
+    };
+  }
+
   if (syncToken === undefined || syncToken === "") {
     // No prior sync token persisted for the workspace — FR-024's
     // "absence of any previously stored sync token ⇒ full
@@ -554,7 +582,7 @@ export async function fetchEventsSince(
     "/events",
     asanaEventsResponseSchema,
     token,
-    { sync: syncToken },
+    { resource: resourceGid, sync: syncToken },
     options,
   );
 
@@ -570,6 +598,7 @@ export async function fetchEventsSince(
     data: {
       events: wire.data.data,
       newSyncToken: wire.data.sync,
+      hasMore: wire.data.has_more,
     },
   };
 }

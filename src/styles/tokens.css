@@ -1,0 +1,291 @@
+/**
+ * BSOD-356 — design tokens for the team-dash light/dark theme.
+ *
+ * Every color, type, spacing, radius and shadow value the app's CSS
+ * consumes lives here as a custom property, keyed by *role* (surface,
+ * text-primary, accent, danger-text, …) rather than by raw hex. `global.css`
+ * and every future component stylesheet reads these roles; nothing outside
+ * this file should hardcode a color or a font-size.
+ *
+ * Light/dark strategy
+ * --------------------
+ * Values are declared three times per dark token, by design (see
+ * `docs/design/theme.md` "Light/dark strategy" for the full rationale):
+ *
+ *   1. `:root` — the light defaults.
+ *   2. `@media (prefers-color-scheme: dark)` scoped under
+ *      `:root:where(:not([data-theme="light"]))` — follows the OS/browser
+ *      setting, unless a future manual toggle has stamped `light` back on.
+ *   3. `:root[data-theme="dark"]` — a future manual theme-toggle control can
+ *      set this attribute on `<html>` to force dark regardless of OS
+ *      preference. No toggle UI ships in BSOD-356; the attribute hook is
+ *      wired now so adding one later is a small, additive change.
+ *
+ * The `:where(:not(...))` guard keeps a `data-theme="light"` stamp winning
+ * over a dark OS preference; `:where()` keeps the media block's specificity
+ * from beating the `[data-theme="dark"]` rule.
+ *
+ * Chart tokens
+ * ------------
+ * `--td-chart-*` are pre-wired for the future BSOD-128 P1/P2 graphs (see
+ * `docs/design/theme.md` "Future graphs vision"). They are NOT used by any
+ * component yet — no chart exists in the app today — but are defined here
+ * so the first chart implementation consumes tokens instead of inventing
+ * its own palette. Values are the validated, colour-vision-deficiency-safe
+ * default palette from the project's dataviz design skill (categorical hue
+ * order, sequential blue ramp, chart chrome/ink) — re-run that skill's
+ * `validate_palette.js` before adding a 9th series or changing any hue.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ---- Typography ---- */
+  --td-font-sans:
+    "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --td-font-mono:
+    ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono",
+    monospace;
+
+  --td-font-size-xs: 0.75rem;
+  --td-font-size-sm: 0.875rem;
+  --td-font-size-md: 1rem;
+  --td-font-size-lg: 1.125rem;
+  --td-font-size-xl: 1.375rem;
+  --td-font-size-2xl: 1.75rem;
+  --td-font-size-3xl: 2.25rem;
+
+  --td-line-height-tight: 1.2;
+  --td-line-height-normal: 1.5;
+  --td-line-height-relaxed: 1.6;
+
+  --td-font-weight-regular: 400;
+  --td-font-weight-medium: 500;
+  --td-font-weight-semibold: 600;
+  --td-font-weight-bold: 700;
+
+  /* ---- Spacing (4px base) ---- */
+  --td-space-1: 0.25rem;
+  --td-space-2: 0.5rem;
+  --td-space-3: 0.75rem;
+  --td-space-4: 1rem;
+  --td-space-5: 1.5rem;
+  --td-space-6: 2rem;
+  --td-space-7: 3rem;
+
+  /* ---- Radii, elevation, motion ---- */
+  --td-radius-sm: 6px;
+  --td-radius-md: 10px;
+  --td-radius-lg: 16px;
+  --td-radius-pill: 999px;
+  --td-shadow-sm: 0 1px 2px rgba(15, 15, 12, 0.06);
+  --td-shadow-md: 0 8px 24px rgba(15, 15, 12, 0.1);
+  --td-transition-fast: 120ms ease;
+
+  /* ---- Layout ---- */
+  --td-content-width-shell: 72rem;
+  --td-content-width-form: 34rem;
+
+  /* ---- Light palette ---- */
+  --td-color-bg: #f7f6f2;
+  --td-color-surface: #ffffff;
+  --td-color-surface-raised: #ffffff;
+  --td-color-overlay: rgba(23, 23, 26, 0.45);
+  --td-color-border: #e3e1d8;
+  --td-color-border-strong: #c9c6ba;
+  --td-color-text-primary: #17171a;
+  --td-color-text-secondary: #55565c;
+  --td-color-text-muted: #83848c;
+
+  --td-color-accent: #c2410c;
+  --td-color-accent-hover: #9a3412;
+  --td-color-accent-active: #7c2d12;
+  --td-color-accent-contrast: #ffffff;
+  --td-color-accent-subtle-bg: #fce9de;
+  --td-color-accent-subtle-border: #f3c7ac;
+  --td-color-link: #c2410c;
+  --td-color-focus-ring: #2a78d6;
+
+  /* Status roles: `-icon` is the raw hue (border/icon/dot use only — a 4px
+     border or icon glyph only needs the 3:1 non-text UI-component floor,
+     which every `-icon` value below clears easily). `-text` is a
+     separately-checked shade for the rare case status color IS text (the
+     token-test/retest outcome pills) — several `-icon` values fail the
+     4.5:1 text floor outright, so `-text` is not always the same hex:
+       - success:  #0ca30c only reaches 3.27:1 on white -> -text uses #006300 (11.2:1)
+       - info:     #2a78d6 only reaches 4.41:1 on white -> -text uses #1d4ed8 (8.6:1)
+       - warning:  #fab219 only reaches 1.79:1 on white -> -text uses #92400e (5.35:1)
+       - danger:   #d03b3b already clears 4.68:1 on white -> -text reuses it verbatim
+     See docs/design/theme.md "Status" for the full rationale. */
+  --td-color-success-icon: #0ca30c;
+  --td-color-success-text: #006300;
+  --td-color-success-bg: #e6f6e6;
+  --td-color-success-border: #b7e3b7;
+
+  --td-color-info-icon: #2a78d6;
+  --td-color-info-text: #1d4ed8;
+  --td-color-info-bg: #e8f1fc;
+  --td-color-info-border: #bcd8f5;
+
+  --td-color-warning-icon: #fab219;
+  --td-color-warning-text: #92400e;
+  --td-color-warning-bg: #fef3d6;
+  --td-color-warning-border: #f6d98a;
+
+  --td-color-danger-icon: #d03b3b;
+  --td-color-danger-text: #d03b3b;
+  --td-color-danger-bg: #fbe7e7;
+  --td-color-danger-border: #f0b8b8;
+
+  /* ---- Chart tokens (future graphs — not consumed yet, see docstring) ---- */
+  --td-chart-surface: #fcfcfb;
+  --td-chart-page: #f9f9f7;
+  --td-chart-ink-primary: #0b0b0b;
+  --td-chart-ink-secondary: #52514e;
+  --td-chart-ink-muted: #898781;
+  --td-chart-grid: #e1e0d9;
+  --td-chart-axis: #c3c2b7;
+  --td-chart-series-1: #2a78d6; /* blue */
+  --td-chart-series-2: #eb6834; /* orange */
+  --td-chart-series-3: #1baf7a; /* aqua */
+  --td-chart-series-4: #eda100; /* yellow */
+  --td-chart-series-5: #e87ba4; /* magenta */
+  --td-chart-series-6: #008300; /* green */
+  --td-chart-series-7: #4a3aa7; /* violet */
+  --td-chart-series-8: #e34948; /* red */
+  --td-chart-sequential-100: #cde2fb;
+  --td-chart-sequential-400: #3987e5;
+  --td-chart-sequential-700: #0d366b;
+  --td-chart-diverging-neutral: #f0efec;
+  --td-chart-status-good: #0ca30c;
+  --td-chart-status-warning: #fab219;
+  --td-chart-status-serious: #ec835a;
+  --td-chart-status-critical: #d03b3b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+
+    --td-color-bg: #121214;
+    --td-color-surface: #1b1b1e;
+    --td-color-surface-raised: #232327;
+    --td-color-overlay: rgba(0, 0, 0, 0.6);
+    --td-color-border: #2f2f34;
+    --td-color-border-strong: #45454c;
+    --td-color-text-primary: #f4f4f2;
+    --td-color-text-secondary: #c7c7cc;
+    --td-color-text-muted: #8f8f97;
+
+    --td-color-accent: #fb923c;
+    --td-color-accent-hover: #fdba74;
+    --td-color-accent-active: #fed7aa;
+    --td-color-accent-contrast: #1a0f06;
+    --td-color-accent-subtle-bg: #3a2213;
+    --td-color-accent-subtle-border: #6b3a17;
+    --td-color-link: #fb923c;
+    --td-color-focus-ring: #3987e5;
+
+    --td-color-success-icon: #0ca30c;
+    --td-color-success-text: #0ca30c;
+    --td-color-success-bg: #10240f;
+    --td-color-success-border: #1e3d1c;
+
+    --td-color-info-icon: #3987e5;
+    --td-color-info-text: #3987e5;
+    --td-color-info-bg: #0f1f30;
+    --td-color-info-border: #1c3a56;
+
+    --td-color-warning-icon: #fab219;
+    --td-color-warning-text: #fab219;
+    --td-color-warning-bg: #2b2008;
+    --td-color-warning-border: #4a3810;
+
+    /* danger-icon (#e66767) only reaches ~3.6:1 on the dark surface — fine
+       for a border/icon (3:1 floor) but not text, so -text uses a lighter
+       red (#fca5a5, ~9:1) instead of matching -icon like the other three
+       dark status roles do. */
+    --td-color-danger-icon: #e66767;
+    --td-color-danger-text: #fca5a5;
+    --td-color-danger-bg: #2b1414;
+    --td-color-danger-border: #4a2222;
+
+    --td-chart-surface: #1a1a19;
+    --td-chart-page: #0d0d0d;
+    --td-chart-ink-primary: #ffffff;
+    --td-chart-ink-secondary: #c3c2b7;
+    --td-chart-ink-muted: #898781;
+    --td-chart-grid: #2c2c2a;
+    --td-chart-axis: #383835;
+    --td-chart-series-1: #3987e5;
+    --td-chart-series-2: #d95926;
+    --td-chart-series-3: #199e70;
+    --td-chart-series-4: #c98500;
+    --td-chart-series-5: #d55181;
+    --td-chart-series-6: #008300;
+    --td-chart-series-7: #9085e9;
+    --td-chart-series-8: #e66767;
+    --td-chart-diverging-neutral: #383835;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --td-color-bg: #121214;
+  --td-color-surface: #1b1b1e;
+  --td-color-surface-raised: #232327;
+  --td-color-overlay: rgba(0, 0, 0, 0.6);
+  --td-color-border: #2f2f34;
+  --td-color-border-strong: #45454c;
+  --td-color-text-primary: #f4f4f2;
+  --td-color-text-secondary: #c7c7cc;
+  --td-color-text-muted: #8f8f97;
+
+  --td-color-accent: #fb923c;
+  --td-color-accent-hover: #fdba74;
+  --td-color-accent-active: #fed7aa;
+  --td-color-accent-contrast: #1a0f06;
+  --td-color-accent-subtle-bg: #3a2213;
+  --td-color-accent-subtle-border: #6b3a17;
+  --td-color-link: #fb923c;
+  --td-color-focus-ring: #3987e5;
+
+  --td-color-success-icon: #0ca30c;
+  --td-color-success-text: #0ca30c;
+  --td-color-success-bg: #10240f;
+  --td-color-success-border: #1e3d1c;
+
+  --td-color-info-icon: #3987e5;
+  --td-color-info-text: #3987e5;
+  --td-color-info-bg: #0f1f30;
+  --td-color-info-border: #1c3a56;
+
+  --td-color-warning-icon: #fab219;
+  --td-color-warning-text: #fab219;
+  --td-color-warning-bg: #2b2008;
+  --td-color-warning-border: #4a3810;
+
+  --td-color-danger-icon: #e66767;
+  --td-color-danger-text: #fca5a5;
+  --td-color-danger-bg: #2b1414;
+  --td-color-danger-border: #4a2222;
+
+  --td-chart-surface: #1a1a19;
+  --td-chart-page: #0d0d0d;
+  --td-chart-ink-primary: #ffffff;
+  --td-chart-ink-secondary: #c3c2b7;
+  --td-chart-ink-muted: #898781;
+  --td-chart-grid: #2c2c2a;
+  --td-chart-axis: #383835;
+  --td-chart-series-1: #3987e5;
+  --td-chart-series-2: #d95926;
+  --td-chart-series-3: #199e70;
+  --td-chart-series-4: #c98500;
+  --td-chart-series-5: #d55181;
+  --td-chart-series-6: #008300;
+  --td-chart-series-7: #9085e9;
+  --td-chart-series-8: #e66767;
+  --td-chart-diverging-neutral: #383835;
+}

@@ -71,10 +71,20 @@ function PersistentStorageDialog({
           until you switch to session-only storage or clear local data.
         </p>
       </div>
-      <button ref={confirmButtonRef} type="button" onClick={onConfirm}>
+      <button
+        ref={confirmButtonRef}
+        type="button"
+        data-variant="primary"
+        onClick={onConfirm}
+      >
         Confirm persistent storage
       </button>
-      <button ref={declineButtonRef} type="button" onClick={onDecline}>
+      <button
+        ref={declineButtonRef}
+        type="button"
+        data-variant="secondary"
+        onClick={onDecline}
+      >
         Decline
       </button>
     </form>

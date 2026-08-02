@@ -4,6 +4,22 @@ import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 
 /**
+ * BSOD-356 — the app's only stylesheet is loaded via the `<link
+ * rel="stylesheet">` in `index.html`, not a JS-side `import
+ * "./styles/global.css"` here. Vite's default JS-import CSS handling
+ * injects the stylesheet as an inline `<style>` element in dev mode (for
+ * fast HMR updates), which `index.html`'s CSP (`style-src 'self'`, no
+ * `unsafe-inline`) blocks outright — the page would render completely
+ * unstyled in `npm run dev` while looking fine in a production build
+ * (where Vite emits a real same-origin `<link>` instead). A static `<link
+ * href="/src/styles/global.css">` in `index.html` sidesteps that: Vite's
+ * dev server serves and transforms it as a real CSS response either way,
+ * and the production build resolves/hashes/rewrites the same reference
+ * into `dist/assets/*.css` — one mechanism, CSP-safe in both modes. See
+ * `src/styles/global.css`'s docstring for what the stylesheet covers.
+ */
+
+/**
  * T031 — entry point.
  *
  * The application entry point boots the Vite app. Its job is small:

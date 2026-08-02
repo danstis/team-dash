@@ -323,6 +323,7 @@ export function TestTokenButton({
       onClick={handleClick}
       disabled={isDisabled}
       data-testid="test-token-button"
+      data-variant="primary"
       aria-busy={pending}
     >
       {pending ? "Testing token…" : (children ?? "Test token")}

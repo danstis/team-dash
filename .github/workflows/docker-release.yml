@@ -47,11 +47,25 @@ jobs:
     # completed without producing a release (no conventional commits
     # since the last tag, etc.). workflow_dispatch and direct
     # `release: published` always run.
+    #
+    # Security: a `workflow_run` event fires for runs of the named
+    # workflow in FORKS of this repository too (see
+    # https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_run).
+    # Although fork runs don't have access to secrets, the workflow
+    # payload is still attacker-controllable (any field on the run
+    # object, including `outputs.*`). Restrict the trigger to runs
+    # that originated in our own repository (`head_repository.full_name`
+    # == `repository.full_name`) and to a single named workflow so a
+    # malicious fork can't name its workflow "Release Please" and
+    # inject a crafted `tag_name`/`sha` output. SonarCloud rule
+    # githubactions:S7631 (BSOD-357).
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'release' ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository.full_name &&
+       github.event.workflow_run.name == 'Release Please' &&
        github.event.workflow_run.outputs.releases_created == 'true')
     steps:
       - name: Resolve event inputs

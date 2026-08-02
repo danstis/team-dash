@@ -61,6 +61,22 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     expect(source).toMatch(/releases_created == 'true'/);
   });
 
+  it("refuses workflow_run events from forks or unrelated workflows (SonarCloud S7631)", () => {
+    // `workflow_run` events fire for runs of the named workflow in
+    // FORKS of this repository. The fork's run payload is
+    // attacker-controllable (e.g. a crafted `tag_name` / `sha` output),
+    // and although fork runs don't see our secrets, the docker job
+    // holds `packages: write` and pushes to ghcr.io — so a malicious
+    // fork could push arbitrary images to our namespace. Defend in
+    // depth: restrict to the same repo + the exact workflow name.
+    expect(source).toMatch(
+      /github\.event\.workflow_run\.head_repository\.full_name == github\.repository\.full_name/,
+    );
+    expect(source).toMatch(
+      /github\.event\.workflow_run\.name == 'Release Please'/,
+    );
+  });
+
   it("is also re-runnable via workflow_dispatch with tag_name + source_branch inputs", () => {
     expect(source).toMatch(/^\s{2}workflow_dispatch:\s*$/m);
     expect(source).toMatch(/^\s{4}inputs:\s*$/m);

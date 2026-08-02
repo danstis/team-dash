@@ -327,9 +327,7 @@ test.describe("BSOD-351 (T131) first landing surface on `/settings`", () => {
     await expect(
       page.getByRole("button", { name: /set token/i }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /^retest$/i }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /^retest$/i })).toBeVisible();
 
     // The replace section's Replacement-credential input + Replace
     // button is the FR-005 / FR-005a surface. The label's
@@ -382,9 +380,7 @@ test.describe("BSOD-351 (T131) first landing surface on `/settings`", () => {
     // surface a screenshot or `view-source` reveals, so the
     // assertion pins the invariant at the rendered boundary a
     // contributor sees in DevTools, not just the React tree.
-    const settingsHtml = await page
-      .getByTestId("settings-panel")
-      .innerHTML();
+    const settingsHtml = await page.getByTestId("settings-panel").innerHTML();
     expect(settingsHtml).not.toContain(FIXTURE_TOKEN);
     // At most a 4-character masked tail is acceptable.
     expect(settingsHtml).not.toContain(FIXTURE_TOKEN.slice(0, -4));
@@ -474,9 +470,7 @@ test.describe("BSOD-351 (T131) first landing surface on `/settings`", () => {
     // is the in-process pin; this e2e assertion is the
     // cross-process pin so the boundary holds end-to-end through
     // the production Docker build.
-    const settingsHtml = await page
-      .getByTestId("settings-panel")
-      .innerHTML();
+    const settingsHtml = await page.getByTestId("settings-panel").innerHTML();
     expect(settingsHtml).not.toContain(FIXTURE_TOKEN);
     expect(settingsHtml).not.toContain(REPLACEMENT_TOKEN);
     expect(settingsHtml).not.toContain(FIXTURE_TOKEN.slice(0, -4));
@@ -508,9 +502,7 @@ test.describe("BSOD-351 (T131) first landing surface on `/settings`", () => {
     // internal `role` attributes the integration test exercises
     // because the browser's a11y tree is what a screen-reader
     // user actually sees.
-    await page
-      .getByRole("button", { name: /switch to persistent/i })
-      .click();
+    await page.getByRole("button", { name: /switch to persistent/i }).click();
 
     const confirmation = page.getByTestId("persistent-confirmation");
     await expect(confirmation).toBeVisible();

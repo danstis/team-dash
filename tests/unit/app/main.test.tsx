@@ -65,6 +65,15 @@ describe("T010 index.html (Vite entry document)", () => {
     );
   });
 
+  it("declares installable app icon links", () => {
+    expect(html).toMatch(
+      /<link\s+rel="icon"\s+type="image\/png"\s+sizes="32x32"\s+href="\/icons\/team-dash-32\.png"\s*\/?>/,
+    );
+    expect(html).toMatch(
+      /<link\s+rel="apple-touch-icon"\s+href="\/icons\/team-dash-180\.png"\s*\/?>/,
+    );
+  });
+
   it("declares a CSP meta fallback for static hosts that do not inject response headers", () => {
     expect(html).toMatch(/http-equiv="Content-Security-Policy"/);
     expect(html).toContain(expectedCsp);

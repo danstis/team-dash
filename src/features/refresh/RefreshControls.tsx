@@ -2,6 +2,34 @@
  * BSOD-303 (T049) — `RefreshControls` + `RefreshButton` + `ProgressIndicator`
  * + `OutcomeBanner` (US2, success + partial-failure rendering).
  *
+ * T03 (`S01`, slice: "Refresh and Cache Pipeline (complete US2)") extends
+ * the T049 primitive with:
+ *
+ *   1. **Orchestrator-driven refresh**: the in-component fetch/stage/commit
+ *      loop is removed and the component delegates to
+ *      `createRefreshOrchestrator({ deps })` from
+ *      `src/data/refresh/refresh-orchestrator.ts` (decision D001 / MEM001 —
+ *      "single coordinator"). The orchestrator is the only caller of the
+ *      `RefreshStagingRepository` and the only writer of the `RefreshSession`
+ *      rows (`src/data/refresh/refresh-orchestrator.ts`'s failure-mode table
+ *      is the documented contract).
+ *   2. **Offline detection** (FR-087, spec US2 acceptance scenario 5):
+ *      `navigator.onLine` plus `online`/`offline` event listeners disable
+ *      the refresh action and surface the `<OfflineState />` primitive
+ *      (`src/shared/states/OfflineState.tsx`) with the FR-087 "last cached
+ *      dashboard is viewable" explanation. The button is disabled rather
+ *      than hidden so the user understands the action is gated, not removed.
+ *   3. **Failure-reason variants** (T051 / FR-021): the `OutcomeBanner`
+ *      surface widens from T049's two-variant shape
+ *      (`'success' | 'partial_failure'`) to the full orchestrator outcome
+ *      union (`success`, `cancelled`, `auth_failure`, `permission_failure`,
+ *      `rate_limited`, and the closed `partial_failure` whose `reason`
+ *      sub-discriminates between `network_error` and `validation_error`).
+ *      The `data-outcome` attribute carries the canonical variant (and
+ *      `data-failure-reason` carries the sub-reason on
+ *      `partial_failure`) so a future contributor's regression tests have
+ *      a stable selector to pin.
+ *
  * Spec / contract references
  * --------------------------
  * Spec US2 acceptance scenario 4 (spec.md §"User Story 2"):
@@ -11,105 +39,92 @@
  *    success outcome with the last successful refresh timestamp, and
  *    indicates whether the currently displayed data is cached or fresh."
  *
- * And the FR-021 / FR-068 / FR-022 contract that flows from it:
+ * Spec US2 acceptance scenario 5 (spec.md §"User Story 2" — offline):
  *
- *   - FR-020: "the system MUST provide a prominent, explicit manual
- *     Refresh action; the system MUST NOT perform scheduled or
- *     background refreshes without user action."
- *   - FR-021: "During a refresh, the system MUST show progress, and on
- *     completion MUST show the outcome (success, partial failure,
- *     cancellation, authentication failure, permission failure, or
- *     rate-limit failure) along with the last successful refresh
- *     timestamp and whether currently displayed data is cached or
- *     fresh."
- *   - FR-022: "A failed, cancelled, or incomplete refresh MUST NOT
- *     replace a previously complete cache with partial data; the last
- *     known-good complete cache MUST remain the data shown until a new
- *     refresh completes successfully." Pinned by routing every write
- *     through the `RefreshStagingRepository` so the orchestrator's
- *     `commit()`/`discard()` pair is the only path that moves staged
- *     rows into the live cache.
+ *   "When the browser goes offline, the refresh action MUST be visibly
+ *    disabled with an explanation, and the last cached dashboard MUST
+ *    remain viewable."
  *
- * Cached-vs-fresh labelling is T050 (BSOD-304, `FreshnessBanner`). The
- * failure-reason branch of the outcome banner is T051 (BSOD-305) — T049
- * ships the primitive shape with the success-variant copy and a
- * `partial_failure` shape that T051 will fill in with the
- * reason-specific text (cancelled / auth-failure / permission-failure /
- * rate-limited). The contract: the two `OutcomeBanner.kind` values T049
- * ships are `'success' | 'partial_failure'`, the latter carrying an
- * `errorDetail` field T051 will populate. T049's own success-path
- * integration test asserts the success variant only; the partial-failure
- * rendering is verified through the type-level contract so a future
- * contributor who deletes the partial-failure branch by accident
- * breaks the build.
+ * FR-020: "the system MUST provide a prominent, explicit manual
+ *   Refresh action; the system MUST NOT perform scheduled or
+ *   background refreshes without user action."
+ * FR-021: "During a refresh, the system MUST show progress, and on
+ *   completion MUST show the outcome (success, partial failure,
+ *   cancellation, authentication failure, permission failure, or
+ *   rate-limit failure) along with the last successful refresh
+ *   timestamp and whether currently displayed data is cached or fresh."
+ * FR-022: "A failed, cancelled, or incomplete refresh MUST NOT
+ *   replace a previously complete cache with partial data; the last
+ *   known-good complete cache MUST remain the data shown until a new
+ *   refresh completes successfully." Pinned by routing every write
+ *   through the orchestrator whose `commit()` is the only path that
+ *   moves staged rows into the live cache.
+ * FR-087: "When the browser is offline, the refresh action MUST be
+ *   visibly disabled with an explanation, and the last cached
+ *   dashboard MUST remain viewable."
  *
  * What this module owns
  * ---------------------
  * - `<RefreshControls />` — the US2 composition. Renders the refresh
- *   button, the progress indicator, and the outcome banner; owns the
- *   in-component state machine (`'idle' | 'running' | 'success' |
- *   'partial_failure'`). Drives a minimal refresh that fetches projects
- *   and tasks via the read-only Asana client (`fetchProjectsPage`,
- *   `fetchTasksPage`), stages the rows through `RefreshStagingRepository`,
- *   and commits or discards based on the outcome. T051 will extract
- *   the fetch/stage/commit/dispatch logic into a dedicated
- *   `src/data/refresh/refresh-orchestrator.ts` and extend the failure
- *   accounting onto the same state machine — the UI surface this
- *   module exposes is the contract both rows preserve.
- * - `<RefreshButton />` — the click-to-refresh button. Disabled while
- *   a refresh is in flight (`aria-busy="true"`) and while the
- *   preconditions (token, workspace) are not met.
- * - `<ProgressIndicator />` — the polite status region surfaced while
- *   a refresh is in flight. Decoupled from a spinner library so the
- *   consumer can add one without this primitive taking a styling
- *   dependency.
- * - `<OutcomeBanner />` — the outcome surface. Renders the success
- *   variant with the FR-021 completion timestamp, and the
- *   `partial_failure` variant with a placeholder error detail that
- *   T051 will fill in.
+ *   button (disabled on offline + while running + when preconditions
+ *   are unmet), the progress indicator while a refresh is in flight,
+ *   the `<OfflineState />` explanation when the browser is offline,
+ *   and the outcome banner on terminal completion. Owns the
+ *   `useOffline()` hook and the AbortController used to cancel a
+ *   refresh in flight.
+ * - `<RefreshButton />` — the click-to-refresh button. Disabled
+ *   when offline, when a refresh is already in flight, or when the
+ *   preconditions (token + workspace) are not met.
+ * - `<ProgressIndicator />` — the polite status region surfaced
+ *   while a refresh is in flight.
+ * - `<OutcomeBanner />` — the outcome surface, widened to the full
+ *   orchestrator outcome union with reason-specific copy for each
+ *   documented failure mode.
  *
  * What this module deliberately does NOT own
  * ------------------------------------------
- * - The orchestrator's per-outcome accounting (cancelled, auth,
- *   permission, rate-limited): T051. The component routes any
- *   non-`ok` projects/tasks fetch outcome through the
- *   `'partial_failure'` state and preserves the thrown message
- *   verbatim; T051's failure-reason rendering is the second consumer
- *   of that field.
- * - Cached-vs-fresh labelling: T050 (`FreshnessBanner`).
- * - Subtask project-membership resolution: T058 (BSOD-309) extends
- *   the task normaliser with parent→subtask project inheritance.
- *   T049 ships a minimal `normaliseTask` that resolves the
- *   `projects[]` array directly from the wire; T058 is the
- *   subsequent red→green row that introduces the FR-014 inheritance
- *   step at ingestion time.
- * - The `WorkspaceProvider` / `CredentialsProvider` / route guard
- *   wiring: pre-existing (T031, T046). The component reads the
- *   current token via `useCredentialTokenAccessor()` and the current
- *   workspace via `useWorkspace()`; it never calls the providers'
- *   write-side actions itself.
+ * - The orchestrator itself: `src/data/refresh/refresh-orchestrator.ts`
+ *   (T01 / D001 / MEM001). The component consumes the orchestrator via
+ *   `@data/refresh`'s barrel export; the only consumer-side seam is
+ *   the optional `orchestrator` prop the unit test injects to
+ *   script the failure reasons without MSW round-trips.
+ * - Cached-vs-fresh labelling: T050 (`FreshnessBanner`). The
+ *   `data-offline` attribute this module adds is the offline gesture;
+ *   the cached-vs-fresh badge that surfaces *after* a successful
+ *   refresh is T050's job.
+ * - Data-quality summary: T052 (`DataQualitySummary`). The outcome
+ *   banner's `data-failure-reason` attribute carries the FR-084
+ *   sub-discriminant the data-quality panel will pick up; the panel
+ *   itself lives in T04.
  *
  * Determinism
  * -----------
  * The component is fully synchronous on first paint (no async init,
  * no IndexedDB read). The refresh is driven exclusively by user
  * action (the FR-020 explicit-action rule). The `completedAt` string
- * surfaced by `OutcomeBanner` is the `RefreshSession.finishedAt` the
- * `RefreshStagingRepository.commit()` path writes, which is a fresh
- * `new Date().toISOString()` per call — not a fixture-stable value —
- * so a future regression that surfaces a stale or pre-epoch
- * timestamp fails the integration test's recent-instant assertion.
+ * surfaced by the success banner is the `RefreshSession.finishedAt`
+ * the orchestrator's commit path writes — a fresh
+ * `new Date().toISOString()` per call, so a future regression that
+ * surfaces a stale or pre-epoch timestamp fails the integration
+ * test's recent-instant assertion.
+ *
+ * The `useOffline()` hook drives `setOffline` from the browser's
+ * `online` / `offline` events + an initial `navigator.onLine`
+ * read. Tests inject the offline state via a probe component
+ * (`tests/unit/features/refresh/RefreshControls.test.tsx`) rather
+ * than firing real events, so the offline path is deterministically
+ * exercised without racing jsdom's `dispatchEvent` against `useState`.
  *
  * URL / log / value safety (FR-008)
  * ---------------------------------
  * The plaintext token is consumed via
  * `useCredentialTokenAccessor().getPlaintextToken()` inside the click
  * handler and is never echoed into a `data-*` attribute, a log line,
- * or a `data-completed-at` payload. The `completedAt` string surfaced
- * by `OutcomeBanner` is a committed timestamp, and the thrown task /
- * project fetch errors this module currently surfaces are outcome-only
- * strings rather than token-bearing payloads. The `completedAt` ISO
- * string never contains the credential.
+ * or a `data-completed-at` payload. The orchestrator's failure
+ * surfaces scrub the token (FR-008 / FR-010 — see
+ * `src/data/refresh/refresh-orchestrator.ts` § "What this module
+ * owns" #5); the outcome banner's `data-failure-reason` attribute is
+ * the closed union, not freeform text.
  *
  * Boundary
  * --------
@@ -117,50 +132,44 @@
  * documents as the home for the refresh-flow React UI. This module
  * imports from:
  *   - `../../app/credentials-context` — `useCredentialTokenAccessor()`
- *     the shell mounts. The component reads the current token via
- *     this accessor on every click rather than subscribing to it
- *     through a state-driven effect, so a token rotation between
- *     mount and click is observed correctly.
+ *     the shell mounts.
  *   - `../../app/workspace-context` — `useWorkspace()` for the
  *     currently selected workspace.
- *   - `../../data/asana/client` — the read-only Asana client
- *     (`fetchProjectsPage`, `fetchTasksPage`, `src/data/asana/client.ts`).
- *   - `../../data/asana/schemas` — the Zod resource schemas whose
- *     inferred types the wire→cache normaliser takes as input.
- *   - `../../data/db/repositories/refresh-staging.repository` —
- *     the staged-commit storage boundary every refresh write goes
- *     through (T047 / BSOD-301).
- *   - `../../data/db/schema` — the `RefreshSession` Dexie row type
- *     the orchestrator seeds before `beginStaging` runs.
- * It does NOT import from `src/domain/**` (the ESLint boundary
- * enforced by `eslint.config.js` rejects a domain import here) and
- * it does NOT mutate Dexie directly (Constitution Principle VI:
- * every storage side effect goes through a repository).
+ *   - `../../data/refresh` (barrel `src/data/refresh/index.ts`) —
+ *     `createRefreshOrchestrator`, the orchestrator's dependency
+ *     types, and `RefreshOutcome`.
+ *   - `../../data/db/schema` — `RefreshSession` Dexie row type used
+ *     by the orchestrator.
+ *   - `../../shared/states/OfflineState` — the FR-087 offline
+ *     explanation primitive.
+ * It does NOT import from `src/data/asana/**` (the orchestrator is
+ * the boundary) and it does NOT mutate Dexie directly (Constitution
+ * Principle VI).
  */
-import { useCallback, useState, type ReactElement } from "react";
-import type { z } from "zod";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
 
 import { useCredentialTokenAccessor } from "../../app/credentials-context";
 import { useWorkspace } from "../../app/workspace-context";
-import { fetchProjectsPage, fetchTasksPage } from "../../data/asana/client";
-import type {
-  asanaProjectSchema,
-  asanaTaskSchema,
-} from "../../data/asana/schemas";
-import { refreshStagingRepository } from "../../data/db/repositories/refresh-staging.repository";
 import {
-  db,
-  type Project,
-  type RefreshSession,
-  type Task,
-} from "../../data/db/schema";
-
-/* -------------------------------------------------------------------------- */
-/* Wire-shape aliases                                                         */
-/* -------------------------------------------------------------------------- */
-
-type WireProject = z.infer<typeof asanaProjectSchema>;
-type WireTask = z.infer<typeof asanaTaskSchema>;
+  createRefreshOrchestrator,
+  defaultMakeSessionId,
+  defaultNow,
+  realAsanaClient,
+  type RefreshFailureReason,
+  type RefreshOrchestrator,
+  type RefreshOrchestratorDeps,
+  type RefreshOutcome,
+} from "../../data/refresh";
+import { refreshStagingRepository } from "../../data/db/repositories/refresh-staging.repository";
+import { db } from "../../data/db/schema";
+import { OfflineState } from "../../shared/states/OfflineState";
 
 /* -------------------------------------------------------------------------- */
 /* Outcome surface                                                            */
@@ -168,114 +177,92 @@ type WireTask = z.infer<typeof asanaTaskSchema>;
 
 /**
  * The closed union of outcome variants `<OutcomeBanner />` renders.
- * The success variant ships in T049; the partial-failure variant
- * ships as a shape-only primitive in T049 (with a generic
- * `errorDetail` field) and T051 extends its rendering with
- * reason-specific copy. The shape is closed at the type level so
- * T051's extension is additive — the `OutcomeBanner` union widens
- * with a new variant, not a renames an existing one.
+ * Mirrors `RefreshOutcome` from the orchestrator (`@data/refresh`)
+ * but adds the `cancelled` and the three orthogonal
+ * `{auth,permission,rate_limited}_failure` cases as their own
+ * first-class shapes — T051 (FR-021) widens the T049
+ * `'success' | 'partial_failure'` union with reason-specific copy
+ * for each documented failure mode.
+ *
+ * The orchestrator's `partial_failure` carries a `reason` sub-tag
+ * (`network_error` | `validation_error`); we surface that as a
+ * separate `data-failure-reason` attribute so the FR-084 data-quality
+ * summary (T04) can pin a stable selector without scraping
+ * freeform copy.
+ *
+ * The `errorDetail` field carries the orchestrator's scrubbed
+ * failure message verbatim; the banner renders it under the
+ * reason-specific heading so a reader who needs the underlying
+ * Asana response detail (the `permission_failure.resource`, the
+ * Zod issue path, etc.) sees it without losing the high-signal
+ * reason label.
  */
-export type RefreshOutcomeKind = "success" | "partial_failure";
+export type RefreshOutcomeKind =
+  | "success"
+  | "cancelled"
+  | "auth_failure"
+  | "permission_failure"
+  | "rate_limited"
+  | "partial_failure";
 
-/**
- * The shape `<OutcomeBanner />` consumes. `completedAt` is the ISO
- * string the `RefreshStagingRepository.commit()` path wrote on the
- * matching `RefreshSession` row; `errorDetail` is a short message the
- * refresh path surfaced for a partial failure.
- */
-export interface RefreshOutcome {
+export interface RefreshOutcomeShape {
   readonly kind: RefreshOutcomeKind;
   readonly completedAt: string | null;
   readonly errorDetail: string | null;
+  /**
+   * Sub-reason for `kind: 'partial_failure'` only. `network_error`
+   * and `validation_error` share the `partial_failure` status in the
+   * persisted `RefreshSession` row but are distinguishable in the UI
+   * and the FR-084 data-quality panel via this field. `null` on every
+   * other `kind`.
+   */
+  readonly failureReason: RefreshFailureReason | null;
 }
 
 /* -------------------------------------------------------------------------- */
-/* Minimal wire→cache normalisation                                            */
+/* Offline detection                                                          */
 /* -------------------------------------------------------------------------- */
 
 /**
- * The current local-date used to populate `Task.lastSeenInScopeAt` on
- * each successful retrieval pass. The data-model.md invariant is
- * "updated every refresh the task is still retrieved in" — the
- * `Date.now()` snapshot is consistent with the rest of the cache
- * layer's now-based labelling, even if the value drifts from the
- * orchestrator's `MetricContext.now` (T051 / T064 are the rows that
- * thread the canonical now through the orchestrator).
+ * Read `navigator.onLine` plus the browser's `online`/`offline`
+ * events and expose the current connectivity state. The hook
+ * defaults `online === true` so a server-side render (no
+ * `navigator`) is treated as connected; the `useEffect` block then
+ * reconciles to the real `navigator.onLine` value on the first
+ * client commit.
+ *
+ * Tests inject the offline state via a `data-offline` attribute on
+ * the rendered tree (`tests/unit/features/refresh/RefreshControls.test.tsx`'s
+ * `<RefreshControls forceOffline={true} />` path) so jsdom's
+ * `dispatchEvent` semantics do not race `useState`.
  */
-function nowIsoDateTime(): string {
-  return new Date().toISOString();
-}
-
-/**
- * Collapse a single Asana project wire row into the cache's
- * `Project` shape. The wire format nests `workspace` and `team` as
- * compact references; the cache flattens those into
- * `workspaceGid`/`asanaTeamGid` scalars. `portfolioGids` is left
- * empty here — T052 (BSOD-306, `SnapshotRepository`) is the row that
- * owns the portfolio→project edge, and the FR-016 reporting
- * requirements (FR-039 / FR-040) are downstream of T049.
- */
-function normaliseProject(wire: WireProject): Project {
-  return {
-    gid: wire.gid,
-    name: wire.name,
-    workspaceGid: wire.workspace?.gid ?? "",
-    asanaTeamGid: wire.team?.gid ?? null,
-    portfolioGids: [],
-    archived: wire.archived,
-  };
-}
-
-/**
- * Extract the "Estimated Time" custom field's `number_value` as the
- * cache's `estimatedMinutes` scalar. Returns `null` when the field
- * is absent or has no numeric value — the data-model.md distinction
- * between `null` (tracked but not entered) and the literal
- * `'unavailable'` (workspace without Time Tracking) is recorded here
- * rather than at the wire-validation boundary.
- */
-function extractEstimatedMinutes(
-  customFields: WireTask["custom_fields"],
-): number | null {
-  if (customFields === undefined) {
-    return null;
-  }
-  for (const field of customFields) {
-    if (field.name === "Estimated Time") {
-      return field.number_value ?? null;
+function useOffline(): boolean {
+  const [offline, setOffline] = useState<boolean>(() => {
+    if (typeof navigator === "undefined") {
+      return false;
     }
-  }
-  return null;
-}
+    return navigator.onLine === false;
+  });
 
-/**
- * Collapse a single Asana task wire row into the cache's `Task`
- * shape. Subtask project-membership inheritance (FR-014) is T058
- * (BSOD-309) — T049 stages the `projectGids` exactly as Asana
- * returned them, so a subtask whose `projects[]` is empty in the
- * wire shape is staged with `projectGids: []` and the future row
- * (T058) is responsible for resolving the parent's projects into
- * the subtask at ingestion time.
- */
-function normaliseTask(wire: WireTask, lastSeenAt: string): Task {
-  return {
-    gid: wire.gid,
-    name: wire.name,
-    assigneeGid: wire.assignee?.gid ?? null,
-    projectGids: (wire.projects ?? []).map((project) => project.gid),
-    parentTaskGid: wire.parent?.gid ?? null,
-    resourceSubtype: wire.resource_subtype,
-    createdAt: wire.created_at,
-    modifiedAt: wire.modified_at,
-    completedAt: wire.completed_at ?? null,
-    dueAt: wire.due_at ?? null,
-    priorityOptionId: null,
-    estimatedMinutes: extractEstimatedMinutes(wire.custom_fields),
-    actualMinutes: null,
-    dependsOnTaskGids: (wire.dependencies ?? []).map((dep) => dep.gid),
-    lastSeenInScopeAt: lastSeenAt,
-    outOfScopeReason: null,
-  };
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleOnline = (): void => {
+      setOffline(false);
+    };
+    const handleOffline = (): void => {
+      setOffline(true);
+    };
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  return offline;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -283,24 +270,30 @@ function normaliseTask(wire: WireTask, lastSeenAt: string): Task {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The FR-020 manual-refresh button. Disabled when a refresh is
- * already in flight, when the token accessor reports no plaintext
- * token (e.g. the user landed on a placeholder surface before
- * completing the first-run flow), or when the workspace context
- * has not reported a selection. `aria-busy="true"` is set while the
- * running state is in flight so assistive tech announces the busy
- * state alongside the visible label change.
+ * The FR-020 manual-refresh button. Disabled when offline
+ * (FR-087), when a refresh is already in flight, when the token
+ * accessor reports no plaintext token, or when the workspace
+ * context has not reported a selection. `aria-busy="true"` is set
+ * while the running state is in flight so assistive tech announces
+ * the busy state alongside the visible label change.
+ *
+ * `data-offline="true"` is set when the button is offline-disabled
+ * so a future regression test (FR-087 / Slice S01 verification
+ * "offline-explanation with data-offline=true") has a stable
+ * anchor.
  */
 export interface RefreshButtonProps {
   readonly onClick: () => void;
   readonly disabled: boolean;
   readonly busy: boolean;
+  readonly offline: boolean;
 }
 
 export function RefreshButton({
   onClick,
   disabled,
   busy,
+  offline,
 }: Readonly<RefreshButtonProps>): ReactElement {
   return (
     <button
@@ -308,6 +301,7 @@ export function RefreshButton({
       onClick={onClick}
       disabled={disabled}
       data-testid="refresh-button"
+      data-offline={offline ? "true" : "false"}
       aria-busy={busy}
     >
       {busy ? "Refreshing…" : "Refresh"}
@@ -320,10 +314,7 @@ export function RefreshButton({
  * the same reasoning the shared `<LoadingState />` primitive
  * documents (`src/shared/states/LoadingState.tsx`): a CSS-only
  * spinner can be added by the consuming feature without this
- * primitive taking a styling dependency. The copy is
- * self-sufficient — a screen-reader user hears the same
- * announcement whether or not the spinner is visible, so the
- * visual decoration is non-essential.
+ * primitive taking a styling dependency.
  */
 export function ProgressIndicator(): ReactElement {
   return (
@@ -341,65 +332,182 @@ export function ProgressIndicator(): ReactElement {
 }
 
 /**
- * The FR-021 outcome surface. The `data-outcome` attribute carries
- * the discriminated `kind` value the test pins (and that T051 will
- * extend with the failure-reason branch). The `data-completed-at`
- * attribute exposes the ISO string the
- * `RefreshStagingRepository.commit()` path wrote — a stable
- * contract selector for a future contributor's regression test
- * (e.g. "the surfaced timestamp is the same as the persisted
- * `RefreshSession.finishedAt`").
+ * The FR-021 outcome surface, widened by T051 with the
+ * failure-reason variants. Each variant renders a stable
+ * `data-outcome` attribute (the closed union above) plus a
+ * `data-completed-at` attribute (the `RefreshSession.finishedAt`
+ * ISO string on success; empty on every failure path because the
+ * FR-068 audit trail row's `finishedAt` is the session's terminal
+ * instant — surfaced via the success path's `completedAt`
+ * field — and the failure paths surface the scrubbed
+ * `errorDetail` message verbatim).
  *
- * The `partial_failure` branch ships in T049 as a shape-only
- * primitive (a generic "Partial refresh" heading with a
- * `errorDetail` line). T051 will replace the body with
- * reason-specific copy (cancelled / auth-failure / permission-
- * failure / rate-limited) by widening the `RefreshOutcomeKind`
- * union — the existing success path's DOM contract is preserved
- * because the new variants are additive.
+ * `partial_failure` carries an additional `data-failure-reason`
+ * attribute carrying the FR-084 sub-discriminant
+ * (`network_error` | `validation_error`) so the T04 data-quality
+ * summary can pin a stable selector.
  */
-export interface OutcomeBannerProps extends Readonly<RefreshOutcome> {}
+export interface OutcomeBannerProps extends Readonly<RefreshOutcomeShape> {}
 
 export function OutcomeBanner({
   kind,
   completedAt,
   errorDetail,
+  failureReason,
 }: OutcomeBannerProps): ReactElement {
-  if (kind === "success") {
-    return (
-      <section
-        data-testid="outcome-banner"
-        data-outcome="success"
-        data-completed-at={completedAt ?? ""}
-        role="status"
-        aria-live="polite"
-        aria-label="Refresh complete"
-      >
-        <h2>Refresh complete</h2>
-        <p>
-          {completedAt === null
-            ? "Your workspace data is up to date."
-            : `Your workspace data is up to date as of ${completedAt}.`}
-        </p>
-      </section>
-    );
+  switch (kind) {
+    case "success":
+      return (
+        <section
+          data-testid="outcome-banner"
+          data-outcome="success"
+          data-completed-at={completedAt ?? ""}
+          role="status"
+          aria-live="polite"
+          aria-label="Refresh complete"
+        >
+          <h2>Refresh complete</h2>
+          <p>
+            {completedAt === null
+              ? "Your workspace data is up to date."
+              : `Your workspace data is up to date as of ${completedAt}.`}
+          </p>
+        </section>
+      );
+    case "cancelled":
+      return (
+        <section
+          data-testid="outcome-banner"
+          data-outcome="cancelled"
+          data-completed-at=""
+          role="status"
+          aria-live="polite"
+          aria-label="Refresh cancelled"
+        >
+          <h2>Refresh cancelled</h2>
+          <p>
+            {errorDetail ??
+              "The refresh was cancelled before it completed. Your previous good cache has been kept."}
+          </p>
+        </section>
+      );
+    case "auth_failure":
+      return (
+        <section
+          data-testid="outcome-banner"
+          data-outcome="auth_failure"
+          data-completed-at=""
+          role="alert"
+          aria-label="Authentication failed"
+        >
+          <h2>Authentication failed</h2>
+          <p>
+            {errorDetail ??
+              "Asana rejected the personal access token. Re-validate the token in settings to refresh again."}
+          </p>
+        </section>
+      );
+    case "permission_failure":
+      return (
+        <section
+          data-testid="outcome-banner"
+          data-outcome="permission_failure"
+          data-completed-at=""
+          role="alert"
+          aria-label="Permission denied"
+        >
+          <h2>Permission denied</h2>
+          <p>
+            {errorDetail ??
+              "Asana denied access to one or more resources in this workspace. Your previous good cache has been kept."}
+          </p>
+        </section>
+      );
+    case "rate_limited":
+      return (
+        <section
+          data-testid="outcome-banner"
+          data-outcome="rate_limited"
+          data-completed-at=""
+          role="alert"
+          aria-label="Rate limited"
+        >
+          <h2>Rate limited by Asana</h2>
+          <p>
+            {errorDetail ??
+              "Asana rate-limited the refresh. The previous good cache has been kept; try again later."}
+          </p>
+        </section>
+      );
+    case "partial_failure":
+      return (
+        <section
+          data-testid="outcome-banner"
+          data-outcome="partial_failure"
+          data-failure-reason={failureReason ?? ""}
+          data-completed-at=""
+          role="alert"
+          aria-label="Partial refresh result"
+        >
+          <h2>Partial refresh result</h2>
+          <p>
+            {errorDetail ??
+              "The refresh stopped before the workspace was fully retrieved. Your previous good cache has been kept."}
+          </p>
+        </section>
+      );
   }
+}
 
-  return (
-    <section
-      data-testid="outcome-banner"
-      data-outcome="partial_failure"
-      data-completed-at=""
-      role="alert"
-      aria-label="Partial refresh result"
-    >
-      <h2>Partial refresh result</h2>
-      <p>
-        {errorDetail ??
-          "The refresh stopped before the workspace was fully retrieved. Your previous good cache has been kept."}
-      </p>
-    </section>
-  );
+/* -------------------------------------------------------------------------- */
+/* Orchestrator outcome → UI surface                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Map the orchestrator's `RefreshOutcome` union onto the
+ * `RefreshOutcomeShape` the `<OutcomeBanner />` consumes. The
+ * orchestrator's discriminated union already documents every
+ * mapping in its module-level failure-mode table; this function
+ * exists once at the UI boundary so the orchestrator's contract is
+ * the only place a future contributor has to update when the
+ * failure-mode accounting changes.
+ */
+function refreshOutcomeToShape(
+  outcome: RefreshOutcome,
+  fallbackCompletedAt: string,
+): RefreshOutcomeShape {
+  switch (outcome.kind) {
+    case "success":
+      return {
+        kind: "success",
+        completedAt: outcome.completedAt ?? fallbackCompletedAt,
+        errorDetail: null,
+        failureReason: null,
+      };
+    case "cancelled":
+      return {
+        kind: "cancelled",
+        completedAt: null,
+        errorDetail: "Refresh was cancelled.",
+        failureReason: null,
+      };
+    case "partial_failure":
+      return {
+        kind:
+          outcome.reason === "auth_failure" ||
+          outcome.reason === "permission_failure" ||
+          outcome.reason === "rate_limited"
+            ? outcome.reason
+            : "partial_failure",
+        completedAt: null,
+        errorDetail: outcome.message,
+        failureReason:
+          outcome.reason === "network_error" ||
+          outcome.reason === "validation_error"
+            ? outcome.reason
+            : null,
+      };
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -408,78 +516,98 @@ export function OutcomeBanner({
 
 /**
  * The in-component refresh state machine. `'idle'` is the rest
- * state; `'running'` is set the moment the user clicks the
- * button and the Asana round-trips are in flight; `'success'` is
- * set after the `RefreshStagingRepository.commit()` path resolves
- * the `RefreshSession.status` to `'succeeded'`; `'partial_failure'`
- * is the catch-all for any non-`ok` outcome the orchestrator
- * surfaces (T051 will split this into the documented failure kinds
- * but the UI surface stays a single state here).
+ * state; `'running'` is set the moment the user clicks the button
+ * and the orchestrator's `runRefresh` promise is in flight;
+ * `'terminal'` collapses the success + failure variants into a
+ * single terminal state (the outcome shape carries the variant).
+ *
+ * The T049 four-state machine (`'idle' | 'running' | 'success' |
+ * 'partial_failure'`) widens naturally here: the orchestrator
+ * returns the typed `RefreshOutcome` union and the UI surface
+ * renders the corresponding `OutcomeBanner` variant. We
+ * deliberately keep `'running'` + `'terminal'` as the two-track
+ * state rather than splitting by outcome shape so future variants
+ * (T04's data-quality summary flag attributes, FR-084) only need
+ * to teach the `<OutcomeBanner />` switch a new case.
  */
-type RefreshState = "idle" | "running" | "success" | "partial_failure";
+type RefreshState = "idle" | "running" | "terminal";
 
-/**
- * Seed a running `RefreshSession` row before `beginStaging` runs.
- * The `RefreshStagingRepository.commit()` path requires the row to
- * exist; a missing row makes `commit()` throw with the documented
- * "RefreshSession was not seeded" error. The session is the
- * audit-trail artifact FR-068 / data-model.md pin.
- */
-async function seedRunningSession(
-  sessionId: string,
-  workspaceGid: string,
-): Promise<RefreshSession> {
-  const row: RefreshSession = {
-    id: sessionId,
-    workspaceGid,
-    startedAt: nowIsoDateTime(),
-    finishedAt: null,
-    status: "running",
-    itemsRetrieved: 0,
-    errorDetail: null,
-    syncMode: "full",
-  };
-  await db.refreshSessions.put(row);
-  return row;
-}
-
-/**
- * Generate a per-refresh session id. The T047 contract test seeds
- * a fixed `"session-1"` id; production refreshes get a fresh
- * id per click so concurrent refreshes (or repeated refreshes
- * after a discard) never collide on the same Dexie primary key.
- */
-function makeSessionId(): string {
-  return `session-${crypto.randomUUID()}`;
+export interface RefreshControlsProps {
+  /**
+   * Test seam only. Production callers omit this prop and the
+   * component constructs its orchestrator from the default
+   * `realAsanaClient` + `refreshStagingRepository` + `db`. Unit
+   * tests inject a scripted `RefreshOrchestrator` so the failure-
+   * reason rendering can be exercised deterministically without
+   * MSW overrides.
+   *
+   * @internal
+   */
+  readonly orchestrator?: RefreshOrchestrator;
+  /**
+   * Test seam only. Production callers omit this prop and the
+   * component reads `navigator.onLine` directly. Unit tests inject
+   * a deterministic offline state so jsdom's `online` / `offline`
+   * events do not race `useState` between mount and event
+   * dispatch.
+   *
+   * @internal
+   */
+  readonly forceOffline?: boolean;
 }
 
 /**
  * The US2 refresh surface. Reads the current token and workspace
- * from the shell's provider tree, drives a minimal success-path
- * refresh against the Asana client on click, and surfaces the
- * outcome through the `<OutcomeBanner />`. See the module-level
- * docstring for the cross-row contract — T051 extracts the
- * fetch/stage/commit logic into a dedicated orchestrator and
- * extends the failure-reason accounting; T050 adds the
- * cached-vs-fresh label; T058 widens the task normaliser with
- * the FR-014 subtask inheritance. The component's public surface
- * (`<RefreshControls />` only) is preserved across those rows.
+ * from the shell's provider tree, hands them to the orchestrator on
+ * click, and surfaces the outcome through the `<OutcomeBanner />`.
+ *
+ * The click handler builds an `AbortController` so the user can
+ * trigger a `cancel` outcome by aborting the in-flight signal
+ * (T051 widens the orchestrator to accept the signal; UI-level
+ * cancellation lives here). Each click constructs a fresh
+ * `AbortController` and replaces any prior in-flight one — the
+ * cancelled outcome's `discard()` path (orchestrator) is the only
+ * place the previous refresh's staging buffer is dropped, so a
+ * mid-flight cancel leaves the live cache untouched per FR-022.
  */
-export function RefreshControls(): ReactElement {
+export function RefreshControls(
+  props: Readonly<RefreshControlsProps> = {},
+): ReactElement {
+  const orchestratorFromProps = props.orchestrator;
+  const orchestrator = useMemo<RefreshOrchestrator>(() => {
+    if (orchestratorFromProps !== undefined) {
+      return orchestratorFromProps;
+    }
+    const deps: RefreshOrchestratorDeps = {
+      asanaClient: realAsanaClient,
+      staging: refreshStagingRepository,
+      dbInstance: db,
+      now: defaultNow,
+      makeSessionId: defaultMakeSessionId,
+    };
+    return createRefreshOrchestrator(deps);
+  }, [orchestratorFromProps]);
+
   const tokenAccessor = useCredentialTokenAccessor();
   const workspace = useWorkspace();
+  const navigationOffline = useOffline();
+  const offline =
+    props.forceOffline === true || navigationOffline === true;
+
   const [state, setState] = useState<RefreshState>("idle");
-  const [outcome, setOutcome] = useState<RefreshOutcome>({
+  const [outcome, setOutcome] = useState<RefreshOutcomeShape>({
     kind: "success",
     completedAt: null,
     errorDetail: null,
+    failureReason: null,
   });
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const token = tokenAccessor.getPlaintextToken();
   const selectedWorkspace = workspace.workspace;
   const isRunning = state === "running";
   const preconditionsMet = token !== null && selectedWorkspace !== null;
-  const buttonDisabled = isRunning || !preconditionsMet;
+  const buttonDisabled = isRunning || !preconditionsMet || offline;
 
   const runRefresh = useCallback(async (): Promise<void> => {
     if (isRunning) {
@@ -491,100 +619,56 @@ export function RefreshControls(): ReactElement {
       return;
     }
 
+    // Wire the AbortController before the orchestrator's
+    // `runRefresh` resolves. The orchestrator forwards the
+    // signal to its underlying Asana client calls; aborting
+    // between pagination pages surfaces a `cancelled` outcome
+    // (orchestrator's `handleCancellation` path) and discards
+    // the staging buffer (FR-022 — live cache stays untouched).
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setState("running");
-    const sessionId = makeSessionId();
-    await seedRunningSession(sessionId, currentWorkspace.gid);
-
     try {
-      await refreshStagingRepository.beginStaging(sessionId);
-
-      // Fetch + stage every non-archived project in the workspace.
-      // The pagination walk is orchestrator-driven: the Asana
-      // client's stateless per-call contract
-      // (`contracts/asana-client.md` § "Pagination") means a
-      // multi-page workspace would loop on `next_page` here. T049
-      // ships the single-page walk because the small-dataset
-      // fixture fits on one page; T051's orchestrator is the
-      // documented landing site for the multi-page walk.
-      const projectsResult = await fetchProjectsPage(
-        currentToken,
-        currentWorkspace.gid,
+      const result = await orchestrator.runRefresh({
+        token: currentToken,
+        workspaceGid: currentWorkspace.gid,
+        workspaceName: currentWorkspace.name,
+        signal: controller.signal,
+      });
+      setOutcome(
+        refreshOutcomeToShape(result, defaultNow()),
       );
-      if (projectsResult.outcome !== "ok") {
-        throw new Error(`Failed to fetch projects: ${projectsResult.outcome}`);
-      }
-      const projects = projectsResult.data.data.map(normaliseProject);
-      if (projects.length > 0) {
-        await refreshStagingRepository.stageUpsert("projects", projects);
-      }
-
-      // Fetch + stage every task in each in-scope project. The
-      // wire shape's `projectGids[]` becomes the cache's
-      // `projectGids[]` verbatim at this stage; T058 (BSOD-309)
-      // is the row that introduces FR-014 subtask inheritance.
-      const lastSeenAt = nowIsoDateTime();
-      for (const project of projects) {
-        const tasksResult = await fetchTasksPage(currentToken, project.gid);
-        if (tasksResult.outcome !== "ok") {
-          throw new Error(
-            `Failed to fetch tasks for project ${project.gid}: ${tasksResult.outcome}`,
-          );
-        }
-        const tasks = tasksResult.data.data.map((task) =>
-          normaliseTask(task, lastSeenAt),
-        );
-        if (tasks.length > 0) {
-          await refreshStagingRepository.stageUpsert("tasks", tasks);
-        }
-      }
-
-      // Single-Dexie-transaction flush of the staged rows plus
-      // the session transition to `succeeded`. Dexie's native
-      // transaction atomicity is the FR-022 / FR-068 enforcement
-      // mechanism — a mid-batch throw rolls back both the
-      // staged rows and the session transition so a partial
-      // refresh never lands in the live cache.
-      await refreshStagingRepository.commit(sessionId);
-
-      const session = await db.refreshSessions.get(sessionId);
-      setOutcome({
-        kind: "success",
-        completedAt: session?.finishedAt ?? nowIsoDateTime(),
-        errorDetail: null,
-      });
-      setState("success");
-    } catch (error) {
-      // The catch is intentionally coarse at this stage: any
-      // non-`ok` projects/tasks fetch outcome, a thrown Asana call,
-      // or a staging validation failure routes here. T051 splits this into
-      // reason-specific kinds (cancelled / auth-failure /
-      // permission-failure / rate-limited) and maps them onto
-      // the `partial_failure` rendering. The session stays
-      // `running` (FR-068 — the orchestrator is the only caller
-      // that transitions a session to a terminal failure
-      // status); the discarded staging buffer leaves the live
-      // cache untouched, satisfying FR-022.
-      await refreshStagingRepository.discard(sessionId).catch(() => {
-        // Discard is best-effort cleanup; an already-discarded
-        // session (e.g. the orchestrator discarded it on a
-        // previous failure) is not a re-throw condition here.
-      });
+      setState("terminal");
+    } catch (unexpected) {
+      // The orchestrator's contract is that every documented
+      // failure surfaces as a `RefreshOutcome` variant. A throw
+      // here is therefore an unexpected error (e.g. a synchronous
+      // Dexie write failure that the orchestrator's catch-all
+      // failed to wrap) and we surface it as a
+      // `partial_failure` with `reason=network_error` so the
+      // banner's variant union stays exhaustive.
+      const message =
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Refresh failed with an unexpected error.";
       setOutcome({
         kind: "partial_failure",
         completedAt: null,
-        errorDetail:
-          error instanceof Error
-            ? error.message
-            : "The refresh stopped before the workspace was fully retrieved.",
+        errorDetail: message,
+        failureReason: "network_error",
       });
-      setState("partial_failure");
+      setState("terminal");
+    } finally {
+      abortControllerRef.current = null;
     }
-  }, [isRunning, tokenAccessor, workspace.workspace]);
+  }, [isRunning, tokenAccessor, workspace.workspace, orchestrator]);
 
   return (
     <section
       className="td-refresh-controls"
       data-testid="refresh-controls"
+      data-offline={offline ? "true" : "false"}
       aria-label="Refresh"
     >
       <RefreshButton
@@ -593,13 +677,20 @@ export function RefreshControls(): ReactElement {
         }}
         disabled={buttonDisabled}
         busy={isRunning}
+        offline={offline}
       />
+      {offline && (
+        <section data-testid="offline-explanation" data-offline="true">
+          <OfflineState data-testid="offline-state" aria-label="Offline" />
+        </section>
+      )}
       {state === "running" && <ProgressIndicator />}
-      {state !== "idle" && state !== "running" && (
+      {state === "terminal" && (
         <OutcomeBanner
           kind={outcome.kind}
           completedAt={outcome.completedAt}
           errorDetail={outcome.errorDetail}
+          failureReason={outcome.failureReason}
         />
       )}
     </section>

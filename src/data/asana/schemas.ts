@@ -110,6 +110,20 @@ export const asanaListResponseSchema = <T extends z.ZodTypeAny>(item: T) =>
     next_page: asanaNextPageSchema,
   });
 
+/**
+ * The generic `{ data: resource }` envelope Asana returns for single-resource
+ * endpoints such as `GET /users/me` and `GET /tasks/{gid}`. The unwrap keeps
+ * resource-specific client wrappers returning the parsed resource itself, so UI
+ * and cache call sites do not bind to the transport envelope.
+ */
+export const asanaResourceResponseSchema = <T extends z.ZodTypeAny>(item: T) =>
+  z.preprocess((value) => {
+    if (typeof value === "object" && value !== null && "data" in value) {
+      return (value as { data: unknown }).data;
+    }
+    return undefined;
+  }, item);
+
 /* -------------------------------------------------------------------------- */
 /* Compact reference shapes                                                    */
 /* -------------------------------------------------------------------------- */

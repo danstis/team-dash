@@ -25,10 +25,12 @@ export const asanaHandlers = [
     const failure = authorised(request);
     if (failure) return failure;
     return HttpResponse.json({
-      gid: smallDataset.users[0].gid,
-      name: smallDataset.users[0].name,
-      email: smallDataset.users[0].email,
-      resource_type: "user",
+      data: {
+        gid: smallDataset.users[0].gid,
+        name: smallDataset.users[0].name,
+        email: smallDataset.users[0].email,
+        resource_type: "user",
+      },
     });
   }),
   http.get(`${API_BASE}/workspaces`, ({ request }) => {
@@ -95,7 +97,7 @@ export const asanaHandlers = [
           { errors: [{ message: "Not Found" }] },
           { status: 404 },
         )
-      : HttpResponse.json(task);
+      : HttpResponse.json({ data: task });
   }),
   http.get(`${API_BASE}/tasks/:taskGid/subtasks`, ({ request, params }) => {
     const failure = authorised(request);

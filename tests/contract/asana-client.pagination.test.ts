@@ -457,7 +457,7 @@ describe("T048 Asana client pagination + events-since contract", () => {
           ({ params, request }) => {
             observedTaskGid = String(params.taskGid);
             observedUrl = request.url;
-            return HttpResponse.json(sampleTaskDetail);
+            return HttpResponse.json({ data: sampleTaskDetail });
           },
         ),
       );
@@ -480,10 +480,12 @@ describe("T048 Asana client pagination + events-since contract", () => {
         http.get("https://app.asana.com/api/1.0/tasks/:taskGid", () =>
           // Missing required `created_at`/`modified_at`.
           HttpResponse.json({
-            gid: taskGid,
-            name: "Broken task",
-            resource_type: "task",
-            resource_subtype: "default_task",
+            data: {
+              gid: taskGid,
+              name: "Broken task",
+              resource_type: "task",
+              resource_subtype: "default_task",
+            },
           }),
         ),
       );

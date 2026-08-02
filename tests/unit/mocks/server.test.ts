@@ -78,9 +78,11 @@ describe("T030 src/mocks/server.ts — canonical MSW Node server wiring", () => 
     server.use(
       http.get("https://app.asana.com/api/1.0/users/me", () =>
         HttpResponse.json({
-          gid: "override",
-          name: "Override User",
-          resource_type: "user",
+          data: {
+            gid: "override",
+            name: "Override User",
+            resource_type: "user",
+          },
         }),
       ),
     );
@@ -90,10 +92,9 @@ describe("T030 src/mocks/server.ts — canonical MSW Node server wiring", () => 
     });
     expect(overridden.status).toBe(200);
     const overriddenBody = (await overridden.json()) as {
-      gid: string;
-      name: string;
+      data: { gid: string; name: string };
     };
-    expect(overriddenBody.gid).toBe("override");
+    expect(overriddenBody.data.gid).toBe("override");
 
     // 2. After `resetHandlers(...asanaHandlers)` the next request goes back to the fixture.
     server.resetHandlers(...asanaHandlers);
@@ -102,11 +103,10 @@ describe("T030 src/mocks/server.ts — canonical MSW Node server wiring", () => 
     });
     expect(restored.status).toBe(200);
     const restoredBody = (await restored.json()) as {
-      gid: string;
-      name: string;
+      data: { gid: string; name: string };
     };
     // The fixture's `/users/me` returns the first user in
     // `smallDataset.users` (Alex Kim, gid 1200000000000020).
-    expect(restoredBody.gid).toBe("1200000000000020");
+    expect(restoredBody.data.gid).toBe("1200000000000020");
   });
 });

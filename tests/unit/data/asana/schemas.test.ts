@@ -40,6 +40,7 @@ import {
   asanaProjectListResponseSchema,
   asanaProjectSchema,
   asanaReferenceSchema,
+  asanaResourceResponseSchema,
   asanaSectionListResponseSchema,
   asanaSectionSchema,
   asanaSubtaskListResponseSchema,
@@ -229,6 +230,16 @@ describe("T023 Asana Zod resource schemas", () => {
       const schema = asanaListResponseSchema(asanaWorkspaceSchema);
       const result = schema.safeParse({ next_page: null });
       expect(result.success).toBe(false);
+    });
+
+    it("asanaResourceResponseSchema unwraps a single-resource data envelope", () => {
+      const schema = asanaResourceResponseSchema(asanaUserSchema);
+      const result = schema.safeParse({ data: userFixture() });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual(userFixture());
+      }
     });
   });
 

@@ -37,6 +37,30 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     expect(source).toMatch(/^\s{4}types:\s*\[published\]\s*$/m);
   });
 
+  it("also triggers on the `Release Please` workflow_run completion (BSOD-357)", () => {
+    // BSOD-357: release-please (BSOD-257) creates the GitHub Release via
+    // the workflow's `secrets.GITHUB_TOKEN`, which GitHub Actions
+    // deliberately refuses to surface as a `release: published` event
+    // to other workflows (anti-recursion policy). Without this second
+    // trigger, every release-please release would silently skip the
+    // Docker image publish step.
+    expect(source).toMatch(/^\s{2}workflow_run:\s*$/m);
+    expect(source).toMatch(
+      /^\s{4}workflows:\s*\[\s*["']Release Please["']\s*\]\s*$/m,
+    );
+    expect(source).toMatch(/^\s{4}types:\s*\[completed\]\s*$/m);
+  });
+
+  it("guards the docker job so workflow_run with no release is a no-op", () => {
+    // When release-please completes without producing a release (no new
+    // conventional commits since the last tag), the workflow still runs
+    // to completion; we must skip docker-push in that case. The job-level
+    // `if` checks `github.event.workflow_run.outputs.releases_created`
+    // rather than re-running release-please's logic.
+    expect(source).toMatch(/^\s{4}if:\s*\|?\s*$/m);
+    expect(source).toMatch(/releases_created == 'true'/);
+  });
+
   it("is also re-runnable via workflow_dispatch with tag_name + source_branch inputs", () => {
     expect(source).toMatch(/^\s{2}workflow_dispatch:\s*$/m);
     expect(source).toMatch(/^\s{4}inputs:\s*$/m);
@@ -44,6 +68,42 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     expect(source).toMatch(/^\s{8}required:\s*true\s*$/m);
     expect(source).toMatch(/^\s{6}source_branch:\s*$/m);
     expect(source).toMatch(/^\s{8}default:\s*['"]['"]\s*$/m);
+  });
+
+  it("threads workflow_run outputs through env vars (no script-injection on upstream payload)", () => {
+    // Same script-injection guard as for workflow_dispatch and
+    // `release: published`: every token from the upstream workflow's
+    // payload must reach `run:` via an env var, never by literal
+    // `${{ github.event.workflow_run.* }}` interpolation.
+    expect(source).toMatch(
+      /WORKFLOW_RUN_TAG_NAME:\s*\$\{\{\s*github\.event\.workflow_run\.outputs\.tag_name\s*\}\}/,
+    );
+    expect(source).toMatch(
+      /WORKFLOW_RUN_SHA:\s*\$\{\{\s*github\.event\.workflow_run\.outputs\.sha\s*\}\}/,
+    );
+    expect(source).toMatch(
+      /WORKFLOW_RUN_HEAD_BRANCH:\s*\$\{\{\s*github\.event\.workflow_run\.head_branch\s*\}\}/,
+    );
+  });
+
+  it("hard-fails on a workflow_run with releases_created=true but no tag_name output", () => {
+    // Defense-in-depth: a future release-please-action version that
+    // stops emitting `tag_name` (or a hand-rolled upstream workflow
+    // that emits `releases_created=true` for some non-release reason)
+    // must NOT silently publish a `:latest` retag. The shell step
+    // asserts non-empty before writing `$GITHUB_OUTPUT`.
+    expect(source).toMatch(/WORKFLOW_RUN_TAG_NAME.*may legitimately be empty/s);
+    expect(source).toMatch(/exit 1/);
+  });
+
+  it("checks out the upstream SHA on the workflow_run path so we don't race the upstream tag push", () => {
+    // The release-please job emits `sha` (the tagged commit) on its
+    // outputs; we prefer that to a tag ref because the tag may not yet
+    // be visible on `origin` when this downstream workflow fires, and a
+    // `ref: <tag>` checkout would race against the upstream's tag push.
+    expect(source).toMatch(
+      /ref:\s*\$\{\{\s*steps\.inputs\.outputs\.commit_sha\s*\|\|\s*steps\.inputs\.outputs\.tag_name\s*\}\}/,
+    );
   });
 
   it("requests contents: read and packages: write permissions (no unnecessary write scopes)", () => {
@@ -90,7 +150,7 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
       /uses:\s*actions\/checkout@[a-f0-9]{40} # v\d+\.\d+\.\d+/,
     );
     expect(source).toMatch(
-      /ref:\s*\$\{\{\s*steps\.inputs\.outputs\.tag_name\s*\}\}/,
+      /ref:\s*\$\{\{\s*steps\.inputs\.outputs\.commit_sha\s*\|\|\s*steps\.inputs\.outputs\.tag_name\s*\}\}/,
     );
     expect(source).toMatch(/fetch-depth:\s*1/);
   });

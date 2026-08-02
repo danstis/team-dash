@@ -15,13 +15,25 @@ jobs:
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
+    # Expose the action's outputs as job outputs so that downstream
+    # `workflow_run` consumers (currently `.github/workflows/docker-release.yml`)
+    # can read the resolved tag name, the source commit SHA, and the
+    # `releases_created` boolean without depending on the
+    # `release: published` event — which GitHub Actions deliberately
+    # suppresses when the release was created by a workflow using
+    # `secrets.GITHUB_TOKEN` (the anti-recursion policy documented at
+    # https://docs.github.com/en/actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow).
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - id: release
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1a5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json

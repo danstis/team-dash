@@ -8,8 +8,13 @@ import type { AsanaClientResult } from "../../data/asana/types";
  * the `rate_limited` outcome into a whole-second display value, matching
  * the project-wide unit-convention documented in
  * `src/data/asana/client.ts` and `src/shared/states/RateLimitedState.tsx`.
+ *
+ * Exported so the peer `summariseWorkspaceListFailure` summariser in
+ * `TokenEntry.tsx` can reuse the same constant instead of an inline
+ * `1000` literal — the named constant is the project-wide convention
+ * every other rate-limit formatter follows.
  */
-const MS_PER_SECOND = 1_000;
+export const MS_PER_SECOND = 1_000;
 
 export type CredentialValidationOutcomeKind =
   | "valid"

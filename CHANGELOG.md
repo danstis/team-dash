@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/danstis/team-dash/compare/v0.5.0...v0.6.0) (2026-08-02)
+
+
+### Features
+
+* add Team Dash logo icons (BSOD-358) ([#145](https://github.com/danstis/team-dash/issues/145)) ([b06c85f](https://github.com/danstis/team-dash/commit/b06c85f34ba6ddbf085969ed206abf5d6c4a7bd5))
+* add Team Dash logo icons for BSOD-358 ([b06c85f](https://github.com/danstis/team-dash/commit/b06c85f34ba6ddbf085969ed206abf5d6c4a7bd5))
+* **BSOD-356:** add Asana-adjacent light/dark theme for team-dash ([7c095f2](https://github.com/danstis/team-dash/commit/7c095f2986954cb70408ad778a6026fb2448b9f5))
+
+
+### Bug fixes
+
+* **docker-release:** trigger on release-please workflow_run (BSOD-357) ([#142](https://github.com/danstis/team-dash/issues/142)) ([f82540e](https://github.com/danstis/team-dash/commit/f82540ebdaf385b4ec2645c176296a8193182947))
+
 ## [0.5.0](https://github.com/danstis/team-dash/compare/v0.4.0...v0.5.0) (2026-08-02)
 
 

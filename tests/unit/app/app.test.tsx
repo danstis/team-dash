@@ -34,8 +34,18 @@
  *   are deferred to a separate Playwright test; what the shell test
  *   asserts here is that the router uses no JSX-only feature that
  *   would crash at runtime, e.g. a malformed `path` value).
+ *
+ * - The BSOD-351 sub-issue added the `/settings` route and the
+ *   `nav-settings` link from the placeholder. These are exercised by
+ *   the new Playwright e2e spec, but e2e coverage is not fed into
+ *   SonarCloud (`sonar.javascript.lcov.reportPaths` is the unit +
+ *   contract lcov reports only — `.github/workflows/ci.yml:358`).
+ *   The two BSOD-351 unit-test cases below exercise the new router
+ *   code at the unit layer so the SonarCloud `new_coverage` quality
+ *   gate clears 60% on the new lines without depending on the e2e
+ *   layer's coverage to count.
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { StrictMode, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -72,6 +82,12 @@ import { router } from "../../../src/app/router";
 describe("T031 <App /> (provider tree + router composition)", () => {
   afterEach(() => {
     cleanup();
+    // The router is a singleton (`createMemoryRouter` lives at module
+    // scope in `src/app/router.tsx`); any `Link` click in a previous
+    // test leaves the singleton at the navigated URL. Reset to `/`
+    // before the next test so the placeholder assertions are not
+    // polluted by leftover navigation state from a peer test.
+    void router.navigate("/");
   });
 
   it("renders without throwing (Constitution Principle I: app must boot)", () => {
@@ -103,11 +119,70 @@ describe("T031 <App /> (provider tree + router composition)", () => {
       ),
     ).not.toThrow();
   });
+
+  it("renders the `nav-settings` link from the post-first-run placeholder (BSOD-351)", () => {
+    render(<App />);
+
+    // The gate is open under the mocked contexts, so the placeholder
+    // is the rendered surface. The placeholder includes the
+    // `data-testid="nav-settings"` <Link> BSOD-351 adds so the
+    // Playwright spec can click through to `/settings`. A regression
+    // that drops the link breaks the e2e flow AND removes the
+    // canonical in-app entry point future dashboard chrome will
+    // reuse — both fail this assertion.
+    const link = screen.getByTestId("nav-settings");
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "/settings");
+  });
+
+  it("navigates to `/settings` from the `nav-settings` link and mounts the SettingsCredentialsPanel (BSOD-351)", async () => {
+    render(<App />);
+
+    // Click the nav-settings link the placeholder renders. The
+    // React Router `<Link>` component handles the navigation
+    // synchronously through the singleton `router`; the click
+    // advances the memory router from `/` to `/settings` and the
+    // `<SettingsRoute />` component mounts the T045
+    // `SettingsCredentialsPanel`.
+    fireEvent.click(screen.getByTestId("nav-settings"));
+
+    // The panel's stable `data-testid` is the same anchor the e2e
+    // spec uses, so the unit and e2e layers are pinned to the same
+    // surface.
+    expect(await screen.findByTestId("settings-panel")).toBeInTheDocument();
+
+    // The four US1 lifecycle actions (FR-004 / FR-005 / FR-006 /
+    // FR-007) are the documented surface every downstream feature
+    // imports across. Asserting their presence at the unit layer
+    // pins the BSOD-351 route's surface even when the e2e layer is
+    // not run. The `Switch to …` button toggles between
+    // session-only → persistent and persistent → session-only per
+    // the current mode; the assertion accepts either so the test
+    // is robust to the mocked `mode: "persistent"` above.
+    expect(
+      screen.getByRole("button", { name: /set token/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^retest$/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^replace$/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /switch to (persistent|session)/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /clear all/i }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("T031 router (dumb route configuration)", () => {
   afterEach(() => {
     cleanup();
+    void router.navigate("/");
   });
 
   it("exports a non-null `router` object consumable by RouterProvider", () => {
@@ -118,5 +193,18 @@ describe("T031 router (dumb route configuration)", () => {
 
   it("registers at least one route (the T031 placeholder)", () => {
     expect(router.routes.length).toBeGreaterThan(0);
+  });
+
+  it("registers the `/settings` child route (BSOD-351)", () => {
+    // The router exposes the route table the shell mounts. After
+    // the BSOD-351 sub-issue the table MUST include the
+    // `/settings` child route so a real user (and the Playwright
+    // e2e spec) can navigate to the credentials panel. A
+    // regression that drops the child fails this assertion before
+    // the e2e spec even runs.
+    const settingsRoute = router.routes[0]?.children?.find(
+      (child) => "path" in child && child.path === "settings",
+    );
+    expect(settingsRoute).toBeDefined();
   });
 });

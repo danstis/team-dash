@@ -368,7 +368,31 @@ describe("T040 CredentialRepository (contracts/storage-repository.md)", () => {
         lastValidationResult: null,
       });
 
+      // FR-005a call-order pin: setPersistentToken MUST invoke
+      // `db.credentials.delete("persistent")` BEFORE the `put(...)` that
+      // writes the new encrypted record. A future regression that drops
+      // the explicit delete (e.g. an "upsert" that relies on put's
+      // overwrite semantics, or a deferred/queued delete) is caught here
+      // — the delete spy would either not be invoked at all or be
+      // invoked after the put, failing the invocation-call-order
+      // assertion. Mirrors the `vi.spyOn(db, "transaction")` call-order
+      // pin used by the FR-007 single-transaction spy below.
+      const deleteSpy = vi.spyOn(db.credentials, "delete");
+      const putSpy = vi.spyOn(db.credentials, "put");
+
       await credentialRepository.setPersistentToken(REPLACEMENT_TOKEN);
+
+      const deleteCalls = deleteSpy.mock.calls;
+      const putCalls = putSpy.mock.calls;
+      expect(deleteCalls).toHaveLength(1);
+      expect(deleteCalls[0]?.[0]).toBe(PERSISTENT_KEY);
+      expect(putCalls).toHaveLength(1);
+      expect(deleteSpy.mock.invocationCallOrder[0]).toBeLessThan(
+        putSpy.mock.invocationCallOrder[0]!,
+      );
+
+      deleteSpy.mockRestore();
+      putSpy.mockRestore();
 
       const rows = await db.credentials.toArray();
       expect(rows).toHaveLength(1);

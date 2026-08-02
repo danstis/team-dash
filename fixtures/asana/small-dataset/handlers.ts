@@ -20,6 +20,24 @@ function page<T>(data: readonly T[]) {
   return { data, next_page: null };
 }
 
+/**
+ * Build a single-page `{ data }` envelope with NO `next_page` key —
+ * the realistic real-Asana wire shape on a final / single-page
+ * response. Asana's documented `/workspaces` endpoint (and the
+ * other list endpoints) document `next_page` as the pagination
+ * cursor that is `null` on the final page, but live traffic
+ * observed in BSOD-355 shows the field is sometimes OMITTED
+ * entirely from the body on a single-page response. The MSW
+ * fixture's default `page()` helper preserves the `next_page:
+ * null` shape for handlers that need a pagination-terminating
+ * sentinel (the contract tests' multi-page walks); this helper
+ * produces the alternative shape so the fixture exercises the
+ * captured live regression.
+ */
+function pageFinal<T>(data: readonly T[]) {
+  return { data };
+}
+
 export const asanaHandlers = [
   http.get(`${API_BASE}/users/me`, ({ request }) => {
     const failure = authorised(request);
@@ -36,7 +54,14 @@ export const asanaHandlers = [
   http.get(`${API_BASE}/workspaces`, ({ request }) => {
     const failure = authorised(request);
     if (failure) return failure;
-    return HttpResponse.json(page(smallDataset.workspaces));
+    // BSOD-355: the small-dataset's two workspaces fit on a single
+    // page, so the realistic real-Asana wire shape omits the
+    // `next_page` field entirely rather than returning
+    // `next_page: null`. The `pageFinal()` helper exercises the
+    // captured regression shape at the fixture layer so future
+    // contract tests catch a regression that locks the
+    // `next_page` field as required.
+    return HttpResponse.json(pageFinal(smallDataset.workspaces));
   }),
   http.get(`${API_BASE}/projects`, ({ request }) => {
     const failure = authorised(request);

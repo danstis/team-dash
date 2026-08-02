@@ -85,17 +85,25 @@ export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
  * through verbatim to the next request's `?offset=...` query string;
  * the `path` is informational and not currently consumed.
  *
- * Documented as nullable because Asana returns `next_page: null`
- * (not `undefined` / an absent field) on the final page of a
- * paginated list — the validation boundary accepts both
- * representations explicitly to match that wire shape.
+ * Documented as `nullish` because real Asana returns `next_page` in
+ * three forms on a final / single-page response — `next_page: null`
+ * (the documented shape), the field absent entirely (observed on
+ * the first-run `listWorkspaces` call, BSOD-355), or (on a
+ * non-final page) `{ offset, path, uri }` where `uri` is an extra
+ * non-strict field the schema already accepts by default. The
+ * `.nullish()` modifier accepts both `null` and `undefined` so the
+ * validation boundary matches the documented live wire shape
+ * without binding to a single representation; the envelope wrapper
+ * (`asanaListResponseSchema` below) also marks the field
+ * `.optional()` so a body that omits the key entirely parses
+ * cleanly.
  */
 export const asanaNextPageSchema = z
   .object({
     offset: z.string().min(1),
     path: z.string().min(1),
   })
-  .nullable();
+  .nullish();
 
 /**
  * The generic `{ data, next_page }` envelope Asana returns for every
@@ -103,11 +111,20 @@ export const asanaNextPageSchema = z
  * resource-array parser; the wrapper is exposed as a function so each
  * resource schema composes its own concrete list schema without
  * duplicating the pagination shape.
+ *
+ * `next_page` is marked `.optional()` (BSOD-355) so a response that
+ * omits the field entirely — the captured live-Asana regression
+ * shape on a single-page `/workspaces` response — parses cleanly
+ * rather than surfacing as a `validation_error` on the 200 body.
+ * A present-but-`null` value is still accepted (the underlying
+ * `asanaNextPageSchema` is `.nullish()`); both representations
+ * collapse to the same "no more pages" sentinel at the
+ * pagination-walk layer (`client.ts` / orchestrator).
  */
 export const asanaListResponseSchema = <T extends z.ZodTypeAny>(item: T) =>
   z.object({
     data: z.array(item),
-    next_page: asanaNextPageSchema,
+    next_page: asanaNextPageSchema.optional(),
   });
 
 /**

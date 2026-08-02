@@ -140,4 +140,41 @@ describe("TokenEntryForm", () => {
       }
     },
   );
+
+  it("surfaces a workspace validation error and logs the captured Zod issues in dev", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { outcome, tokenInput } = await submitForOutcome([
+      authenticatedUserHandler(),
+      http.get(WORKSPACES_URL, () =>
+        HttpResponse.json({
+          data: [
+            {
+              gid: "workspace-1",
+              resource_type: "workspace",
+            },
+          ],
+        }),
+      ),
+    ]);
+
+    expect(outcome).toHaveTextContent(
+      /unexpected response from asana\. the api shape may have changed\./i,
+    );
+    expect(tokenInput).toHaveValue(TOKEN);
+    expect(
+      screen.queryByTestId("token-entry-validated"),
+    ).not.toBeInTheDocument();
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[Asana /workspaces] ZodIssue[] from live response:",
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_type",
+          path: ["data", 0, "name"],
+        }),
+      ]),
+    );
+  });
 });

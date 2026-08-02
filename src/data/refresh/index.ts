@@ -24,6 +24,10 @@
  *   `buildDependencyEdges`, `deriveAsanaTeams`), and the well-known
  *   custom-field-name constants (`PRIORITY_CUSTOM_FIELD_NAME`,
  *   `ESTIMATED_MINUTES_CUSTOM_FIELD_NAME`).
+ * - Snapshot backfill (T02, FR-026a, D002): the
+ *   `SnapshotRepository.backfillSnapshots` surface and singleton
+ *   used by `refreshStagingRepository.commit()` to write the daily
+ *   snapshot row inside the cache-flush transaction.
  *
  * Boundary
  * --------
@@ -68,3 +72,7 @@ export type {
   RefreshOrchestratorDeps,
   RefreshOutcome,
 } from "./refresh-orchestrator";
+
+export { snapshotRepository } from "./snapshot-repository";
+
+export type { SnapshotRepository } from "./snapshot-repository";

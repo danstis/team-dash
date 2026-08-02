@@ -96,16 +96,35 @@
  * `eslint.config.js` enforces this by review convention without a
  * runtime exception.
  *
- * Snapshot backfill
- * -----------------
+ * Snapshot backfill (T02, BSOD-306, FR-026a, FR-026b, D002)
+ * ---------------------------------------------------------
  * `commit()` is the documented single path that calls
- * `SnapshotRepository.backfillSnapshots()` (data-model.md, FR-026a,
- * FR-026b, FR-068). That coupling is established in T052 (BSOD-306);
- * this repository does not pre-import the snapshot repository so the
- * T052 contract has its own deliverable to land the backfill call
- * without a cross-row dependency leaking into the T047 red→green
- * slice.
+ * `SnapshotRepository.backfillSnapshots()` (T02 delivers the
+ * `src/data/refresh/snapshot-repository.ts` module; this repository
+ * wires the call into the commit transaction). The backfill:
+ *
+ *   1. Resolves the workspace from `RefreshSession.workspaceGid`.
+ *   2. Counts in-scope tasks (`resourceSubtype === 'default_task'`,
+ *      `completedAt === null`, `outOfScopeReason === null`,
+ *      project non-archived).
+ *   3. Upserts a `Snapshot` row keyed by
+ *      `[workspaceGid, localCalendarDate]`.
+ *
+ * Per decision D002 / MEM002, the backfill MUST happen INSIDE the
+ * same Dexie transaction as the cache flush so a mid-batch throw
+ * rolls back both the cache rows AND any snapshot row. The commit
+ * transaction therefore includes `snapshots`, `projects`, and
+ * `tasks` in its store list unconditionally — even when no rows
+ * for those stores were staged — so the ambient transaction
+ * context can satisfy the snapshot repository's reads and writes.
+ *
+ * The contract test "opens a single Dexie transaction covering
+ * every cache store it touches" pins the resulting scope
+ * (`['projects', 'refreshSessions', 'snapshots', 'tasks']`) — a
+ * future contributor who narrows the scope to only the staged
+ * stores fails the assertion before their partial-apply bug ships.
  */
+import { snapshotRepository } from "../../refresh/snapshot-repository";
 import { db } from "../schema";
 import type {
   AsanaTeam,
@@ -416,7 +435,19 @@ export const refreshStagingRepository: RefreshStagingRepository = {
     // flush" — and `refreshSessions` is always included even when no
     // session row was staged (the transition is a `get` + `put` on
     // the existing seeded row, not a `bulkPut` over a buffer).
-    const stores = new Set<RefreshStagingStoreName>(["refreshSessions"]);
+    //
+    // Per decision D002 the snapshot backfill runs inside this same
+    // transaction (T02). The backfill reads from `projects` /
+    // `refreshSessions` / `tasks` and writes to `snapshots`, so all
+    // four stores are unconditionally included in the scope (the
+    // `snapshots` write is the FR-026a daily row; the reads need the
+    // task + project state to have just been flushed).
+    const stores = new Set<RefreshStagingStoreName>([
+      "refreshSessions",
+      "projects",
+      "tasks",
+      "snapshots",
+    ]);
     for (const store of orderedStores(currentBuffer)) {
       if (currentBuffer.get(store)?.size) {
         stores.add(store);
@@ -424,6 +455,8 @@ export const refreshStagingRepository: RefreshStagingRepository = {
     }
 
     const tableNames = Array.from(stores).sort(compareStoreNames);
+
+    const commitNow = new Date();
 
     await db.transaction("rw", tableNames, async () => {
       for (const store of orderedStores(currentBuffer)) {
@@ -437,15 +470,13 @@ export const refreshStagingRepository: RefreshStagingRepository = {
         await flushStoreRows(store, rows);
       }
 
-      // Transition the RefreshSession to `succeeded` in the same
-      // transaction as the buffer flush. The transition preserves
-      // every other field on the existing session row (workspaceGid,
-      // startedAt, itemsRetrieved, syncMode, …) and only updates
-      // `status` and `finishedAt`. A throw anywhere above (including
-      // a partial `bulkPut` failure) rolls back BOTH the staged rows
-      // AND the session transition — the orchestrator sees `status:
-      // 'running'` on its next read and can drive the failure-
-      // handling branch.
+      // Transition the RefreshSession to `succeeded` BEFORE the
+      // snapshot backfill. The snapshot repository reads
+      // `RefreshSession.workspaceGid` inside the active transaction,
+      // so the session row must already exist by the time the
+      // backfill runs. The seed-time session row carries the
+      // workspaceGid we need; the get→put below only mutates
+      // `status` / `finishedAt`.
       const existingSession = await db.refreshSessions.get(sessionId);
       if (existingSession === undefined) {
         throw new Error(
@@ -455,8 +486,23 @@ export const refreshStagingRepository: RefreshStagingRepository = {
       await db.refreshSessions.put({
         ...existingSession,
         status: "succeeded",
-        finishedAt: new Date().toISOString(),
+        finishedAt: commitNow.toISOString(),
       });
+
+      // Backfill the daily snapshot for the session's workspace
+      // (FR-026a). Runs inside the same Dexie transaction as the
+      // cache flush + session transition so a mid-batch throw on
+      // any path rolls back the whole batch — including any
+      // snapshot row written by a previous attempt within this
+      // transaction. The snapshot's `computedAt` and
+      // `localCalendarDate` use the commit's `now` so a
+      // mid-flight cancel that throws before `commit()` runs
+      // leaves no partially-stamped snapshot behind.
+      await snapshotRepository.backfillSnapshots(
+        sessionId,
+        commitNow,
+        "local",
+      );
     });
 
     // The staging buffer is dropped only after the transaction

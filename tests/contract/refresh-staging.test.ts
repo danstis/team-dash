@@ -820,7 +820,7 @@ describe("T047 RefreshStagingRepository (contracts/storage-repository.md)", () =
   });
 
   describe("commit() atomicity (FR-022 / FR-068 / Dexie transaction enforcement)", () => {
-    it("opens a single Dexie transaction covering every cache store it touches", async () => {
+    it("opens a single Dexie transaction covering every cache store it touches (T02: snapshots + projects + tasks for the backfill reads/writes)", async () => {
       await seedPreStagingState();
 
       const importModule =
@@ -854,13 +854,21 @@ describe("T047 RefreshStagingRepository (contracts/storage-repository.md)", () =
       expect(commitTransactions).toHaveLength(1);
 
       // The transaction's store list covers every cache store that
-      // participated in the staging buffer. A future contributor who
-      // forgets to add a new store to the commit's transaction scope
-      // fails this assertion before the partial-apply bug ships.
+      // participated in the staging buffer PLUS the snapshot backfill
+      // reads/writes (T02, FR-026a, D002):
+      //   - `refreshSessions` — the session transition
+      //   - `projects` — the in-scope query the backfill runs
+      //   - `tasks` — the in-scope query the backfill runs
+      //   - `snapshots` — the backfill's `put`
+      // Including `snapshots` unconditionally was the D002 fix; a
+      // future contributor who narrows the scope to only the staged
+      // stores fails this assertion before their partial-apply bug
+      // ships (the backfill would throw `Table not in transaction
+      // scope` and rollback the whole commit).
       const call = commitTransactions[0];
       const tables = call?.[1] as unknown as string[];
       expect(Array.from(tables).sort()).toEqual(
-        ["projects", "refreshSessions", "tasks"].sort(),
+        ["projects", "refreshSessions", "snapshots", "tasks"].sort(),
       );
 
       // The single transaction transitions the seeded session to
@@ -868,6 +876,223 @@ describe("T047 RefreshStagingRepository (contracts/storage-repository.md)", () =
       const session = await db.refreshSessions.get(SESSION_ID);
       expect(session?.status).toBe("succeeded");
       expect(session?.finishedAt).not.toBeNull();
+    });
+
+    it("backfills the daily Snapshot row for the session's workspace with the in-scope metrics (FR-026a, T02)", async () => {
+      // T02 — the snapshot backfill runs inside the commit transaction
+      // so a mid-batch throw on any path (cache flush, session
+      // transition, or backfill itself) rolls back the whole batch.
+      await seedPreStagingState();
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await refreshStagingRepository.beginStaging(SESSION_ID);
+      // Stage one new task (completedAt=null → counts as incomplete)
+      // and an estimated-minutes value on the seeded task so we can
+      // pin the backfill's expected sums.
+      await refreshStagingRepository.stageUpsert("tasks", [
+        makeTask({
+          gid: "task-new-incomplete",
+          projectGids: ["proj-active"],
+          estimatedMinutes: 90,
+        }),
+        makeTask({
+          gid: "task-new-incomplete-unestimated",
+          projectGids: ["proj-active"],
+          estimatedMinutes: null,
+        }),
+      ]);
+
+      await refreshStagingRepository.commit(SESSION_ID);
+
+      // The backfilled row is keyed by the session's workspaceGid and
+      // the localCalendarDate the commit derived from `new Date()`.
+      // The seeded pre-staging tasks contribute three incomplete
+      // default_tasks (task-active, task-subtask, task-multi-project);
+      // the two staged tasks contribute another two. task-completed
+      // and task-archived-project are excluded by the predicate. The
+      // unestimated count includes the three seeded tasks (all
+      // estimatedMinutes=null) plus the one new unestimated task.
+      const snapshots = await db.snapshots
+        .where("[workspaceGid+localCalendarDate]")
+        .between(
+          [WORKSPACE_GID, "0000-01-01"],
+          [WORKSPACE_GID, "9999-12-31"],
+        )
+        .toArray();
+
+      // Exactly ONE snapshot row exists for the workspace — the
+      // FR-026a compound-key dedup invariant. A second same-day
+      // refresh will REPLACE (not duplicate) this row.
+      expect(snapshots).toHaveLength(1);
+      const snapshot = snapshots[0];
+      expect(snapshot?.workspaceGid).toBe(WORKSPACE_GID);
+      expect(snapshot?.localCalendarDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(snapshot?.computedFromRefreshId).toBe(SESSION_ID);
+      expect(snapshot?.incompleteCount).toBe(5);
+      expect(snapshot?.incompleteEstimatedMinutes).toBe(90);
+      expect(snapshot?.unestimatedIncompleteCount).toBe(4);
+      expect(typeof snapshot?.computedAt).toBe("string");
+    });
+
+    it("replaces the existing Snapshot row on same-day re-refresh (FR-026a replace-not-duplicate)", async () => {
+      // FR-026a — a second same-day refresh in the same timezone
+      // REPLACES the prior row's metrics instead of producing a
+      // duplicate. Dexie's compound-key upsert via `put` is the
+      // enforcement mechanism; the assertion pins the row count and
+      // confirms the second commit's metrics overwrote the first's.
+      const FIRST_SESSION_ID = "session-first-refresh";
+      const SECOND_SESSION_ID = "session-second-refresh";
+
+      // Seed one in-scope task with a known estimated-minutes value
+      // so both commits produce a non-zero metric.
+      await cacheRepository.upsertProjects([
+        makeProject({ gid: "proj-active" }),
+      ]);
+      await cacheRepository.upsertTasks([
+        makeTask({
+          gid: "task-active",
+          projectGids: ["proj-active"],
+          estimatedMinutes: 45,
+        }),
+      ]);
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      // First refresh — backfills incompleteCount=1,
+      // incompleteEstimatedMinutes=45, unestimatedIncompleteCount=0.
+      await db.refreshSessions.put(
+        makeRefreshSession({ id: FIRST_SESSION_ID }),
+      );
+      await refreshStagingRepository.beginStaging(FIRST_SESSION_ID);
+      await refreshStagingRepository.stageUpsert("tasks", [
+        makeTask({
+          gid: "task-new-first",
+          projectGids: ["proj-active"],
+          estimatedMinutes: 30,
+        }),
+      ]);
+      await refreshStagingRepository.commit(FIRST_SESSION_ID);
+
+      // Second refresh same day — backfills with metrics that
+      // OVERWRITE the first row's metrics (still one row at the
+      // compound key, not two).
+      await db.refreshSessions.put(
+        makeRefreshSession({
+          id: SECOND_SESSION_ID,
+          workspaceGid: WORKSPACE_GID,
+        }),
+      );
+      await refreshStagingRepository.beginStaging(SECOND_SESSION_ID);
+      await refreshStagingRepository.stageUpsert("tasks", [
+        makeTask({
+          gid: "task-new-second",
+          projectGids: ["proj-active"],
+          estimatedMinutes: null,
+        }),
+      ]);
+      await refreshStagingRepository.commit(SECOND_SESSION_ID);
+
+      const rowsForWorkspace = await db.snapshots
+        .where("[workspaceGid+localCalendarDate]")
+        .between(
+          [WORKSPACE_GID, "0000-01-01"],
+          [WORKSPACE_GID, "9999-12-31"],
+        )
+        .toArray();
+
+      expect(rowsForWorkspace).toHaveLength(1);
+      const row = rowsForWorkspace[0];
+      expect(row?.computedFromRefreshId).toBe(SECOND_SESSION_ID);
+      // After the second refresh: the original `task-active`
+      // (45 min) + `task-new-first` (30 min) + `task-new-second`
+      // (null) = 3 incomplete, 75 min estimated, 1 unestimated.
+      expect(row?.incompleteCount).toBe(3);
+      expect(row?.incompleteEstimatedMinutes).toBe(75);
+      expect(row?.unestimatedIncompleteCount).toBe(1);
+    });
+
+    it("rolls back the snapshot row when the commit transaction throws (T02, D002 atomicity)", async () => {
+      // D002 — the snapshot MUST live in the same Dexie transaction
+      // as the cache flush, so a mid-batch throw leaves no orphaned
+      // snapshot row for a refresh whose cache never committed. The
+      // test seeds a snapshot row from a prior successful refresh,
+      // triggers a mid-commit throw, and asserts the snapshot row is
+      // still the pre-commit value (the commit's mock threw BEFORE
+      // the snapshot's `put` would have run, so the seed value is
+      // what remains).
+      const SESSION_ID_BEFORE = "session-prior-successful";
+      const SESSION_ID_FAILED = "session-failed-commit";
+      const PRIOR_DATE = "2026-07-30";
+
+      await cacheRepository.upsertProjects([
+        makeProject({ gid: "proj-active" }),
+      ]);
+      await db.snapshots.put(
+        makeSnapshot({
+          workspaceGid: WORKSPACE_GID,
+          localCalendarDate: PRIOR_DATE,
+          incompleteCount: 7,
+          incompleteEstimatedMinutes: 100,
+          unestimatedIncompleteCount: 2,
+          computedFromRefreshId: SESSION_ID_BEFORE,
+        }),
+      );
+
+      const importModule =
+        await import("../../src/data/db/repositories/refresh-staging.repository");
+      const { refreshStagingRepository } = importModule;
+
+      await db.refreshSessions.put(
+        makeRefreshSession({ id: SESSION_ID_FAILED }),
+      );
+      await refreshStagingRepository.beginStaging(SESSION_ID_FAILED);
+      await refreshStagingRepository.stageUpsert("tasks", [
+        makeTask({ gid: "task-new-failed", projectGids: ["proj-active"] }),
+      ]);
+
+      // Mock tasks.bulkPut to throw mid-batch. The mock fires after
+      // the staged tasks land in their first iteration but before
+      // the projects flush / session transition / snapshot backfill,
+      // so no snapshot row for the failed session reaches the cache.
+      vi.spyOn(db.tasks, "bulkPut").mockImplementation(() => {
+        throw new Error("Simulated mid-batch failure (snapshot rollback)");
+      });
+
+      await expect(
+        refreshStagingRepository.commit(SESSION_ID_FAILED),
+      ).rejects.toThrow("Simulated mid-batch failure (snapshot rollback)");
+
+      // The pre-existing snapshot from the prior successful refresh
+      // is untouched by the rolled-back commit.
+      const priorRow = await db.snapshots.get([WORKSPACE_GID, PRIOR_DATE]);
+      expect(priorRow).toMatchObject({
+        workspaceGid: WORKSPACE_GID,
+        localCalendarDate: PRIOR_DATE,
+        incompleteCount: 7,
+        incompleteEstimatedMinutes: 100,
+        unestimatedIncompleteCount: 2,
+        computedFromRefreshId: SESSION_ID_BEFORE,
+      });
+
+      // No snapshot row exists for the failed session — the backfill
+      // never wrote one because the transaction rolled back before
+      // the backfill ran.
+      const allSnapshots = await db.snapshots.toArray();
+      const failedSessionSnapshots = allSnapshots.filter(
+        (snapshot) => snapshot.computedFromRefreshId === SESSION_ID_FAILED,
+      );
+      expect(failedSessionSnapshots).toHaveLength(0);
+
+      // The session status stayed `running` (D002 — the failed
+      // commit rolled back the session transition too).
+      const failedSession = await db.refreshSessions.get(SESSION_ID_FAILED);
+      expect(failedSession?.status).toBe("running");
+      expect(failedSession?.finishedAt).toBeNull();
     });
 
     it("never partially applies when a mid-batch throw escapes (Dexie atomicity)", async () => {

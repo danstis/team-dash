@@ -77,6 +77,7 @@
  */
 import { type ReactElement, StrictMode, useEffect } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -93,6 +94,7 @@ import {
 } from "../../../src/app/workspace-context";
 import { db } from "../../../src/data/db/schema";
 import { smallDatasetWorkspaceGid } from "../../../fixtures/asana/small-dataset/data";
+import { server } from "../../setup";
 import { RefreshControls } from "../../../src/features/refresh/RefreshControls";
 
 /* -------------------------------------------------------------------------- */
@@ -303,5 +305,43 @@ describe("BSOD-303 (T049) — refresh success outcome", () => {
     const succeeded = sessions.filter((row) => row.status === "succeeded");
     expect(succeeded).toHaveLength(1);
     expect(succeeded[0]?.finishedAt).toBe(completedAt);
+  });
+
+  it("routes a project task-fetch failure to partial_failure and keeps the live cache untouched", async () => {
+    server.use(
+      http.get(
+        "https://app.asana.com/api/1.0/projects/:projectGid/tasks",
+        () =>
+          HttpResponse.json(
+            { errors: [{ message: "Forbidden" }] },
+            { status: 403 },
+          ),
+      ),
+    );
+
+    const handlesRef = renderRefreshControls();
+    await driveProvidersToReady(handlesRef);
+
+    fireEvent.click(screen.getByTestId("refresh-button"));
+
+    const banner = await waitFor(() => {
+      const node = screen.getByTestId("outcome-banner");
+      expect(node.getAttribute("data-outcome")).toBe("partial_failure");
+      return node;
+    });
+
+    expect(banner.getAttribute("data-completed-at")).toBe("");
+    expect(screen.queryByTestId("progress-indicator")).toBeNull();
+    expect(banner).toHaveTextContent(
+      "Failed to fetch tasks for project 1200000000000100: permission_failure",
+    );
+
+    expect(await db.projects.toArray()).toEqual([]);
+    expect(await db.tasks.toArray()).toEqual([]);
+
+    const sessions = await db.refreshSessions.toArray();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.status).toBe("running");
+    expect(sessions[0]?.finishedAt).toBeNull();
   });
 });

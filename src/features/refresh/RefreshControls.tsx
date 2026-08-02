@@ -71,10 +71,11 @@
  * What this module deliberately does NOT own
  * ------------------------------------------
  * - The orchestrator's per-outcome accounting (cancelled, auth,
- *   permission, rate-limited): T051. The component sets the state
- *   machine to `'partial_failure'` on any non-`ok` outcome and
- *   preserves the error message verbatim; T051's failure-reason
- *   rendering is the second consumer of that field.
+ *   permission, rate-limited): T051. The component routes any
+ *   non-`ok` projects/tasks fetch outcome through the
+ *   `'partial_failure'` state and preserves the thrown message
+ *   verbatim; T051's failure-reason rendering is the second consumer
+ *   of that field.
  * - Cached-vs-fresh labelling: T050 (`FreshnessBanner`).
  * - Subtask project-membership resolution: T058 (BSOD-309) extends
  *   the task normaliser with parent→subtask project inheritance.
@@ -101,15 +102,14 @@
  *
  * URL / log / value safety (FR-008)
  * ---------------------------------
- * The plaintext token is consumed via `useCredentialTokenAccessor().getPlaintextToken()`
- * inside the click handler and is never echoed into a `data-*`
- * attribute, a log line, or a `data-completed-at` payload. The
- * `completedAt` and `errorDetail` strings surfaced by `OutcomeBanner`
- * are committed timestamps and Asana-scrubbed error messages
- * respectively — the Asana client's `network_error` outcome already
- * scrubs the token from its `message` field
- * (`src/data/asana/client.ts:scrubTokenFromMessage`), and the
- * `completedAt` ISO string never contains the credential.
+ * The plaintext token is consumed via
+ * `useCredentialTokenAccessor().getPlaintextToken()` inside the click
+ * handler and is never echoed into a `data-*` attribute, a log line,
+ * or a `data-completed-at` payload. The `completedAt` string surfaced
+ * by `OutcomeBanner` is a committed timestamp, and the thrown task /
+ * project fetch errors this module currently surfaces are outcome-only
+ * strings rather than token-bearing payloads. The `completedAt` ISO
+ * string never contains the credential.
  *
  * Boundary
  * --------
@@ -179,10 +179,8 @@ export type RefreshOutcomeKind = "success" | "partial_failure";
 /**
  * The shape `<OutcomeBanner />` consumes. `completedAt` is the ISO
  * string the `RefreshStagingRepository.commit()` path wrote on the
- * matching `RefreshSession` row; `errorDetail` is a short,
- * token-scrubbed message the orchestrator surfaced (the Asana
- * client's `network_error.message` is already token-scrubbed, per
- * FR-008 / FR-010, before it reaches this component).
+ * matching `RefreshSession` row; `errorDetail` is a short message the
+ * refresh path surfaced for a partial failure.
  */
 export interface RefreshOutcome {
   readonly kind: RefreshOutcomeKind;
@@ -535,7 +533,9 @@ export function RefreshControls(): ReactElement {
       for (const project of projects) {
         const tasksResult = await fetchTasksPage(currentToken, project.gid);
         if (tasksResult.outcome !== "ok") {
-          continue;
+          throw new Error(
+            `Failed to fetch tasks for project ${project.gid}: ${tasksResult.outcome}`,
+          );
         }
         const tasks = tasksResult.data.data.map((task) =>
           normaliseTask(task, lastSeenAt),
@@ -564,8 +564,8 @@ export function RefreshControls(): ReactElement {
       void totalTasks;
     } catch (error) {
       // The catch is intentionally coarse at this stage: any
-      // non-`ok` outcome, a thrown Asana call, or a staging
-      // validation failure routes here. T051 splits this into
+      // non-`ok` projects/tasks fetch outcome, a thrown Asana call,
+      // or a staging validation failure routes here. T051 splits this into
       // reason-specific kinds (cancelled / auth-failure /
       // permission-failure / rate-limited) and maps them onto
       // the `partial_failure` rendering. The session stays

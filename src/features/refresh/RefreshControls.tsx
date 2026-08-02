@@ -395,9 +395,8 @@ export function OutcomeBanner({
     >
       <h2>Partial refresh result</h2>
       <p>
-        {errorDetail === null
-          ? "The refresh stopped before the workspace was fully retrieved. Your previous good cache has been kept."
-          : errorDetail}
+        {errorDetail ??
+          "The refresh stopped before the workspace was fully retrieved. Your previous good cache has been kept."}
       </p>
     </section>
   );
@@ -451,7 +450,7 @@ async function seedRunningSession(
  * after a discard) never collide on the same Dexie primary key.
  */
 function makeSessionId(): string {
-  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `session-${crypto.randomUUID()}`;
 }
 
 /**
@@ -524,7 +523,6 @@ export function RefreshControls(): ReactElement {
       // `projectGids[]` verbatim at this stage; T058 (BSOD-309)
       // is the row that introduces FR-014 subtask inheritance.
       const lastSeenAt = nowIsoDateTime();
-      let totalTasks = 0;
       for (const project of projects) {
         const tasksResult = await fetchTasksPage(currentToken, project.gid);
         if (tasksResult.outcome !== "ok") {
@@ -537,7 +535,6 @@ export function RefreshControls(): ReactElement {
         );
         if (tasks.length > 0) {
           await refreshStagingRepository.stageUpsert("tasks", tasks);
-          totalTasks += tasks.length;
         }
       }
 
@@ -556,7 +553,6 @@ export function RefreshControls(): ReactElement {
         errorDetail: null,
       });
       setState("success");
-      void totalTasks;
     } catch (error) {
       // The catch is intentionally coarse at this stage: any
       // non-`ok` projects/tasks fetch outcome, a thrown Asana call,

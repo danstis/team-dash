@@ -84,6 +84,7 @@
  */
 import {
   createMemoryRouter,
+  Link,
   Outlet,
   RouterProvider,
   type RouteObject,
@@ -92,6 +93,7 @@ import {
 import { useCredentials } from "./credentials-context";
 import { useWorkspace } from "./workspace-context";
 import { FirstRunSetup } from "../features/credentials/FirstRunSetup";
+import { SettingsCredentialsPanel } from "../features/credentials/SettingsCredentialsPanel";
 
 /**
  * The T031 placeholder. Renders the existing T010 shell markup so
@@ -102,8 +104,14 @@ import { FirstRunSetup } from "../features/credentials/FirstRunSetup";
  * The placeholder is registered as the index route so it covers
  * `/` once the gate lifts. While the gate is closed, the gate
  * component above it renders `<FirstRunRoute />` instead, so the
- * placeholder is never reachable — and therefore never appears in
- * the rendered DOM — until both providers report `'ready'`.
+ * placeholder is never reachable — and therefore never appears in the
+ * rendered DOM — until both providers report `'ready'`.
+ *
+ * Once the gate is open, the placeholder also surfaces a stable
+ * "Settings" link (BSOD-351 / T131) so the user can navigate to the
+ * credentials panel. The link is the canonical in-app entry point
+ * for the `/settings` route; the `data-testid="nav-settings"`
+ * attribute is the stable anchor the Playwright e2e spec uses.
  */
 function PlaceholderRoute(): React.ReactElement {
   return (
@@ -117,6 +125,11 @@ function PlaceholderRoute(): React.ReactElement {
       <p>
         The router and provider tree are wired. Subsequent user stories register
         their routes against this router.
+      </p>
+      <p>
+        <Link to="/settings" data-testid="nav-settings">
+          Settings
+        </Link>
       </p>
     </main>
   );
@@ -145,6 +158,24 @@ function PlaceholderRoute(): React.ReactElement {
  */
 function FirstRunRoute(): React.ReactElement {
   return <FirstRunSetup />;
+}
+
+/**
+ * The Settings credentials surface (BSOD-351 / T131) — the panel the
+ * user reaches after first-run completes by following the "Settings"
+ * link from the placeholder. The T045 `SettingsCredentialsPanel` is
+ * the Settings-screen embodiment of the four US1 credential
+ * lifecycle actions (Retest, Replace, Switch-mode, Clear-all); the
+ * T044 `MaskedToken` it composes shows the FR-008 last-four-
+ * characters identifier.
+ *
+ * The route is mounted as a child of the `RouteGuard` layout so the
+ * gate contract stays intact — until both providers report `'ready'`,
+ * the gate redirects to `<FirstRunRoute />` and this component is not
+ * reachable.
+ */
+function SettingsRoute(): React.ReactElement {
+  return <SettingsCredentialsPanel />;
 }
 
 /**
@@ -196,7 +227,10 @@ const routes: RouteObject[] = [
   {
     path: "/",
     Component: RouteGuard,
-    children: [{ index: true, Component: PlaceholderRoute }],
+    children: [
+      { index: true, Component: PlaceholderRoute },
+      { path: "settings", Component: SettingsRoute },
+    ],
   },
 ];
 

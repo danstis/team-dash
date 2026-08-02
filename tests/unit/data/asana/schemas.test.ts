@@ -277,9 +277,7 @@ describe("T023 Asana Zod resource schemas", () => {
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.next_page?.offset).toBe(
-          "eyJsYXN0X2dpZCI6MTAwfQ==",
-        );
+        expect(result.data.next_page?.offset).toBe("eyJsYXN0X2dpZCI6MTAwfQ==");
         expect(result.data.next_page?.path).toBe("/workspaces");
       }
     });

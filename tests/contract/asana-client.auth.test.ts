@@ -16,6 +16,18 @@ const expectOutcome = async (
 describe("Asana credential client contract", () => {
   describe("testToken", () => {
     it("returns the authenticated user on success", async () => {
+      server.use(
+        http.get("https://app.asana.com/api/1.0/users/me", () =>
+          HttpResponse.json({
+            data: {
+              gid: "user-real-shape",
+              name: "Alex Kim",
+              resource_type: "user",
+            },
+          }),
+        ),
+      );
+
       const result = await testToken(token);
 
       expect(result).toMatchObject({

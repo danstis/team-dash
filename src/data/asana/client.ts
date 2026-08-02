@@ -121,6 +121,7 @@ import { z as zod } from "zod";
 import {
   asanaEventsResponseSchema,
   asanaProjectListResponseSchema,
+  asanaResourceResponseSchema,
   asanaTaskListResponseSchema,
   asanaTaskSchema,
   asanaUserSchema,
@@ -266,6 +267,8 @@ export async function asanaGet<Schema extends ZodTypeAny>(
 
 const TOKEN_IDENTITY_FIELDS = "gid,name,email,resource_type";
 const WORKSPACE_FIELDS = "gid,name,resource_type,is_organization";
+const asanaUserResponseSchema = asanaResourceResponseSchema(asanaUserSchema);
+const asanaTaskResponseSchema = asanaResourceResponseSchema(asanaTaskSchema);
 
 type ClientRequestOptions = Readonly<{
   offset?: string;
@@ -278,7 +281,7 @@ export async function testToken(
 ): Promise<AsanaClientResult<z.infer<typeof asanaUserSchema>>> {
   return asanaGet(
     "/users/me",
-    asanaUserSchema,
+    asanaUserResponseSchema,
     token,
     { opt_fields: TOKEN_IDENTITY_FIELDS },
     options,
@@ -428,12 +431,9 @@ export async function fetchTasksPage(
  * T048 (US2) — fetch the full detail for a single task.
  *
  * Calls `GET /tasks/{gid}?opt_fields=…`. The Asana detail endpoint
- * returns the task resource directly (not wrapped in a
- * `{ data, next_page }` envelope); the schema used here is the
- * resource-level `asanaTaskSchema`, matching the contract's note
- * that "Asana's `/users/me` returns the user resource directly (not
- * wrapped in a `{ data }` envelope)" pattern in
- * `tests/contract/asana-client.base.test.ts`.
+ * returns a single-resource `{ data: task }` envelope; the wrapper
+ * unwraps that envelope before returning `ok.data` so cache and UI
+ * callers receive the task resource directly.
  *
  * Used by the refresh orchestrator for subtask and dependency
  * hydration (where the task list page's compact-reference shape is
@@ -455,7 +455,7 @@ export async function fetchTaskDetail(
 ): Promise<AsanaClientResult<z.infer<typeof asanaTaskSchema>>> {
   return asanaGet(
     `/tasks/${taskGid}`,
-    asanaTaskSchema,
+    asanaTaskResponseSchema,
     token,
     { opt_fields: TASK_DETAIL_FIELDS },
     options,

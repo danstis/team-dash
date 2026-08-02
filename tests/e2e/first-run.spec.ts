@@ -172,10 +172,12 @@ async function mockAsanaApiForFirstRun(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        gid: MOCK_USER.gid,
-        name: MOCK_USER.name,
-        email: MOCK_USER.email,
-        resource_type: "user",
+        data: {
+          gid: MOCK_USER.gid,
+          name: MOCK_USER.name,
+          email: MOCK_USER.email,
+          resource_type: "user",
+        },
       }),
     });
   });

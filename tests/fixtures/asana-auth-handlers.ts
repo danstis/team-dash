@@ -9,7 +9,9 @@ export const AUTHENTICATED_USER = {
 };
 
 export function authenticatedUserHandler() {
-  return http.get(USERS_ME_URL, () => HttpResponse.json(AUTHENTICATED_USER));
+  return http.get(USERS_ME_URL, () =>
+    HttpResponse.json({ data: AUTHENTICATED_USER }),
+  );
 }
 
 export function invalidUserTokenHandler() {

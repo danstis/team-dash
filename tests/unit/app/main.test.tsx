@@ -17,6 +17,14 @@ vi.mock("../../../src/app/credentials-context", () => ({
     clearToSessionOnly: vi.fn(),
     clearAll: vi.fn(),
   }),
+  // T04 — Dashboard now mounts `<RefreshControls />`, which calls
+  // `useCredentialTokenAccessor()`. The previous T010/T031 stub
+  // did not export this hook, so the new route surfaced as an
+  // unhandled render throw. Expose a stub here so the gates-open
+  // path renders the full dashboard without crashing.
+  useCredentialTokenAccessor: () => ({
+    getPlaintextToken: () => "stub-main-test-token-1234567890",
+  }),
 }));
 
 vi.mock("../../../src/app/workspace-context", () => ({
@@ -109,10 +117,18 @@ describe("T031 <App /> (T031 mounts the T010 placeholder content)", () => {
     expect(container.querySelector("main")).not.toBeNull();
   });
 
-  it("explains that the credential entry screen is upcoming (T010 placeholder copy)", async () => {
+  it("explains that the cached-and-refreshable dashboard surface is rendering (T04 dashboard composition)", async () => {
+    // T04 replaced the T031 placeholder route with the dashboard
+    // route. The "credential entry screen" copy is gone; the
+    // dashboard composition carries the S01 dashboard contract
+    // (refresh button + first-run empty state OR freshness banner).
+    // We pin on a fragment of copy that exists in every state the
+    // dashboard can render (the Refresh button label and the Team
+    // Dash heading are both always present).
     render(<App />);
+    await screen.findByRole("heading", { level: 1, name: /team dash/i });
     expect(
-      await screen.findByText(/credential entry screen/i),
+      await screen.findByRole("button", { name: /refresh/i }),
     ).toBeInTheDocument();
   });
 });

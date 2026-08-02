@@ -60,6 +60,14 @@ vi.mock("../../../src/app/credentials-context", () => ({
     clearToSessionOnly: vi.fn(),
     clearAll: vi.fn(),
   }),
+  // T04 — Dashboard now mounts `<RefreshControls />`, which calls
+  // `useCredentialTokenAccessor()`. The T031 stub did not export
+  // this hook, so the new route surfaced as an unhandled render
+  // throw. Expose a stub here so the gates-open path renders the
+  // full dashboard without crashing.
+  useCredentialTokenAccessor: () => ({
+    getPlaintextToken: () => "stub-app-test-token-1234567890",
+  }),
 }));
 
 vi.mock("../../../src/app/workspace-context", () => ({

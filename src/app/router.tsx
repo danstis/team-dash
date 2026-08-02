@@ -1,5 +1,5 @@
 /**
- * T031 + T046 + BSOD-347 — the app-shell router.
+ * T04 — the app-shell router (built on T031, T046, and BSOD-347).
  *
  * The shell's job (Constitution Principle I "remain runnable after every
  * completed delivery task", plan.md Project Structure) is to mount a
@@ -34,7 +34,9 @@
  *   Principle VI's lint-enforced half of the boundary); the "shell
  *   does not compose features" rule is enforced by convention and
  *   code review, not by lint. Future stories extend the `routes`
- *   array; this module never grows beyond the placeholder route.
+ *   array; this module grows only when a new route is needed (T04
+ *   replaced the T031 placeholder route with the S01 dashboard
+ *   route; the placeholder function itself was removed).
  *
  * - The first-run surface itself is composed by the
  *   `<FirstRunSetup />` feature component (`BSOD-347`,
@@ -84,7 +86,6 @@
  */
 import {
   createMemoryRouter,
-  Link,
   Outlet,
   RouterProvider,
   type RouteObject,
@@ -92,48 +93,9 @@ import {
 
 import { useCredentials } from "./credentials-context";
 import { useWorkspace } from "./workspace-context";
+import { Dashboard } from "../features/refresh/Dashboard";
 import { FirstRunSetup } from "../features/credentials/FirstRunSetup";
 import { SettingsCredentialsPanel } from "../features/credentials/SettingsCredentialsPanel";
-
-/**
- * The T031 placeholder. Renders the existing T010 shell markup so
- * the app boots with a recognisable "Team Dash" heading and an
- * honest notice that the rest of the routes are coming in subsequent
- * tasks.
- *
- * The placeholder is registered as the index route so it covers
- * `/` once the gate lifts. While the gate is closed, the gate
- * component above it renders `<FirstRunRoute />` instead, so the
- * placeholder is never reachable — and therefore never appears in the
- * rendered DOM — until both providers report `'ready'`.
- *
- * Once the gate is open, the placeholder also surfaces a stable
- * "Settings" link (BSOD-351 / T131) so the user can navigate to the
- * credentials panel. The link is the canonical in-app entry point
- * for the `/settings` route; the `data-testid="nav-settings"`
- * attribute is the stable anchor the Playwright e2e spec uses.
- */
-function PlaceholderRoute(): React.ReactElement {
-  return (
-    <main className="team-dash-shell" lang="en-AU">
-      <h1>Team Dash</h1>
-      <p>
-        The application shell is bootstrapping. The credential entry screen will
-        be implemented in Phase 3 (US1).
-      </p>
-      <hr />
-      <p>
-        The router and provider tree are wired. Subsequent user stories register
-        their routes against this router.
-      </p>
-      <p>
-        <Link to="/settings" data-testid="nav-settings">
-          Settings
-        </Link>
-      </p>
-    </main>
-  );
-}
 
 /**
  * The first-run surface — rendered by the route guard while the gate
@@ -163,11 +125,12 @@ function FirstRunRoute(): React.ReactElement {
 /**
  * The Settings credentials surface (BSOD-351 / T131) — the panel the
  * user reaches after first-run completes by following the "Settings"
- * link from the placeholder. The T045 `SettingsCredentialsPanel` is
- * the Settings-screen embodiment of the four US1 credential
- * lifecycle actions (Retest, Replace, Switch-mode, Clear-all); the
- * T044 `MaskedToken` it composes shows the FR-008 last-four-
- * characters identifier.
+ * link rendered inside `<Dashboard />` (the `data-testid="nav-
+ * settings"` anchor BSOD-351 ships). The T045
+ * `SettingsCredentialsPanel` is the Settings-screen embodiment of
+ * the four US1 credential lifecycle actions (Retest, Replace,
+ * Switch-mode, Clear-all); the T044 `MaskedToken` it composes shows
+ * the FR-008 last-four-characters identifier.
  *
  * The route is mounted as a child of the `RouteGuard` layout so the
  * gate contract stays intact — until both providers report `'ready'`,
@@ -176,6 +139,24 @@ function FirstRunRoute(): React.ReactElement {
  */
 function SettingsRoute(): React.ReactElement {
   return <SettingsCredentialsPanel />;
+}
+
+/**
+ * The T04 dashboard route. Renders the S01 dashboard composition
+ * (`<Dashboard />`) once the gate lifts — this is the user-visible
+ * artifact for the post-first-run US2 experience: `<RefreshControls
+ * />`, the FR-021 freshness banner, the FR-084 data-quality
+ * summary, and (when no refresh has succeeded yet) the first-run
+ * `<EmptyDashboard />` prompt.
+ *
+ * The route deliberately keeps `<FirstRunRoute />` mounted inside
+ * the gate (above) so a gate-closed user never sees an empty
+ * dashboard render before the providers resolve. Once both
+ * providers report `'ready'`, the gate lifts and the S01 dashboard
+ * surface takes over from the previous T031 placeholder.
+ */
+function DashboardRoute(): React.ReactElement {
+  return <Dashboard />;
 }
 
 /**
@@ -215,20 +196,26 @@ function RouteGuard(): React.ReactElement {
  * chrome: settings menu, refresh button, freshness banner) can
  * register nested routes against it without rewriting the router.
  *
- * The route guard T046 owns is now mounted as the layout
+ * The route guard T046 owns is mounted as the layout
  * (`Component: RouteGuard`) rather than as a separate wrapper
  * component, so the gate's "render `<Outlet />`" decision happens
  * exactly once per URL match rather than once per child route.
- * Once the dashboard chrome exists (US2), the placeholder will
- * move into a nested route and the chrome becomes the layout's
- * body.
+ * T04 replaced the placeholder child route with `DashboardRoute`;
+ * the placeholder function itself was removed from this module so
+ * `tsc --noEmit`'s `noUnusedLocals` rule does not flag it.
  */
 const routes: RouteObject[] = [
   {
     path: "/",
     Component: RouteGuard,
     children: [
-      { index: true, Component: PlaceholderRoute },
+      // T04: the post-gate-open dashboard route renders the S01
+      // composition (`<RefreshControls />` + freshness / empty /
+      // data-quality surfaces). The `data-testid="nav-settings"`
+      // BSOD-351 anchor lives inside `<Dashboard />`'s header
+      // so the SettingsCredentialsPanel stays reachable from the
+      // dashboard route.
+      { index: true, Component: DashboardRoute },
       { path: "settings", Component: SettingsRoute },
     ],
   },
@@ -240,10 +227,10 @@ const routes: RouteObject[] = [
  * production browser build (a future task) will swap this for
  * `createBrowserRouter`; the route table is shared.
  *
- * The initial `entries` parameter is `["/"]` so the placeholder is
- * rendered on first mount when the gate is open. While the gate is
- * closed the placeholder is replaced by `<FirstRunRoute />`, so the
- * initial entry matters only for the gate-open branch.
+ * The initial `entries` parameter is `["/"]` so the dashboard route
+ * is rendered on first mount when the gate is open. While the gate
+ * is closed the dashboard is replaced by `<FirstRunRoute />`, so
+ * the initial entry matters only for the gate-open branch.
  */
 export const router = createMemoryRouter(routes, {
   initialEntries: ["/"],
@@ -254,6 +241,6 @@ export const router = createMemoryRouter(routes, {
  * want to mount the router directly without going through `<App />`
  * (the eventual Playwright smoke test for the route guard is the
  * first known consumer; see `tests/e2e/first-run-flow.spec.ts`,
- * which is registered in T124, not T031).
+ * which is registered in T124, not T031 or T04).
  */
 export { RouterProvider };

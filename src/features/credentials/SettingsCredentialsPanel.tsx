@@ -247,10 +247,10 @@ export function SettingsCredentialsPanel(): ReactElement {
             spellCheck={false}
           />
         </label>
-        <button type="button" onClick={handleSetToken}>
+        <button type="button" data-variant="primary" onClick={handleSetToken}>
           Set token
         </button>
-        <button type="button" onClick={handleRetest}>
+        <button type="button" data-variant="secondary" onClick={handleRetest}>
           Retest
         </button>
         {retestOutcome !== null && (
@@ -282,7 +282,7 @@ export function SettingsCredentialsPanel(): ReactElement {
             spellCheck={false}
           />
         </label>
-        <button type="button" onClick={handleReplace}>
+        <button type="button" data-variant="primary" onClick={handleReplace}>
           Replace
         </button>
       </fieldset>
@@ -300,12 +300,20 @@ export function SettingsCredentialsPanel(): ReactElement {
           )}
         </p>
         {credentials.mode === "session" && (
-          <button type="button" onClick={openPersistentConfirmation}>
+          <button
+            type="button"
+            data-variant="secondary"
+            onClick={openPersistentConfirmation}
+          >
             Switch to persistent
           </button>
         )}
         {credentials.mode === "persistent" && (
-          <button type="button" onClick={handleSwitchToSession}>
+          <button
+            type="button"
+            data-variant="secondary"
+            onClick={handleSwitchToSession}
+          >
             Switch to session-only
           </button>
         )}
@@ -339,10 +347,18 @@ export function SettingsCredentialsPanel(): ReactElement {
                 session ends and you will need to re-enter it next time.
               </p>
             </div>
-            <button type="button" onClick={handleConfirmPersistent}>
+            <button
+              type="button"
+              data-variant="primary"
+              onClick={handleConfirmPersistent}
+            >
               Confirm
             </button>
-            <button type="button" onClick={handleDeclinePersistent}>
+            <button
+              type="button"
+              data-variant="secondary"
+              onClick={handleDeclinePersistent}
+            >
               Decline
             </button>
           </div>
@@ -356,7 +372,11 @@ export function SettingsCredentialsPanel(): ReactElement {
           tasks, snapshots, team mappings, named Person Groups, refresh history,
           workspace selection) in a single action.
         </p>
-        <button type="button" onClick={openClearAllConfirmation}>
+        <button
+          type="button"
+          data-variant="danger"
+          onClick={openClearAllConfirmation}
+        >
           Clear all
         </button>
 
@@ -380,10 +400,18 @@ export function SettingsCredentialsPanel(): ReactElement {
                 token and run a fresh refresh to repopulate the dashboard.
               </p>
             </div>
-            <button type="button" onClick={handleConfirmClearAll}>
+            <button
+              type="button"
+              data-variant="danger"
+              onClick={handleConfirmClearAll}
+            >
               Confirm clear all
             </button>
-            <button type="button" onClick={handleCancelClearAll}>
+            <button
+              type="button"
+              data-variant="secondary"
+              onClick={handleCancelClearAll}
+            >
               Cancel
             </button>
           </div>

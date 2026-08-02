@@ -308,6 +308,7 @@ export function RefreshButton({
       onClick={onClick}
       disabled={disabled}
       data-testid="refresh-button"
+      data-variant="primary"
       aria-busy={busy}
     >
       {busy ? "Refreshing…" : "Refresh"}

@@ -265,6 +265,7 @@ export function WorkspaceSelector({
       </label>
       <button
         type="button"
+        data-variant="primary"
         onClick={() => void handleConfirm()}
         disabled={isConfirmDisabled}
       >

@@ -17,6 +17,20 @@ export default defineConfig({
         display: "standalone",
         background_color: "#ffffff",
         theme_color: "#0f172a",
+        icons: [
+          {
+            src: "/icons/team-dash-192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any maskable",
+          },
+          {
+            src: "/icons/team-dash-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any maskable",
+          },
+        ],
       },
       workbox: {
         runtimeCaching: [],

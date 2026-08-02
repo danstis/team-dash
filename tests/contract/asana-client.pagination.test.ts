@@ -251,7 +251,7 @@ describe("T048 Asana client pagination + events-since contract", () => {
         }
         collected.push(...pageResult.data.data);
         const nextPage = pageResult.data.next_page;
-        if (nextPage === null) {
+        if (nextPage === null || nextPage === undefined) {
           break;
         }
         cursor = nextPage.offset;
@@ -407,7 +407,7 @@ describe("T048 Asana client pagination + events-since contract", () => {
         }
         collected.push(...pageResult.data.data);
         const nextPage = pageResult.data.next_page;
-        if (nextPage === null) {
+        if (nextPage === null || nextPage === undefined) {
           break;
         }
         cursor = nextPage.offset;

@@ -82,6 +82,15 @@ describe("Asana credential client contract", () => {
     it("returns accessible workspaces on success", async () => {
       const result = await listWorkspaces(token);
 
+      // BSOD-355: the small-dataset's `/workspaces` handler now
+      // returns the realistic single-page envelope (no `next_page`
+      // key) — the captured live-Asana regression shape. The parsed
+      // `next_page` may be `null` (documented final-page shape) or
+      // `undefined` (the BSOD-355 captured single-page shape) —
+      // both are valid "no more pages" sentinels, so the assertion
+      // accepts either. The contract test
+      // (`asana-client.readonly.test.ts` § "BSOD-355 live-shape
+      // regression") pins the specific regression shape explicitly.
       expect(result).toMatchObject({
         outcome: "ok",
         data: {
@@ -92,9 +101,11 @@ describe("Asana credential client contract", () => {
               resource_type: "workspace",
             }),
           ]),
-          next_page: null,
         },
       });
+      if (result.outcome === "ok") {
+        expect(result.data.next_page).toBeFalsy();
+      }
     });
 
     it("maps invalid token to auth_failure", async () => {

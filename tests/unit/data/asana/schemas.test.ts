@@ -213,6 +213,77 @@ describe("T023 Asana Zod resource schemas", () => {
       expect(asanaNextPageSchema.safeParse(null).success).toBe(true);
     });
 
+    it("asanaNextPageSchema accepts an extra `uri` field Asana returns on real responses (BSOD-355)", () => {
+      // Asana's documented `next_page` shape on a non-final page
+      // includes a `uri` field alongside `offset` and `path` (see
+      // https://developers.asana.com/reference/workspaces). Zod's
+      // default `z.object` is non-strict, so this is the expected
+      // behavior today; the assertion pins the contract so a future
+      // contributor who tightens the schema with `.strict()` fails
+      // CI before the wire-shape change ships.
+      const result = asanaNextPageSchema.safeParse({
+        offset: "eyJsYXN0X2dpZCI6MTAwfQ==",
+        path: "/workspaces",
+        uri: "https://app.asana.com/api/1.0/workspaces?offset=eyJsYXN0X2dpZCI6MTAwfQ==",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("asanaListResponseSchema accepts a real Asana envelope with `next_page` absent (BSOD-355 live-shape regression)", () => {
+      // BSOD-355: the dev server was switched to live Asana calls
+      // (BSOD-347/348), and the first-run `listWorkspaces` round
+      // trip surfaces "Unexpected response from Asana. The API
+      // shape may have changed." on a 200 response. The captured
+      // pattern (per Asana's documented `/workspaces` response) is
+      // that the `next_page` field can be ABSENT from the body on a
+      // final / single-page response, not merely `null`. The
+      // current schema (pre-fix) requires `next_page` to be
+      // present, so this payload fails `safeParse` today.
+      const schema = asanaListResponseSchema(asanaWorkspaceSchema);
+      const result = schema.safeParse({
+        data: [workspaceFixture()],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.data).toHaveLength(1);
+        expect(result.data.next_page).toBeFalsy();
+      }
+    });
+
+    it("asanaWorkspaceListResponseSchema accepts a real Asana envelope with `next_page` absent (BSOD-355)", () => {
+      // The exact list-wrapped schema the live `listWorkspaces`
+      // call parses through — the captured regression shape on the
+      // post-validation `/workspaces` call. Fails today because
+      // the envelope requires `next_page`; the GREEN step is to
+      // make the envelope field optional.
+      const result = asanaWorkspaceListResponseSchema.safeParse({
+        data: [workspaceFixture()],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("asanaWorkspaceListResponseSchema accepts a `next_page` object with the extra `uri` field Asana returns (BSOD-355)", () => {
+      // The non-final-page real-Asana shape: a `next_page` object
+      // carrying `offset`, `path`, AND `uri`. Pins the contract
+      // that the schema accepts the documented live wire shape on
+      // both single-page and multi-page responses.
+      const result = asanaWorkspaceListResponseSchema.safeParse({
+        data: [workspaceFixture()],
+        next_page: {
+          offset: "eyJsYXN0X2dpZCI6MTAwfQ==",
+          path: "/workspaces",
+          uri: "https://app.asana.com/api/1.0/workspaces?offset=eyJsYXN0X2dpZCI6MTAwfQ==",
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.next_page?.offset).toBe(
+          "eyJsYXN0X2dpZCI6MTAwfQ==",
+        );
+        expect(result.data.next_page?.path).toBe("/workspaces");
+      }
+    });
+
     it("asanaListResponseSchema wraps a list with { data, next_page }", () => {
       const schema = asanaListResponseSchema(asanaWorkspaceSchema);
       const result = schema.safeParse({

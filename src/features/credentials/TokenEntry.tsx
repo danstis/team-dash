@@ -174,6 +174,20 @@ type AsanaWorkspaceListResult = AsanaClientResult<
  * over `AsanaWorkspaceListResult` — a future contributor who
  * adds a seventh outcome to the union fails `tsc` here rather
  * than at the call site.
+ *
+ * The `validation_error` branch (BSOD-355) is the only place a
+ * wire-shape mismatch is detectable from the UI — the
+ * `AsanaClientResult<…>.validation_error.issues` array carries
+ * the structured `ZodIssue[]` from the base client (FR-081 /
+ * FR-082 / FR-083), but the user-facing message is intentionally
+ * a generic sentence. In dev builds we additionally log the
+ * captured `issues` to the console so a contributor reproducing
+ * the "Unexpected response from Asana" path against live Asana
+ * can see exactly which field failed, rather than having to
+ * instrument the client. The dev log never carries the token
+ * (the base client scrubs the credential before populating
+ * `issues` per FR-008 / FR-010) and is guarded by
+ * `import.meta.env.DEV` so production bundles drop it entirely.
  */
 function summariseWorkspaceListFailure(
   result: AsanaWorkspaceListResult,
@@ -210,6 +224,19 @@ function summariseWorkspaceListFailure(
         message: `Network error: ${result.message}`,
       };
     case "validation_error":
+      if (import.meta.env.DEV) {
+        // Dev-only diagnostic for BSOD-355: log the captured ZodIssue[]
+        // so a future regression in the /workspaces wire shape is
+        // debuggable from the browser console. The base client
+        // (src/data/asana/client.ts) already scrubs the token from
+        // every surfaced payload, so it is safe to log `issues` in
+        // full here. The `DEV` guard is a build-time tree-shake so
+        // the log call does not appear in production bundles.
+        console.warn(
+          "[Asana /workspaces] ZodIssue[] from live response:",
+          result.issues,
+        );
+      }
       return {
         kind: "validation_error",
         message:

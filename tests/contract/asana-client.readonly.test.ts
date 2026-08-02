@@ -44,7 +44,7 @@ import { z } from "zod";
 
 import { asanaUserSchema } from "../../src/data/asana/schemas";
 import { server } from "../setup";
-import { asanaGet } from "../../src/data/asana/client";
+import { asanaGet, listWorkspaces } from "../../src/data/asana/client";
 
 /**
  * Write HTTP methods the Asana client MUST NOT issue. Spelled out as a
@@ -271,6 +271,91 @@ describe("T026 Asana client read-only guarantee (NFR-004, Principle IV)", () => 
       for (const request of observedRequests) {
         expect(request.method.toUpperCase()).toBe("GET");
       }
+    });
+  });
+
+  describe("BSOD-355 live-shape regression (listWorkspaces accepts the real Asana envelope)", () => {
+    /**
+     * BSOD-355 captured the post-validation `listWorkspaces` call
+     * failing on a 200 response. The base client surfaces the
+     * Zod `safeParse` failure as `outcome: "validation_error"`
+     * because the live `/workspaces` envelope omits the `next_page`
+     * field (or, on a multi-page response, includes an extra `uri`
+     * field the schema's wrapper did not account for). The
+     * `asana-client.readonly.test.ts` file is the canonical
+     * MSW-driven client contract suite, so the live-shape
+     * regression test lives here next to the existing
+     * read-only/contract exercises.
+     */
+    const token = "fixture-token";
+
+    it("returns `ok` with the workspaces when live Asana returns a body without `next_page` (BSOD-355 captured regression)", async () => {
+      server.use(
+        http.get("https://app.asana.com/api/1.0/workspaces", () =>
+          HttpResponse.json({
+            data: [
+              {
+                gid: "live-workspace-1",
+                name: "Engineering",
+                resource_type: "workspace",
+                is_organization: true,
+              },
+            ],
+          }),
+        ),
+      );
+
+      const result = await listWorkspaces(token);
+
+      expect(result.outcome).toBe("ok");
+      if (result.outcome !== "ok") return;
+      expect(result.data.data).toHaveLength(1);
+      expect(result.data.data[0]?.gid).toBe("live-workspace-1");
+      // The `next_page` field is absent in the live shape; the
+      // parsed value is the schema's "no more pages" sentinel
+      // (null/undefined/falsy — any of which the orchestrator
+      // treats as the end of the pagination walk).
+      expect(result.data.next_page).toBeFalsy();
+    });
+
+    it("returns `ok` with the workspaces when live Asana returns `next_page` with the extra `uri` field (BSOD-355 multi-page case)", async () => {
+      // Real Asana's documented `next_page` shape on a non-final
+      // page includes `uri` alongside `offset` and `path`. The
+      // schema must accept that exact shape (the `uri` field is
+      // already accepted by Zod's default non-strict object mode
+      // — this test pins the contract so a future `.strict()`
+      // regression fails CI before the wire-shape change ships).
+      server.use(
+        http.get("https://app.asana.com/api/1.0/workspaces", () =>
+          HttpResponse.json({
+            data: [
+              {
+                gid: "live-workspace-1",
+                name: "Engineering",
+                resource_type: "workspace",
+              },
+              {
+                gid: "live-workspace-2",
+                name: "Platform",
+                resource_type: "workspace",
+              },
+            ],
+            next_page: {
+              offset: "eyJsYXN0X2dpZCI6MTAwfQ==",
+              path: "/workspaces",
+              uri: "https://app.asana.com/api/1.0/workspaces?offset=eyJsYXN0X2dpZCI6MTAwfQ==",
+            },
+          }),
+        ),
+      );
+
+      const result = await listWorkspaces(token);
+
+      expect(result.outcome).toBe("ok");
+      if (result.outcome !== "ok") return;
+      expect(result.data.data).toHaveLength(2);
+      expect(result.data.next_page?.offset).toBe("eyJsYXN0X2dpZCI6MTAwfQ==");
+      expect(result.data.next_page?.path).toBe("/workspaces");
     });
   });
 });

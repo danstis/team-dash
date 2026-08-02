@@ -77,7 +77,7 @@ test.describe("landing shell navigation, view states, and route guard", () => {
     );
   });
 
-  test("redirects unauthenticated visits to protected routes back to /", async ({
+  test("gates protected routes behind the first-run surface without navigating away", async ({
     page,
   }) => {
     await mockAsanaApi(page);

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0](https://github.com/danstis/team-dash/compare/v0.4.0...v0.5.0) (2026-08-02)
+
+
+### Features
+
+* **app:** wire route guard blocking reporting routes until token+workspace ready (BSOD-174) ([#111](https://github.com/danstis/team-dash/issues/111)) ([a0c9684](https://github.com/danstis/team-dash/commit/a0c9684375c2a548ace9591806b0ee73be4faab5))
+* **asana:** add pagination + events-since client contract and implementation (BSOD-302) ([#126](https://github.com/danstis/team-dash/issues/126)) ([e6f4ef7](https://github.com/danstis/team-dash/commit/e6f4ef7b1fce4494cdf046adb996999d5226149c))
+* **refresh:** ship RefreshControls + success/partial-failure OutcomeBanner (BSOD-303, T049) ([#134](https://github.com/danstis/team-dash/issues/134)) ([0ac557c](https://github.com/danstis/team-dash/commit/0ac557c0b01e10cf3833652fc25f9729eecc25eb))
+* **shared:** add MaskedToken shared component (BSOD-172) ([#108](https://github.com/danstis/team-dash/issues/108)) ([c7a0a6d](https://github.com/danstis/team-dash/commit/c7a0a6da33afebdea7c3968ff08729e06c707aa6))
+* **storage:** add CacheRepository contract and implementation (BSOD-308) ([#118](https://github.com/danstis/team-dash/issues/118)) ([f462b50](https://github.com/danstis/team-dash/commit/f462b503cb0d2b7766f2e4f9d7f02cb20f3f4ea8))
+* **storage:** add RefreshStagingRepository contract and implementation (BSOD-301) ([#125](https://github.com/danstis/team-dash/issues/125)) ([44066ae](https://github.com/danstis/team-dash/commit/44066ae0214c1afb17e9c8e65be260533cceb047))
+
+
+### Bug fixes
+
+* **asana:** accept live /workspaces response shape (BSOD-355) ([#135](https://github.com/danstis/team-dash/issues/135)) ([84fa2c6](https://github.com/danstis/team-dash/commit/84fa2c6c8fd34ea19bf273a7eafd6fb4f6cedea2))
+* **credentials:** name the rate-limit ms-per-second constant (BSOD-353) ([#132](https://github.com/danstis/team-dash/issues/132)) ([11cad76](https://github.com/danstis/team-dash/commit/11cad766e760167362906711124c8db4cbdc7647))
+* **datetime:** name MS_PER_DAY unit-conversion constant (BSOD-326) ([#121](https://github.com/danstis/team-dash/issues/121)) ([3ecb463](https://github.com/danstis/team-dash/commit/3ecb463750bd1d8038dd68f9a9d6896a33be6df7))
+* handle Asana token response envelope (BSOD-354) ([#133](https://github.com/danstis/team-dash/issues/133)) ([0aee62d](https://github.com/danstis/team-dash/commit/0aee62d91a6f7d9ce0a2e875dbe4832b24fd31a9))
+* **router:** compose first-run UI components (BSOD-347) ([#130](https://github.com/danstis/team-dash/issues/130)) ([809245a](https://github.com/danstis/team-dash/commit/809245a91c63c079f67979a523c9b8898d4fc895))
+
 ## [0.4.0](https://github.com/danstis/team-dash/compare/v0.3.0...v0.4.0) (2026-07-31)
 
 

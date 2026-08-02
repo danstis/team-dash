@@ -114,9 +114,10 @@ describe("T025 base Asana HTTP client (contracts/asana-client.md)", () => {
           ({ request, request: { url } }) => {
             observedAuthorization = request.headers.get("Authorization");
             observedUrl = url.toString();
-            // Asana's `/users/me` returns the user resource directly (not
-            // wrapped in a `{ data }` envelope), so the schema under test
-            // (`asanaUserSchema`) parses the body verbatim.
+            // This test exercises `asanaGet` as a generic parser: it returns
+            // whatever shape the caller's schema accepts. Resource-specific
+            // wrappers such as `testToken` handle Asana's `{ data: ... }`
+            // single-resource envelope before returning parsed resources.
             return HttpResponse.json(sampleUser);
           },
         ),

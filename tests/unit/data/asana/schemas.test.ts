@@ -241,6 +241,13 @@ describe("T023 Asana Zod resource schemas", () => {
         expect(result.data).toEqual(userFixture());
       }
     });
+
+    it("asanaResourceResponseSchema rejects a missing data resource", () => {
+      const schema = asanaResourceResponseSchema(asanaUserSchema);
+      const result = schema.safeParse(userFixture());
+
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("compact reference (asanaReferenceSchema)", () => {

@@ -1,6 +1,22 @@
 name: Docker Release
 
 on:
+  # Primary trigger: react to release-please (BSOD-257) creating a GitHub
+  # Release. The `release: published` event below covers hand-created
+  # releases; the `workflow_run` listener below covers release-please,
+  # because GitHub Actions deliberately suppresses `release: published`
+  # events that are emitted by a workflow using `secrets.GITHUB_TOKEN`
+  # (the anti-recursion policy documented at
+  # https://docs.github.com/en/actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow).
+  # Without this second trigger, every release-please release would
+  # silently skip Docker image publication (BSOD-357).
+  workflow_run:
+    workflows: ["Release Please"]
+    types: [completed]
+  # Fallback for hand-published GitHub Releases (e.g. emergency re-runs
+  # by a maintainer). The idempotency check on the version tag handles
+  # the rare case where both this and `workflow_run` fire for the same
+  # release.
   release:
     types: [published]
   workflow_dispatch:
@@ -27,6 +43,30 @@ jobs:
     # (clone + build + push + tag resolution + idempotency check)
     # should finish well under this; 15 min is the action default.
     timeout-minutes: 15
+    # Skip the whole job when the upstream `Release Please` workflow
+    # completed without producing a release (no conventional commits
+    # since the last tag, etc.). workflow_dispatch and direct
+    # `release: published` always run.
+    #
+    # Security: a `workflow_run` event fires for runs of the named
+    # workflow in FORKS of this repository too (see
+    # https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_run).
+    # Although fork runs don't have access to secrets, the workflow
+    # payload is still attacker-controllable (any field on the run
+    # object, including `outputs.*`). Restrict the trigger to runs
+    # that originated in our own repository (`head_repository.full_name`
+    # == `repository.full_name`) and to a single named workflow so a
+    # malicious fork can't name its workflow "Release Please" and
+    # inject a crafted `tag_name`/`sha` output. SonarCloud rule
+    # githubactions:S7631 (BSOD-357).
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository.full_name &&
+       github.event.workflow_run.name == 'Release Please' &&
+       github.event.workflow_run.outputs.releases_created == 'true')
     steps:
       - name: Resolve event inputs
         id: inputs
@@ -43,6 +83,9 @@ jobs:
           RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
           RELEASE_TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
           RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          WORKFLOW_RUN_TAG_NAME: ${{ github.event.workflow_run.outputs.tag_name }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.outputs.sha }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           DISPATCH_TAG_NAME: ${{ inputs.tag_name }}
           DISPATCH_SOURCE_BRANCH: ${{ inputs.source_branch }}
         run: |
@@ -62,6 +105,36 @@ jobs:
               echo "tag_name=$RELEASE_TAG_NAME"
               echo "prerelease=$RELEASE_PRERELEASE"
               echo "on_main=$ON_MAIN"
+              echo "commit_sha="
+            } >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = "workflow_run" ]; then
+            # The `releases_created` job-level guard on this workflow
+            # already filters out the no-release case, so by the time we
+            # get here release-please has stamped a tag. The `tag_name`
+            # output is the exact string release-please used for the
+            # GitHub Release (e.g. `v0.5.0`); the `sha` output is the
+            # commit release-please tagged. The job-level `if` already
+            # guarantees `releases_created == 'true'`, so we don't need
+            # a second guard here.
+            #
+            # `WORKFLOW_RUN_TAG_NAME` may legitimately be empty in the
+            # corner case where a future release-please version stops
+            # emitting it; treat that as a hard failure rather than
+            # silently pushing a bogus `:latest` retag.
+            if [ -z "$WORKFLOW_RUN_TAG_NAME" ]; then
+              echo "::error::workflow_run completed with releases_created=true but the upstream workflow emitted no tag_name output. Refusing to publish an unversioned image." >&2
+              exit 1
+            fi
+            if [ "$WORKFLOW_RUN_HEAD_BRANCH" = "main" ]; then
+              ON_MAIN="true"
+            else
+              ON_MAIN="false"
+            fi
+            {
+              echo "tag_name=$WORKFLOW_RUN_TAG_NAME"
+              echo "prerelease="
+              echo "on_main=$ON_MAIN"
+              echo "commit_sha=$WORKFLOW_RUN_SHA"
             } >> "$GITHUB_OUTPUT"
           else
             # workflow_dispatch: there is no GitHub-emitted prerelease
@@ -79,6 +152,7 @@ jobs:
               echo "tag_name=$DISPATCH_TAG_NAME"
               echo "prerelease="
               echo "on_main=$ON_MAIN"
+              echo "commit_sha="
             } >> "$GITHUB_OUTPUT"
           fi
 
@@ -93,11 +167,13 @@ jobs:
           LOG_TAG_NAME: ${{ steps.inputs.outputs.tag_name }}
           LOG_PRERELEASE: ${{ steps.inputs.outputs.prerelease }}
           LOG_ON_MAIN: ${{ steps.inputs.outputs.on_main }}
+          LOG_COMMIT_SHA: ${{ steps.inputs.outputs.commit_sha }}
         run: |
           echo "Resolved Docker image inputs:"
           echo "  tag_name=$LOG_TAG_NAME"
           echo "  prerelease=$LOG_PRERELEASE"
           echo "  on_main=$LOG_ON_MAIN"
+          echo "  commit_sha=$LOG_COMMIT_SHA"
 
       - name: Check out the tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -105,7 +181,12 @@ jobs:
           # Check out the tag directly so the image is built from the
           # exact commit release-please tagged, not from a re-fetched
           # `main` HEAD (which may have moved past the release).
-          ref: ${{ steps.inputs.outputs.tag_name }}
+          # For the `workflow_run` path the upstream release-please job
+          # stamped the SHA onto its `sha` output, so we check that out
+          # directly (the tag may not yet be visible on `origin` when
+          # this downstream workflow fires, and forcing a tag checkout
+          # would race with the upstream's tag push).
+          ref: ${{ steps.inputs.outputs.commit_sha || steps.inputs.outputs.tag_name }}
           fetch-depth: 1
 
       - name: Resolve source commit SHA
@@ -180,6 +261,11 @@ jobs:
           # somehow lands (network blip mid-call), the next manual
           # workflow_dispatch re-run with a different tag would be the
           # recovery path, not this idempotency guard.
+          #
+          # BSOD-357: this idempotency check also handles the case
+          # where both `release: published` and `workflow_run` fire for
+          # the same release (the dual-trigger overlap is documented at
+          # the top of this file).
           if docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; then
             echo "::notice::Image ${IMAGE} already published; skipping build/push (idempotent no-op)."
             echo "already_published=true" >> "$GITHUB_OUTPUT"

@@ -76,7 +76,13 @@
  * MSW handlers authorise any `Authorization: Bearer …` request.
  */
 import { type ReactElement, StrictMode, useEffect } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -133,7 +139,11 @@ type HandlesRef = { current: CapturedHandles | null };
  * `useEffect` write is the canonical place to publish derived data
  * from a render tree to a test harness.
  */
-function RefreshProbe({ handlesRef }: { handlesRef: HandlesRef }): ReactElement {
+function RefreshProbe({
+  handlesRef,
+}: {
+  handlesRef: HandlesRef;
+}): ReactElement {
   const credentials = useCredentials();
   const workspace = useWorkspace();
   const tokenAccessor = useCredentialTokenAccessor();
@@ -155,9 +165,7 @@ function RefreshProbe({ handlesRef }: { handlesRef: HandlesRef }): ReactElement 
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-async function driveProvidersToReady(
-  handlesRef: HandlesRef,
-): Promise<void> {
+async function driveProvidersToReady(handlesRef: HandlesRef): Promise<void> {
   await waitFor(() => {
     expect(handlesRef.current?.credentials).not.toBeNull();
   });
@@ -221,9 +229,7 @@ describe("BSOD-303 (T049) — refresh success outcome", () => {
     await waitFor(() => {
       expect(screen.getByTestId("refresh-controls")).toBeInTheDocument();
     });
-    expect(
-      screen.getByTestId("refresh-button"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("refresh-button")).toBeInTheDocument();
   });
 
   it("shows progress then a success outcome with a completion timestamp against MSW", async () => {
@@ -309,13 +315,11 @@ describe("BSOD-303 (T049) — refresh success outcome", () => {
 
   it("routes a project task-fetch failure to partial_failure and keeps the live cache untouched", async () => {
     server.use(
-      http.get(
-        "https://app.asana.com/api/1.0/projects/:projectGid/tasks",
-        () =>
-          HttpResponse.json(
-            { errors: [{ message: "Forbidden" }] },
-            { status: 403 },
-          ),
+      http.get("https://app.asana.com/api/1.0/projects/:projectGid/tasks", () =>
+        HttpResponse.json(
+          { errors: [{ message: "Forbidden" }] },
+          { status: 403 },
+        ),
       ),
     );
 

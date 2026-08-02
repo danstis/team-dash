@@ -137,11 +137,7 @@
  * it does NOT mutate Dexie directly (Constitution Principle VI:
  * every storage side effect goes through a repository).
  */
-import {
-  useCallback,
-  useState,
-  type ReactElement,
-} from "react";
+import { useCallback, useState, type ReactElement } from "react";
 import type { z } from "zod";
 
 import { useCredentialTokenAccessor } from "../../app/credentials-context";
@@ -152,7 +148,12 @@ import type {
   asanaTaskSchema,
 } from "../../data/asana/schemas";
 import { refreshStagingRepository } from "../../data/db/repositories/refresh-staging.repository";
-import { db, type Project, type RefreshSession, type Task } from "../../data/db/schema";
+import {
+  db,
+  type Project,
+  type RefreshSession,
+  type Task,
+} from "../../data/db/schema";
 
 /* -------------------------------------------------------------------------- */
 /* Wire-shape aliases                                                         */
@@ -416,11 +417,7 @@ export function OutcomeBanner({
  * surfaces (T051 will split this into the documented failure kinds
  * but the UI surface stays a single state here).
  */
-type RefreshState =
-  | "idle"
-  | "running"
-  | "success"
-  | "partial_failure";
+type RefreshState = "idle" | "running" | "success" | "partial_failure";
 
 /**
  * Seed a running `RefreshSession` row before `beginStaging` runs.
@@ -515,9 +512,7 @@ export function RefreshControls(): ReactElement {
         currentWorkspace.gid,
       );
       if (projectsResult.outcome !== "ok") {
-        throw new Error(
-          `Failed to fetch projects: ${projectsResult.outcome}`,
-        );
+        throw new Error(`Failed to fetch projects: ${projectsResult.outcome}`);
       }
       const projects = projectsResult.data.data.map(normaliseProject);
       if (projects.length > 0) {

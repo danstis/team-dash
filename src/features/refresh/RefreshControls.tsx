@@ -302,6 +302,7 @@ export function RefreshButton({
       disabled={disabled}
       data-testid="refresh-button"
       data-offline={offline ? "true" : "false"}
+      data-variant="primary"
       aria-busy={busy}
     >
       {busy ? "Refreshing…" : "Refresh"}

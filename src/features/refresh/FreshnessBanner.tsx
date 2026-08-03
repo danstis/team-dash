@@ -25,6 +25,22 @@
  * session up is the dashboard's job (T04 `Dashboard.tsx`); this
  * component is a pure renderer and is unit-testable without Dexie.
  *
+ * ## Merge note (T050 reconciliation)
+ *
+ * Main's T050 implementation (BSOD-304, PR #148) shipped a sibling
+ * `FreshnessBanner` with a different API (`isCached: boolean`)
+ * co-located with an `OfflineRefreshState` component. The merge
+ * resolution adopted M001's pure-renderer design (the test seam
+ * `now`/`thresholdMs` is the preserve-able contract) but borrowed
+ * main's `<section>` + `<h2>` heading wrapper for accessibility
+ * (screen-reader navigable heading) and main's
+ * `data-testid="freshness-last-refreshed-at"` span testid for
+ * parity with the integration-test selectors. The `OfflineRefreshState`
+ * component is dropped: T03's `<RefreshControls />` already gates
+ * refresh offline via `useOffline()` and renders the FR-087
+ * `<OfflineState />` explanation, so main's component is redundant
+ * dead code.
+ *
  * Boundary
  * --------
  * `src/features/refresh/**` is the feature boundary documented in the
@@ -121,11 +137,10 @@ function formatLastRefreshedAt(iso: string, now: () => Date): string {
   if (Number.isNaN(parsed.getTime())) {
     return iso;
   }
-  // Coarse two-line rendering so the banner reads cleanly at mobile
-  // and desktop widths. We do not locale-format the date here
-  // because the lint-permitted stack targets Australian English by
-  // convention and the unit suite pins the verbatim ISO via
-  // `data-last-refreshed-at`, not the localised copy.
+  // Coarse rendering so the banner reads cleanly at mobile and
+  // desktop widths. The lint-permitted stack targets Australian
+  // English by convention and the unit suite pins the verbatim ISO
+  // via `data-last-refreshed-at`, not the localised copy.
   const isoNow = now().getTime();
   const elapsedMs = isoNow - parsed.getTime();
   if (elapsedMs < 60_000) {
@@ -154,12 +169,16 @@ function formatLastRefreshedAt(iso: string, now: () => Date): string {
  *   closed contract the S01 verification pins.
  * - `data-last-refreshed-at="<ISO>"` — verbatim ISO timestamp so a
  *   test pin on the attribute never collides with i18n changes.
+ * - `data-testid="freshness-last-refreshed-at"` (on the
+ *   `<span>` wrapping the timestamp) — the contract selector the
+ *   integration test uses to query the verbatim value (parity
+ *   with main's T050 surface).
  *
- * The banner renders inline (not as a `<section>` or `<div>`) so a
- * future dashboard composition can mount it inside a header / panel
- * without rendering an extra `<section>`. The `<p>` / `<span>` shape
- * gives a screen reader the sentence boundary the SR announces as
- * "Showing cached data. Last refreshed at …".
+ * The component renders as a `<section>` with an `<h2>` heading so
+ * screen-reader users get a navigable heading. The T050
+ * implementation also used this shape; a future contributor who
+ * collapses the wrapper back to a `<p>` would skip a heading level
+ * when the surrounding dashboard chrome also renders an `<h1>`.
  */
 export function FreshnessBanner({
   lastRefreshedAt,
@@ -169,18 +188,24 @@ export function FreshnessBanner({
   const kind = deriveFreshness(lastRefreshedAt, now, thresholdMs);
   const label = formatLastRefreshedAt(lastRefreshedAt, now);
   return (
-    <p
+    <section
       className="td-freshness-banner"
       data-testid="freshness-banner"
       data-freshness={kind}
       data-last-refreshed-at={lastRefreshedAt}
       role="status"
       aria-live="polite"
+      aria-label={kind === "fresh" ? "Showing fresh data" : "Showing cached data"}
     >
-      {kind === "fresh" ? "Showing fresh data." : "Showing cached data."}
-      {" "}
-      Last refreshed <span data-testid="freshness-banner-label">{label}</span>.
-    </p>
+      <h2>{kind === "fresh" ? "Showing fresh data" : "Showing cached data"}</h2>
+      <p>
+        Last refreshed at{" "}
+        <span data-testid="freshness-last-refreshed-at">{label}</span>.{" "}
+        {kind === "fresh"
+          ? "The dashboard is up to date with the latest refresh."
+          : "This data may not reflect recent changes — run a refresh to update it."}
+      </p>
+    </section>
   );
 }
 

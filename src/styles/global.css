@@ -1,0 +1,532 @@
+/**
+ * BSOD-356 — base styles + component theming for team-dash.
+ *
+ * Scope
+ * -----
+ * This file is the ONLY stylesheet the app loads (imported once from
+ * `src/main.tsx`, before `<App />` mounts, so the first paint is already
+ * themed). It has two halves:
+ *
+ *   1. Base — a box-sizing reset, typography defaults, and generic element
+ *      styling (headings, links, code, hr, form controls, focus rings)
+ *      that every current and future page inherits for free.
+ *   2. Component theming — selectors scoped to the `team-dash-shell` /
+ *      `td-*` block classes and `data-view-state` / `data-outcome` /
+ *      `data-variant` attributes that the existing feature components
+ *      already render (see `docs/design/theme.md` "Applying the theme").
+ *
+ * Every value referenced here is a `--td-*` custom property from
+ * `./tokens.css` (imported below) — no raw hex/px color or font value
+ * belongs in this file.
+ *
+ * Why plain CSS (no Tailwind/CSS-in-JS)
+ * --------------------------------------
+ * The project had zero styling dependencies before BSOD-356 and no prior
+ * framework decision in `plan.md`/`research.md`. Plain CSS custom
+ * properties need no build-tool integration beyond what Vite already does,
+ * add no runtime cost, and keep every component file free of styling
+ * concerns — components render semantic HTML with stable `td-*` classes
+ * and `data-*` hooks; this file is the only place that turns those hooks
+ * into an appearance. That split is what let this theme land without
+ * touching component logic or the existing test suite's queries (which
+ * anchor on `data-testid`, `role`, and text — never on style).
+ */
+@import "./tokens.css";
+@import "@fontsource-variable/inter";
+
+/* -------------------------------------------------------------------------- */
+/* Base                                                                        */
+/* -------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background-color: var(--td-color-bg);
+  color: var(--td-color-text-primary);
+  font-family: var(--td-font-sans);
+  font-size: var(--td-font-size-md);
+  line-height: var(--td-line-height-normal);
+  font-feature-settings: "cv11" 1; /* Inter's single-story "a" / "1" — small, always-on readability polish */
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0 0 var(--td-space-4);
+  color: var(--td-color-text-primary);
+  font-weight: var(--td-font-weight-semibold);
+  line-height: var(--td-line-height-tight);
+}
+
+h1 {
+  font-size: var(--td-font-size-3xl);
+}
+h2 {
+  font-size: var(--td-font-size-2xl);
+}
+h3 {
+  font-size: var(--td-font-size-xl);
+}
+h4 {
+  font-size: var(--td-font-size-lg);
+}
+
+p {
+  margin: 0 0 var(--td-space-4);
+  line-height: var(--td-line-height-relaxed);
+}
+p:last-child {
+  margin-bottom: 0;
+}
+
+a {
+  color: var(--td-color-link);
+  text-decoration-thickness: from-font;
+  text-underline-offset: 0.15em;
+}
+a:hover {
+  color: var(--td-color-accent-hover);
+}
+
+strong,
+em {
+  color: var(--td-color-text-primary);
+}
+
+code {
+  font-family: var(--td-font-mono);
+  font-size: 0.9em;
+  background: var(--td-color-accent-subtle-bg);
+  color: var(--td-color-text-primary);
+  padding: 0.1em 0.4em;
+  border-radius: var(--td-radius-sm);
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--td-color-border);
+  margin: var(--td-space-6) 0;
+}
+
+ul,
+ol {
+  margin: 0 0 var(--td-space-4);
+  padding-left: var(--td-space-5);
+  line-height: var(--td-line-height-relaxed);
+}
+
+::selection {
+  background: var(--td-color-accent-subtle-bg);
+  color: var(--td-color-text-primary);
+}
+
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 3px solid var(--td-color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--td-radius-sm);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Form controls                                                              */
+/* -------------------------------------------------------------------------- */
+
+button,
+input,
+select {
+  font-family: inherit;
+  font-size: var(--td-font-size-md);
+  color: var(--td-color-text-primary);
+}
+
+label {
+  display: block;
+  margin: var(--td-space-3) 0;
+  font-weight: var(--td-font-weight-medium);
+  font-size: var(--td-font-size-sm);
+  color: var(--td-color-text-secondary);
+}
+label > span {
+  display: block;
+  margin-bottom: var(--td-space-1);
+}
+
+input[type="password"],
+input[type="text"],
+input[type="email"],
+select {
+  display: block;
+  width: 100%;
+  max-width: var(--td-content-width-form);
+  padding: var(--td-space-2) var(--td-space-3);
+  background: var(--td-color-surface);
+  color: var(--td-color-text-primary);
+  border: 1px solid var(--td-color-border-strong);
+  border-radius: var(--td-radius-sm);
+  transition:
+    border-color var(--td-transition-fast),
+    box-shadow var(--td-transition-fast);
+}
+input[type="password"]:hover,
+input[type="text"]:hover,
+input[type="email"]:hover,
+select:hover {
+  border-color: var(--td-color-text-muted);
+}
+input[type="password"]:focus-visible,
+input[type="text"]:focus-visible,
+input[type="email"]:focus-visible,
+select:focus-visible {
+  border-color: var(--td-color-focus-ring);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--td-color-focus-ring) 25%, transparent);
+  outline: none;
+}
+input:disabled,
+select:disabled,
+fieldset:disabled input,
+fieldset:disabled select {
+  background: var(--td-color-bg);
+  color: var(--td-color-text-muted);
+  cursor: not-allowed;
+}
+
+input[type="radio"] {
+  accent-color: var(--td-color-accent);
+  width: 1.05em;
+  height: 1.05em;
+  vertical-align: -0.2em;
+}
+
+fieldset {
+  margin: 0 0 var(--td-space-5);
+  padding: var(--td-space-5);
+  background: var(--td-color-surface);
+  border: 1px solid var(--td-color-border);
+  border-radius: var(--td-radius-md);
+}
+fieldset:disabled {
+  opacity: 0.7;
+}
+legend {
+  padding: 0 var(--td-space-2);
+  font-weight: var(--td-font-weight-semibold);
+  font-size: var(--td-font-size-lg);
+  color: var(--td-color-text-primary);
+}
+
+/* Native radio-card treatment: a label directly containing a radio input
+   reads as a selectable option row, not a checkbox-style inline label. */
+fieldset label:has(> input[type="radio"]) {
+  display: flex;
+  align-items: center;
+  gap: var(--td-space-2);
+  font-weight: var(--td-font-weight-regular);
+  font-size: var(--td-font-size-md);
+  color: var(--td-color-text-primary);
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--td-space-2);
+  padding: var(--td-space-2) var(--td-space-4);
+  margin: var(--td-space-1) var(--td-space-2) var(--td-space-1) 0;
+  font-weight: var(--td-font-weight-semibold);
+  font-size: var(--td-font-size-sm);
+  line-height: var(--td-line-height-normal);
+  border-radius: var(--td-radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--td-transition-fast),
+    border-color var(--td-transition-fast),
+    color var(--td-transition-fast);
+  /* Default look for any button that predates / omits data-variant. */
+  background: var(--td-color-surface);
+  border-color: var(--td-color-border-strong);
+  color: var(--td-color-text-primary);
+}
+button:hover:not(:disabled) {
+  border-color: var(--td-color-text-muted);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button[data-variant="primary"] {
+  background: var(--td-color-accent);
+  border-color: var(--td-color-accent);
+  color: var(--td-color-accent-contrast);
+}
+button[data-variant="primary"]:hover:not(:disabled) {
+  background: var(--td-color-accent-hover);
+  border-color: var(--td-color-accent-hover);
+}
+button[data-variant="primary"]:active:not(:disabled) {
+  background: var(--td-color-accent-active);
+  border-color: var(--td-color-accent-active);
+}
+
+button[data-variant="secondary"] {
+  background: var(--td-color-surface);
+  border-color: var(--td-color-border-strong);
+  color: var(--td-color-text-primary);
+}
+button[data-variant="secondary"]:hover:not(:disabled) {
+  background: var(--td-color-bg);
+}
+
+button[data-variant="danger"] {
+  background: transparent;
+  border-color: var(--td-color-danger-border);
+  color: var(--td-color-danger-text);
+}
+button[data-variant="danger"]:hover:not(:disabled) {
+  background: var(--td-color-danger-bg);
+  border-color: var(--td-color-danger-text);
+}
+
+button[aria-busy="true"] {
+  opacity: 0.85;
+  cursor: progress;
+}
+
+/* -------------------------------------------------------------------------- */
+/* App shell                                                                   */
+/* -------------------------------------------------------------------------- */
+
+.team-dash-shell {
+  box-sizing: border-box;
+  max-width: var(--td-content-width-shell);
+  margin: 0 auto;
+  padding: var(--td-space-5) var(--td-space-4) var(--td-space-7);
+}
+@media (min-width: 640px) {
+  .team-dash-shell {
+    padding: var(--td-space-6) var(--td-space-6) var(--td-space-7);
+  }
+}
+
+.team-dash-shell--first-run {
+  max-width: var(--td-content-width-form);
+}
+
+.td-first-run-credential-status {
+  margin: var(--td-space-5) 0;
+  padding: var(--td-space-3) var(--td-space-4);
+  background: var(--td-color-surface);
+  border: 1px solid var(--td-color-border);
+  border-radius: var(--td-radius-md);
+  font-size: var(--td-font-size-sm);
+  color: var(--td-color-text-secondary);
+}
+.td-first-run-credential-status p {
+  margin: 0 0 var(--td-space-1);
+}
+.td-first-run-credential-status p:last-child {
+  margin-bottom: 0;
+}
+
+/* `nav-settings` — the current stand-in for the eventual dashboard chrome
+   (see router.tsx docstring). Styled as a small pill so it reads as
+   navigation, not body copy, until US2's real chrome replaces it. */
+a[data-testid="nav-settings"] {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--td-space-1) var(--td-space-3);
+  border-radius: var(--td-radius-pill);
+  background: var(--td-color-surface);
+  border: 1px solid var(--td-color-border);
+  font-size: var(--td-font-size-sm);
+  font-weight: var(--td-font-weight-medium);
+  text-decoration: none;
+}
+a[data-testid="nav-settings"]:hover {
+  border-color: var(--td-color-accent);
+  color: var(--td-color-accent);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Masked token                                                                */
+/* -------------------------------------------------------------------------- */
+
+.td-masked-token {
+  background: var(--td-color-bg);
+  border: 1px solid var(--td-color-border);
+  letter-spacing: 0.02em;
+}
+
+/* -------------------------------------------------------------------------- */
+/* ViewState primitives (loading / empty / first_run / error banners, …)      */
+/* -------------------------------------------------------------------------- */
+
+[data-view-state] {
+  padding: var(--td-space-5);
+  margin: 0 0 var(--td-space-5);
+  border-radius: var(--td-radius-md);
+  border: 1px solid var(--td-color-border);
+  border-left-width: 4px;
+  background: var(--td-color-surface);
+}
+[data-view-state] h1,
+[data-view-state] h2 {
+  margin-bottom: var(--td-space-2);
+}
+[data-view-state] p:last-child {
+  margin-bottom: 0;
+}
+
+/* Neutral / informational: nothing is wrong, the app is telling the user
+   what it's doing or that a state is empty. */
+[data-view-state="loading"],
+[data-view-state="first_run"],
+[data-view-state="empty"],
+[data-view-state="no_results"] {
+  border-left-color: var(--td-color-info-icon);
+}
+
+/* Caution: recoverable, non-blocking degradation. */
+[data-view-state="cached_stale"],
+[data-view-state="rate_limited"],
+[data-view-state="partial_data"] {
+  border-left-color: var(--td-color-warning-icon);
+  background: var(--td-color-warning-bg);
+}
+
+/* Blocking problem: the user cannot proceed until it's resolved. */
+[data-view-state="offline"],
+[data-view-state="invalid_token"],
+[data-view-state="insufficient_permission"] {
+  border-left-color: var(--td-color-danger-icon);
+  background: var(--td-color-danger-bg);
+}
+
+[data-view-state="ready"] {
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Refresh controls + outcome banner                                          */
+/* -------------------------------------------------------------------------- */
+
+.td-refresh-controls {
+  margin-bottom: var(--td-space-5);
+}
+
+[data-testid="progress-indicator"] {
+  margin-top: var(--td-space-3);
+  color: var(--td-color-text-secondary);
+  font-size: var(--td-font-size-sm);
+}
+
+[data-testid="outcome-banner"] {
+  margin-top: var(--td-space-3);
+  padding: var(--td-space-4);
+  border-radius: var(--td-radius-md);
+  border: 1px solid var(--td-color-border);
+  border-left-width: 4px;
+}
+[data-testid="outcome-banner"][data-outcome="success"] {
+  border-left-color: var(--td-color-success-icon);
+  background: var(--td-color-success-bg);
+}
+[data-testid="outcome-banner"][data-outcome="partial_failure"] {
+  border-left-color: var(--td-color-danger-icon);
+  background: var(--td-color-danger-bg);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Token entry + settings outcome/retest banners                              */
+/* -------------------------------------------------------------------------- */
+
+.td-token-entry-form__outcome,
+[class*="__retest--"] {
+  display: inline-block;
+  margin-top: var(--td-space-3);
+  padding: var(--td-space-2) var(--td-space-3);
+  border-radius: var(--td-radius-sm);
+  font-size: var(--td-font-size-sm);
+  border: 1px solid var(--td-color-border);
+}
+
+.td-token-entry-form__outcome--valid,
+.td-settings-credentials-panel__retest--valid {
+  color: var(--td-color-success-text);
+  background: var(--td-color-success-bg);
+  border-color: var(--td-color-success-border);
+}
+
+.td-token-entry-form__outcome--rate_limited,
+.td-settings-credentials-panel__retest--rate_limited {
+  color: var(--td-color-warning-text);
+  background: var(--td-color-warning-bg);
+  border-color: var(--td-color-warning-border);
+}
+
+.td-token-entry-form__outcome--invalid_token,
+.td-token-entry-form__outcome--insufficient_permission,
+.td-token-entry-form__outcome--network_error,
+.td-token-entry-form__outcome--validation_error,
+.td-settings-credentials-panel__retest--invalid_token,
+.td-settings-credentials-panel__retest--insufficient_permission,
+.td-settings-credentials-panel__retest--network_error,
+.td-settings-credentials-panel__retest--validation_error {
+  color: var(--td-color-danger-text);
+  background: var(--td-color-danger-bg);
+  border-color: var(--td-color-danger-border);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Settings panel + confirmation dialogs                                      */
+/* -------------------------------------------------------------------------- */
+
+.td-settings-credentials-panel [data-testid="masked-token"] {
+  margin-left: var(--td-space-1);
+}
+
+.td-settings-credentials-panel__confirm,
+[role="alertdialog"] {
+  margin-top: var(--td-space-4);
+  padding: var(--td-space-5);
+  background: var(--td-color-surface-raised);
+  border: 1px solid var(--td-color-border-strong);
+  border-radius: var(--td-radius-lg);
+  box-shadow: var(--td-shadow-md);
+}
+.td-settings-credentials-panel__confirm h3,
+[role="alertdialog"] h3 {
+  margin-bottom: var(--td-space-2);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Workspace selector                                                         */
+/* -------------------------------------------------------------------------- */
+
+.td-workspace-selector output {
+  display: block;
+  padding: var(--td-space-3);
+  background: var(--td-color-info-bg);
+  border: 1px solid var(--td-color-info-border);
+  border-radius: var(--td-radius-sm);
+  color: var(--td-color-text-secondary);
+}

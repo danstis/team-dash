@@ -391,7 +391,11 @@ async function walkPagination<TRow>(
   ) => Promise<
     AsanaClientResult<{
       data: TRow[];
-      next_page: { offset: string; path: string } | null | undefined;
+      // `next_page` is optional — the Zod envelope schema
+      // (`asanaListResponseSchema`) declares it `.optional()`,
+      // and the field's value can additionally be `null`. Both
+      // forms are treated as "no next page" by the loop below.
+      next_page?: { offset: string; path: string } | null;
     }>
   >,
   signal: AbortSignal | undefined,

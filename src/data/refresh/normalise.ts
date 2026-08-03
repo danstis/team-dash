@@ -86,7 +86,6 @@ import type {
   asanaCustomFieldSchema,
   asanaPortfolioSchema,
   asanaProjectSchema,
-  asanaReferenceSchema,
   asanaSectionSchema,
   asanaTaskSchema,
   asanaUserSchema,
@@ -115,7 +114,6 @@ type WireSection = z.infer<typeof asanaSectionSchema>;
 type WirePortfolio = z.infer<typeof asanaPortfolioSchema>;
 type WireCustomField = z.infer<typeof asanaCustomFieldSchema>;
 type WireWorkspace = z.infer<typeof asanaWorkspaceSchema>;
-type WireTeamReference = z.infer<typeof asanaReferenceSchema>;
 
 /* -------------------------------------------------------------------------- */
 /* Per-resource normalisers                                                   */

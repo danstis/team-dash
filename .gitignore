@@ -198,6 +198,7 @@ secrets/
 .claude/
 .emdash.json
 .agents/
+.multica/
 
 # ── GSD baseline (auto-generated) ──
 .gsd

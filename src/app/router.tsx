@@ -118,8 +118,8 @@ function PlaceholderRoute(): React.ReactElement {
     <main className="team-dash-shell" lang="en-AU">
       <h1>Team Dash</h1>
       <p>
-        The application shell is bootstrapping. The credential entry screen will
-        be implemented in Phase 3 (US1).
+        The application shell is bootstrapping. The reporting dashboard will be
+        implemented in a subsequent user story.
       </p>
       <hr />
       <p>

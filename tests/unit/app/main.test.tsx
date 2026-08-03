@@ -109,11 +109,9 @@ describe("T031 <App /> (T031 mounts the T010 placeholder content)", () => {
     expect(container.querySelector("main")).not.toBeNull();
   });
 
-  it("explains that the credential entry screen is upcoming (T010 placeholder copy)", async () => {
+  it("explains that the reporting dashboard is upcoming (T010 placeholder copy)", async () => {
     render(<App />);
-    expect(
-      await screen.findByText(/credential entry screen/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/reporting dashboard/i)).toBeInTheDocument();
   });
 });
 

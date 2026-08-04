@@ -606,5 +606,3 @@ export function RefreshControls(): ReactElement {
     </section>
   );
 }
-
-export default RefreshControls;

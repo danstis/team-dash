@@ -2,6 +2,24 @@
 import { createRoot } from "react-dom/client";
 
 import { App } from "./app/App";
+// `vite-plugin-pwa`'s `virtual:pwa-register` is a build-time virtual
+// module the plugin resolves via its own `resolveId` hook. The
+// `registerSW` export satisfies the slice-plan contract that the
+// production build "register a Workbox service worker" — the helper
+// issues `navigator.serviceWorker.register('/sw.js', { scope: '/' })`
+// and (for `registerType: 'prompt'`) returns
+// `{ needRefresh, offlineReady }` so the app can wire its own UI
+// hooks later without re-running the SW registration.
+//
+// TypeScript does not know about the virtual module's types out of
+// the box; the plugin ships an ambient declaration in its
+// `client.d.ts` and the project's `tsconfig.json` includes
+// `vite-plugin-pwa/client` (see `tsconfig.json`'s `types` array) so
+// the import type-checks cleanly. The `/* eslint-disable
+// import/no-unresolved */` pragma is unnecessary because the ESLint
+// resolver is also configured to honour Vite virtual modules via
+// `vite-plugin-pwa`'s `eslint.config` recommendation.
+import { registerSW } from "virtual:pwa-register";
 
 /**
  * BSOD-356 — the app's only stylesheet is loaded via the `<link
@@ -96,7 +114,54 @@ export async function bootstrapDevMocks(): Promise<void> {
  */
 export async function mountRootApp(rootElement: Element): Promise<void> {
   await bootstrapDevMocks();
+  registerServiceWorker();
   renderApp(rootElement);
+}
+
+/**
+ * T05 (S01) — register the production service worker.
+ *
+ * Called from `mountRootApp` so every boot path (the module-top-level
+ * invocation, future test surfaces) gets the SW registration for free.
+ * The helper is a no-op in development because
+ * `vite.config.ts`'s `devOptions.enabled: false` keeps the SW out of
+ * the dev build entirely; `registerSW` is therefore production-only by
+ * construction. The `import.meta.env.PROD` guard makes that intent
+ * explicit and prevents any test or dev surface from accidentally
+ * trying to register a worker that does not exist.
+ *
+ * The `onNeedRefresh` / `onOfflineReady` callbacks are observability
+ * hooks — the slice plan keeps the SW on `registerType: 'autoUpdate'`
+ * so neither callback fires in production today, but logging them
+ * means a future `'prompt'` migration lands with the wiring already
+ * in place. The console lines are intentionally plain so a regression
+ * that flips to `'prompt'` produces a visible signal in the browser
+ * devtools rather than a silent UI hole.
+ */
+export function registerServiceWorker(): void {
+  if (!import.meta.env.PROD) {
+    return;
+  }
+  registerSW({
+    immediate: true,
+    onNeedRefresh() {
+      console.info(
+        "[team-dash] A new version is available. Refresh to update.",
+      );
+    },
+    onOfflineReady() {
+      console.info("[team-dash] The app is ready to work offline.");
+    },
+    onRegisteredSW(swUrl) {
+      console.info(`[team-dash] Service worker registered at ${swUrl}`);
+    },
+    onRegisterError(error) {
+      console.warn(
+        "[team-dash] Service worker registration failed; the app will not work offline.",
+        error,
+      );
+    },
+  });
 }
 
 const rootElement = document.getElementById("root");

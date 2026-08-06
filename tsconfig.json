@@ -10,7 +10,7 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "types": ["node"],
+    "types": ["node", "vite-plugin-pwa/client"],
     "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": true,

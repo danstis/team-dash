@@ -19,7 +19,6 @@
  * cleverness") and is mirrored in every primitive's function
  * signature, not just in this shared interface.
  */
-import type { ViewState } from "../../domain/types";
 
 /**
  * Common props every primitive accepts. Decoupled from
@@ -32,13 +31,4 @@ export interface ViewStatePrimitiveProps {
   readonly className?: string;
   readonly "data-testid"?: string;
   readonly "aria-label"?: string;
-}
-
-/**
- * The context the dispatcher `<ViewStateView>` forwards to every
- * primitive so the `data-view-state` hook is always present on the
- * rendered root.
- */
-export interface ViewStateDispatchContext {
-  readonly state: ViewState;
 }

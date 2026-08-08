@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/danstis/team-dash/compare/v0.6.0...v0.7.0) (2026-08-08)
+
+
+### Features
+
+* **refresh:** ship FreshnessBanner + offline-disabled Refresh (BSOD-304, T050) ([#148](https://github.com/danstis/team-dash/issues/148)) ([ac8b4b2](https://github.com/danstis/team-dash/commit/ac8b4b23af4da54edabf70ac4378e3b668a18b76))
+
+
+### Bug fixes
+
+* **router:** refresh outdated PlaceholderRoute copy (BSOD-363) ([#152](https://github.com/danstis/team-dash/issues/152)) ([b2ef3df](https://github.com/danstis/team-dash/commit/b2ef3df6573efc4d97b13eb90dc6fd454c53f53f))
+
 ## [0.6.0](https://github.com/danstis/team-dash/compare/v0.5.0...v0.6.0) (2026-08-02)
 
 

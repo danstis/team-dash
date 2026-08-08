@@ -128,14 +128,45 @@ export interface TeamMappingOverride {
 /* -------------------------------------------------------------------------- */
 
 /**
+ * The date basis a `FilterCriteria.dateRange` is evaluated against
+ * (FR-033). `'createdAt'` is the default for the US3 task table
+ * (S02); metric calculators and later stories may declare a
+ * different basis through this discriminator so the same
+ * `dateRange` field ranges over a different task column without
+ * duplicating the criteria shape.
+ *
+ * The literal union is intentionally closed — adding a new basis is
+ * a deliberate API change that should surface as a `tsc` failure
+ * across every consumer of `applyFilterCriteria` and
+ * `summariseActiveFilters` rather than a silent fallback.
+ */
+export type DateBasis = "createdAt" | "completedAt" | "dueAt";
+
+/**
  * The user-facing filter selection, every field optional and combinable
  * (FR-047/FR-048). `assigneeGids` and `priorityOptionIds` accept a literal
  * `'unassigned'` / `'no_priority'` sentinel to match how the data layer
  * represents those explicit states (data-model.md: `User` /
  * `Task.priorityOptionId`).
+ *
+ * `dateBasis` discriminates which task column the `dateRange` is
+ * evaluated against (FR-033). Omitting it preserves the
+ * calculator-default semantics where applicable; consumers that
+ * need an explicit basis (the US3 task table, S02) MUST set it so
+ * the rendered chip can declare the basis visibly per the
+ * `data-date-basis="createdAt"` S02 verification contract.
  */
 export interface FilterCriteria {
   dateRange?: DateRange;
+  /**
+   * Which task column the `dateRange` is evaluated against
+   * (FR-033). Omitting it leaves the consumer's default in
+   * effect — the S02 task-table path sets it to `'createdAt'`
+   * explicitly so the chip and the `data-date-basis` attribute
+   * surface the choice rather than relying on an implicit
+   * default that could silently shift across metric views.
+   */
+  dateBasis?: DateBasis;
   assigneeGids?: string[] | "unassigned" | null;
   reportingTeamIds?: string[] | null;
   asanaTeamGids?: string[] | null;

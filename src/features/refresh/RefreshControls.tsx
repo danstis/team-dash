@@ -227,6 +227,17 @@ function normaliseProject(wire: WireProject): Project {
 }
 
 /**
+ * The Asana prebuilt custom field the dashboard reads as the task's
+ * estimated minutes (FR-016 / data-model.md / spec §"Glossary" —
+ * "Estimated Time"). Held as a named constant rather than an inline
+ * literal so the lookup site, its docstring, and any future
+ * contributor who needs to reference the same field (e.g. a Priority
+ * field sibling reader) refer to one source of truth rather than
+ * re-typing the string in each call site.
+ */
+const ESTIMATED_TIME_FIELD_NAME = "Estimated Time";
+
+/**
  * Extract the "Estimated Time" custom field's `number_value` as the
  * cache's `estimatedMinutes` scalar. Returns `null` when the field
  * is absent or has no numeric value — the data-model.md distinction
@@ -241,7 +252,7 @@ function extractEstimatedMinutes(
     return null;
   }
   for (const field of customFields) {
-    if (field.name === "Estimated Time") {
+    if (field.name === ESTIMATED_TIME_FIELD_NAME) {
       return field.number_value ?? null;
     }
   }

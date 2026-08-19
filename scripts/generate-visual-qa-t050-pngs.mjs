@@ -3,14 +3,14 @@
  * .multica/visual-qa/t050-<label>.html (produced by
  * tests/visual-qa-dump-t050.test.tsx) and render it through
  * Playwright + the local chromium binary at
- * $HOME/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome to
+ * $HOME/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome to
  * produce a PNG screenshot per state at
  * .multica/visual-qa/t050-<label>.png.
  *
  * Run: `node scripts/generate-visual-qa-t050-pngs.mjs`
  */
 import { chromium } from "playwright-core";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const ROOT = process.cwd();
@@ -254,7 +254,3 @@ try {
   console.error("[visual-qa-t050] PNG generation failed:", err);
   process.exitCode = 1;
 }
-
-// Reference readdir so an unused-import lint flag does not
-// false-positive if the file is trimmed later.
-void readdir;

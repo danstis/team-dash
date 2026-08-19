@@ -20,8 +20,8 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { type ReactElement, StrictMode } from "react";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { StrictMode } from "react";
+import { act, cleanup, render } from "@testing-library/react";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 
 import {
@@ -273,9 +273,3 @@ describe("T050 cached-reload surface — visual-QA DOM capture", () => {
     );
   });
 });
-
-// Reference `fireEvent` so the import is not flagged unused in case
-// future states need to drive the click handler for additional
-// captures (e.g. the T051 failure-reason rendering).
-void fireEvent;
-void (null as ReactElement | null);

@@ -533,21 +533,14 @@ export async function fetchEventsSince(
   options?: Pick<ClientRequestOptions, "signal">,
 ): Promise<AsanaClientResult<EventsSuccessPayload>> {
   if (resourceGid === undefined || resourceGid === "") {
-    const issue = zod.ZodIssueCode.custom;
-    const message =
-      resourceGid === ""
-        ? "Resource gid is empty; Events API requests require a resource scope."
-        : "No resource gid supplied; Events API requests require a resource scope.";
-    return {
-      outcome: "validation_error",
-      issues: [
-        {
-          code: issue,
-          path: ["resource"],
-          message,
-        },
-      ],
-    };
+    return missingParameterValidationError({
+      path: ["resource"],
+      value: resourceGid,
+      emptyMessage:
+        "Resource gid is empty; Events API requests require a resource scope.",
+      undefinedMessage:
+        "No resource gid supplied; Events API requests require a resource scope.",
+    });
   }
 
   if (syncToken === undefined || syncToken === "") {
@@ -561,21 +554,14 @@ export async function fetchEventsSince(
     // into the FR-084 data-quality panel if the orchestrator chooses
     // to surface the gap rather than immediately cascading to a full
     // refresh.
-    const issue = zod.ZodIssueCode.custom;
-    const message =
-      syncToken === ""
-        ? "Sync token is empty; a prior successful sync is required before incremental fetch."
-        : "No prior sync token stored for this workspace; a full reconciliation is required before incremental fetch.";
-    return {
-      outcome: "validation_error",
-      issues: [
-        {
-          code: issue,
-          path: ["sync"],
-          message,
-        },
-      ],
-    };
+    return missingParameterValidationError({
+      path: ["sync"],
+      value: syncToken,
+      emptyMessage:
+        "Sync token is empty; a prior successful sync is required before incremental fetch.",
+      undefinedMessage:
+        "No prior sync token stored for this workspace; a full reconciliation is required before incremental fetch.",
+    });
   }
 
   const wire = await asanaGet(
@@ -679,6 +665,42 @@ function parseRetryAfter(rawHeader: string | null): number {
     return MIN_RETRY_AFTER_MS;
   }
   return delay;
+}
+
+/**
+ * Build the synthetic `validation_error` outcome the `fetchEventsSince`
+ * wrapper surfaces when a required caller-supplied parameter is
+ * missing. Both the "absent" and the "empty-string" shapes map to the
+ * same outcome; the `path` on the synthetic `ZodIssue` is what
+ * attributes the gap (resource scope vs. sync token) to the FR-084
+ * data-quality panel.
+ *
+ * Centralised so the two "missing required input" branches in
+ * `fetchEventsSince` share one `ZodIssue` shape rather than two
+ * near-identical inline blocks whose `code` / `path` / `message`
+ * literals could drift apart at the next contract refinement.
+ */
+function missingParameterValidationError({
+  path,
+  value,
+  emptyMessage,
+  undefinedMessage,
+}: {
+  readonly path: readonly [string];
+  readonly value: string | undefined;
+  readonly emptyMessage: string;
+  readonly undefinedMessage: string;
+}): AsanaClientResult<never> {
+  return {
+    outcome: "validation_error",
+    issues: [
+      {
+        code: zod.ZodIssueCode.custom,
+        path: [...path],
+        message: value === "" ? emptyMessage : undefinedMessage,
+      },
+    ],
+  };
 }
 
 /**

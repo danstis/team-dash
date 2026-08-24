@@ -32,20 +32,16 @@
 
 import process from "node:process";
 
+import { parseArgs } from "./parse-args.mjs";
+
 const SEMVER_RE =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
-export function parseArgs(argv = []) {
-  return Object.fromEntries(
-    argv.flatMap((arg) => {
-      if (!arg.startsWith("--")) return [];
-      const [, body] = arg.split(/^--/, 2);
-      const eqIndex = body.indexOf("=");
-      if (eqIndex === -1) return [[body, "true"]];
-      return [[body.slice(0, eqIndex), body.slice(eqIndex + 1)]];
-    }),
-  );
-}
+// Re-export the shared `parseArgs` so the per-script test
+// (`tests/unit/scripts/resolve-docker-tags.test.mjs`) can keep importing
+// it from this module. The single source of truth lives in
+// `scripts/lib/parse-args.mjs`.
+export { parseArgs };
 
 // Coerce a CLI string into a boolean. Returns `undefined` for values
 // that should be treated as "not provided" so the caller can fall back

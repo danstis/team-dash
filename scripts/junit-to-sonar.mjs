@@ -4,6 +4,8 @@ import process from "node:process";
 import { resolve as resolvePath } from "node:path";
 import { SaxesParser } from "saxes";
 
+import { parseArgs } from "./parse-args.mjs";
+
 const TEXT_KEYS = new Set([
   "name",
   "classname",
@@ -22,19 +24,11 @@ function attrText(value) {
   return value == null ? "" : String(value);
 }
 
-export function parseArgs(argv = []) {
-  return Object.fromEntries(
-    argv.flatMap((arg) => {
-      if (!arg.startsWith("--")) return [];
-      const [, body] = arg.split(/^--/, 2);
-      const eqIndex = body.indexOf("=");
-      if (eqIndex === -1) {
-        return [[body, "true"]];
-      }
-      return [[body.slice(0, eqIndex), body.slice(eqIndex + 1)]];
-    }),
-  );
-}
+// Re-export the shared `parseArgs` so the per-script test
+// (`tests/unit/scripts/junit-to-sonar.test.mjs`) can keep importing it
+// from this module. The single source of truth lives in
+// `scripts/lib/parse-args.mjs`.
+export { parseArgs };
 
 export function readJunitSuite(input) {
   const parser = new SaxesParser({ xmlns: false });

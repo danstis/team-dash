@@ -487,10 +487,9 @@ export function RefreshControls(): ReactElement {
     errorDetail: null,
   });
 
-  const token = tokenAccessor.getPlaintextToken();
-  const selectedWorkspace = workspace.workspace;
   const isRunning = state === "running";
-  const preconditionsMet = token !== null && selectedWorkspace !== null;
+  const preconditionsMet =
+    tokenAccessor.getPlaintextToken() !== null && workspace.workspace !== null;
   const buttonDisabled = isRunning || !preconditionsMet;
 
   const runRefresh = useCallback(async (): Promise<void> => {

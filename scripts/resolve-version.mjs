@@ -1,17 +1,13 @@
 #!/usr/bin/env node
 import process from "node:process";
 
-export function parseArgs(argv = []) {
-  return Object.fromEntries(
-    argv.flatMap((arg) => {
-      if (!arg.startsWith("--")) return [];
-      const [, body] = arg.split(/^--/, 2);
-      const eqIndex = body.indexOf("=");
-      if (eqIndex === -1) return [[body, "true"]];
-      return [[body.slice(0, eqIndex), body.slice(eqIndex + 1)]];
-    }),
-  );
-}
+import { parseArgs } from "./parse-args.mjs";
+
+// Re-export the shared `parseArgs` so the per-script test
+// (`tests/unit/scripts/resolve-version.test.mjs`) can keep importing it
+// from this module. The single source of truth lives in
+// `scripts/lib/parse-args.mjs`.
+export { parseArgs };
 
 export function resolveVersion({ refType, refName, latestTag } = {}) {
   const stripV = (value) => (value ? value.replace(/^v/, "") : "");

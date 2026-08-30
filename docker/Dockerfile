@@ -2,7 +2,7 @@
 #
 # Multi-stage build for Team Dash.
 #
-# Stage 1 (build): Node.js 24 produces the Vite 8.1 production bundle
+# Stage 1 (build): Node.js 24 produces the Vite 8.2 production bundle
 #                  into /app/dist using the committed package-lock.json
 #                  (npm ci) so the runtime artefact is reproducible.
 # Stage 2 (runtime): nginxinc/nginx-unprivileged:1.31-alpine serves the
@@ -20,7 +20,7 @@ ARG NODE_IMAGE=node:24
 ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31-alpine
 
 # ---------------------------------------------------------------------------
-# Stage 1 — build the static production bundle with Vite 8.1.
+# Stage 1 — build the static production bundle with Vite 8.2.
 # ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS build
 

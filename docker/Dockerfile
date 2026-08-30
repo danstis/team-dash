@@ -44,10 +44,20 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 # for the host OS/arch (esbuild/rollup/etc.), which can produce a
 # subtly wrong or broken image without any CI gate to catch it (T014's
 # docker-build gate is the first one). The list is intentionally narrow:
-# the entry HTML, the Vite + TypeScript configs, and the src/ tree.
-# Lint, test, fixture, spec-kit, CI, and docker files are not part of
-# the production bundle and are excluded.
+# the entry HTML, the Vite + TypeScript configs, the src/ tree, and the
+# `public/` directory — which holds the four committed PWA icon assets
+# (`public/icons/team-dash-32.png`, `…-180.png`, `…-192.png`, `…-512.png`)
+# referenced by `index.html` and `vite.config.ts`'s PWA manifest. Vite
+# copies `public/` into the bundle as-is, so omitting it from this list
+# would silently drop the favicon, the iOS home-screen icon, and every
+# PWA `manifest.webmanifest` `icons[]` entry, breaking PWA installability
+# in the shipped image (BSOD-451). Lint, test, fixture, spec-kit, CI,
+# and docker files are not part of the production bundle and are
+# excluded. The narrow list is also backed by the repo-root
+# `.dockerignore` so a stray `COPY . .` does not silently re-introduce
+# `node_modules/` or the build context's `dist/`.
 COPY tsconfig.json vite.config.ts index.html ./
+COPY public ./public
 COPY src ./src
 
 # Standard Vite production build. The same `npm run build` that runs in

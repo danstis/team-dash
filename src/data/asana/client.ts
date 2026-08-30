@@ -406,9 +406,10 @@ export async function fetchProjectsPage(
  * walk" case.
  *
  * `@param` projectGid — the opaque Asana `gid` of the project whose
- * task list is being fetched. The client interpolates it into the
- * path; callers MUST supply a non-empty, already-encoded `gid` (the
- * small-dataset fixture's `gid` strings are already URL-safe).
+ * task list is being fetched. The wrapper URL-encodes it via
+ * `encodeURIComponent` before interpolating it into the path, so a
+ * `gid` carrying URL-significant characters cannot break out of its
+ * path segment (BSOD-449).
  */
 export async function fetchTasksPage(
   token: string,
@@ -416,7 +417,7 @@ export async function fetchTasksPage(
   options?: ClientRequestOptions,
 ): Promise<AsanaClientResult<z.infer<typeof asanaTaskListResponseSchema>>> {
   return asanaGet(
-    `/projects/${projectGid}/tasks`,
+    `/projects/${encodeURIComponent(projectGid)}/tasks`,
     asanaTaskListResponseSchema,
     token,
     {
@@ -440,6 +441,13 @@ export async function fetchTasksPage(
  * insufficient — see `contracts/asana-client.md` § "Task detail"), and
  * by the US3 task-detail drill-down's "Open in Asana" link resolution.
  *
+ * `@param` taskGid — the opaque Asana `gid` of the task. The wrapper
+ * URL-encodes it via `encodeURIComponent` before interpolating it
+ * into the path, so a `gid` carrying URL-significant characters
+ * (`?`, `#`, `/`, `..`) cannot truncate the path, retarget the
+ * request to another endpoint, or override the appended query
+ * parameters (BSOD-449).
+ *
  * A 404 (unknown task gid) is not enumerated as a dedicated outcome
  * variant per the contract's closed union; it surfaces through the
  * base client's generic `!response.ok` path as `network_error` with
@@ -454,7 +462,7 @@ export async function fetchTaskDetail(
   options?: Pick<ClientRequestOptions, "signal">,
 ): Promise<AsanaClientResult<z.infer<typeof asanaTaskSchema>>> {
   return asanaGet(
-    `/tasks/${taskGid}`,
+    `/tasks/${encodeURIComponent(taskGid)}`,
     asanaTaskResponseSchema,
     token,
     { opt_fields: TASK_DETAIL_FIELDS },
@@ -595,10 +603,11 @@ export async function fetchEventsSince(
 
 /**
  * Build a fully-qualified Asana API URL from a path and optional
- * query-string bag. Path components are not URL-encoded here because
- * the wrappers in subsequent tasks compose paths from already-encoded
- * `gid` values (callers `encodeURIComponent` interpolated `gid`s
- * before formatting). Query parameters are stringified via
+ * query-string bag. Path components are not URL-encoded here: the
+ * caller-facing wrappers (`fetchTasksPage`, `fetchTaskDetail`, …)
+ * `encodeURIComponent` each interpolated `gid` at the point of
+ * interpolation, so the `path` reaching this function already has
+ * URL-safe segments (BSOD-449). Query parameters are stringified via
  * `URLSearchParams`, which handles the encoding of `offset` tokens
  * and other opaque values correctly without any manual encoding.
  */

@@ -35,8 +35,9 @@
  *   `data-model.md` and applied during normalisation, not here.
  *
  * - **No normalisation of `gid`.** Per FR-017, `gid` is an opaque
- *   string. The schemas validate "non-empty string" only; they do
- *   not parse, compare numerically, or assume any format.
+ *   string. The schemas validate "non-empty, opaque-identifier
+ *   characters only" (`[A-Za-z0-9_-]+`, BSOD-449); they do not parse,
+ *   compare numerically, or assume any format beyond that.
  *
  * `src/data/asana/**` is the network-acquisition boundary the spec
  * draws (plan.md: Technical Context, data/asana row). It is allowed
@@ -54,11 +55,22 @@ import { z } from "zod";
 /**
  * The opaque-string contract for every `gid` field (FR-017).
  * Asana documents `gid` as a globally unique string; the schemas
- * enforce only "non-empty" so a malformed numeric-looking or empty
- * value is rejected at the validation boundary rather than silently
- * propagating into dedup / upsert paths.
+ * enforce "non-empty" and restrict the value to the opaque-identifier
+ * character set `[A-Za-z0-9_-]+` so a value carrying URL-significant
+ * characters (`?`, `#`, `/`, `..`, whitespace) is rejected at the
+ * validation boundary rather than silently propagating into dedup /
+ * upsert paths or being interpolated into a request path (BSOD-449).
+ *
+ * The pattern is deliberately weaker than Asana's actual `gid` shape
+ * (decimal digit strings) to preserve the FR-017 "opaque, do not
+ * parse" stance: the app still makes no numeric / ordering / length
+ * assumption about a `gid`, it only refuses the characters that would
+ * let a `gid` escape its path segment.
  */
-export const gidSchema = z.string().min(1);
+export const gidSchema = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z0-9_-]+$/);
 
 /**
  * ISO-8601 instant with an optional offset (e.g. `2026-07-22T08:57:22Z`

@@ -163,13 +163,27 @@ const taskFixture = (overrides: Partial<TaskFixture> = {}): TaskFixture => ({
 
 describe("T023 Asana Zod resource schemas", () => {
   describe("shared primitives (gid, ISO datetime, ISO date)", () => {
-    it("gidSchema accepts any non-empty opaque string", () => {
+    it("gidSchema accepts any non-empty opaque-identifier string", () => {
       // FR-017: gid is an opaque string — no numeric / UUID / format
-      // assumption. The schema must accept any non-empty string.
+      // assumption. The schema accepts any non-empty string built from
+      // the opaque-identifier character set.
       expect(gidSchema.safeParse("1").success).toBe(true);
       expect(gidSchema.safeParse("abc-def-123").success).toBe(true);
       expect(gidSchema.safeParse("1200000").success).toBe(true);
+      expect(gidSchema.safeParse("1201234567890").success).toBe(true);
       expect(gidSchema.safeParse("").success).toBe(false);
+    });
+
+    it("gidSchema rejects values carrying URL-significant characters (BSOD-449)", () => {
+      // A gid is interpolated into a request path; query, fragment,
+      // traversal, and whitespace characters must be refused at the
+      // validation boundary so they can never reach the path sink.
+      expect(gidSchema.safeParse("123?x=1").success).toBe(false);
+      expect(gidSchema.safeParse("123?opt_fields=").success).toBe(false);
+      expect(gidSchema.safeParse("../../users/me").success).toBe(false);
+      expect(gidSchema.safeParse("123#").success).toBe(false);
+      expect(gidSchema.safeParse("123 456").success).toBe(false);
+      expect(gidSchema.safeParse("a/b").success).toBe(false);
     });
 
     it("isoDateTimeSchema accepts a UTC Z timestamp", () => {

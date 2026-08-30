@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.7.0](https://github.com/danstis/team-dash/compare/v0.6.0...v0.7.0) (2026-08-30)
+
+
+### Features
+
+* **refresh:** ship FreshnessBanner + offline-disabled Refresh (BSOD-304, T050) ([#148](https://github.com/danstis/team-dash/issues/148)) ([ac8b4b2](https://github.com/danstis/team-dash/commit/ac8b4b23af4da54edabf70ac4378e3b668a18b76))
+
+
+### Bug fixes
+
+* **asana:** encode gid path segments and tighten gidSchema (BSOD-449) ([#189](https://github.com/danstis/team-dash/issues/189)) ([28b2823](https://github.com/danstis/team-dash/commit/28b28236628d4d3f444619550e49fb68264434a5))
+* **build:** keep MSW dev worker out of the production bundle (BSOD-450) ([#188](https://github.com/danstis/team-dash/issues/188)) ([f6a82cb](https://github.com/danstis/team-dash/commit/f6a82cb578bf71baf08b0ffe7f0bae5a6bddf442))
+* **deps:** update dependency zod to 4.5 ([#183](https://github.com/danstis/team-dash/issues/183)) ([32dccc4](https://github.com/danstis/team-dash/commit/32dccc41ab1a2df2a1aac87a1dd1fd7a434703f3))
+* **docker:** copy public/ into the image and gate on shipped contents (BSOD-451) ([#190](https://github.com/danstis/team-dash/issues/190)) ([1076df0](https://github.com/danstis/team-dash/commit/1076df086a649e87759ef95aeb4467232ba25767))
+* **docker:** sync Dockerfile comments to current Vite 8.2 (BSOD-458) ([#184](https://github.com/danstis/team-dash/issues/184)) ([d0bb4b7](https://github.com/danstis/team-dash/commit/d0bb4b70eac8263fe0d1ab158059762f6297e9c2))
+* **refresh-staging:** use break in flushStoreRows switch (BSOD-455) ([#179](https://github.com/danstis/team-dash/issues/179)) ([ecc602b](https://github.com/danstis/team-dash/commit/ecc602bb4a71e45cf0231973fdf801b79bf503ef))
+* **refresh-staging:** use break instead of return in flushStoreRows switch (BSOD-455) ([ecc602b](https://github.com/danstis/team-dash/commit/ecc602bb4a71e45cf0231973fdf801b79bf503ef))
+* **refresh:** remove unused token/selectedWorkspace locals (BSOD-453) ([#178](https://github.com/danstis/team-dash/issues/178)) ([52fd516](https://github.com/danstis/team-dash/commit/52fd51638337585b94219672dc15a445e0b758a3))
+* **router:** refresh outdated PlaceholderRoute copy (BSOD-363) ([#152](https://github.com/danstis/team-dash/issues/152)) ([b2ef3df](https://github.com/danstis/team-dash/commit/b2ef3df6573efc4d97b13eb90dc6fd454c53f53f))
+* **specs:** sync research.md Vite 8.1 → 8.2 (BSOD-459) ([#187](https://github.com/danstis/team-dash/issues/187)) ([c37d3a8](https://github.com/danstis/team-dash/commit/c37d3a80c7aac6179429958628c7e83a0abf264c))
+
 ## [0.6.0](https://github.com/danstis/team-dash/compare/v0.5.0...v0.6.0) (2026-08-02)
 
 

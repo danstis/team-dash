@@ -1,0 +1,34 @@
+# Backs the narrow `COPY` enumeration in `docker/Dockerfile` so that
+# `docker build` does not silently drag build-context noise into the
+# image. `docker/Dockerfile` deliberately lists its build inputs one by
+# one rather than running `COPY . .` — a developer's host
+# `node_modules/` (built for the host OS/arch) would otherwise clobber
+# the just-`npm ci`'d `/app/node_modules`. This file makes the same
+# promise on the context side: a stray `COPY . .` introduced by a
+# future contributor still won't pull these into the build context.
+#
+# Keep the file in sync with the explicit `COPY` lines in
+# `docker/Dockerfile` — the runtime-stage copy (`/app/dist` →
+# `/usr/share/nginx/html`) is unaffected by this list because it uses
+# `--from=build`, not the host context.
+
+# Local / CI install outputs — would clobber the `npm ci` step if the
+# Dockerfile ever falls back to `COPY . .`.
+node_modules
+
+# Build output — the runtime stage pulls `dist` from the build stage
+# via `COPY --from=build`, so a context copy would be redundant and
+# would also race the build.
+dist
+# Vite/Sonar/IDE noise that must never enter a build image.
+coverage
+.vite
+.vscode
+.DS_Store
+# The MSW browser worker is committed at `public/mockServiceWorker.js`
+# so `VITE_USE_MOCKS=1` and the local test suites can find it. It is a
+# development-only fixture and must not ship in the container (BSOD-450
+# covers the in-bundle exclusion; this entry is the image-side guard
+# that keeps it out of the build context). Drop this line once BSOD-450
+# has moved the file out of `public/`.
+public/mockServiceWorker.js

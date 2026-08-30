@@ -248,6 +248,30 @@ jobs:
           fetch-depth: 0
       - name: Build Docker image
         run: docker build --file docker/Dockerfile --tag team-dash-ci:${{ github.sha }} .
+      - name: Verify image document root
+        # BSOD-451 — assert the SHIPPED image contains the static assets
+        # the PWA / favicon references point at. The previous `pwa-check`
+        # gate validated the `dist/` artifact produced by the `build`
+        # job, which checks out the full repo (including `public/`).
+        # The Docker build's narrow `COPY` enumeration was silently
+        # omitting `public/`, so the released image was missing every
+        # PWA icon and `mockServiceWorker.js` would have started
+        # shipping once `public/` was added. This step inspects the
+        # built image so the gate points at what actually ships.
+        run: |
+          docker run --rm --entrypoint sh team-dash-ci:${{ github.sha }} -c '
+            set -e
+            cd /usr/share/nginx/html
+            test -f index.html
+            test -f sw.js
+            test -f manifest.webmanifest
+            test -d assets
+            test -f icons/team-dash-32.png
+            test -f icons/team-dash-180.png
+            test -f icons/team-dash-192.png
+            test -f icons/team-dash-512.png
+            test ! -f mockServiceWorker.js
+          '
       - name: Export Docker image
         run: docker save team-dash-ci:${{ github.sha }} --output team-dash-image.tar
       - name: Upload Docker image

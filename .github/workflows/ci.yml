@@ -235,6 +235,10 @@ jobs:
           test -f dist/sw.js
           test -f dist/manifest.webmanifest
           test -d dist/assets
+          # MSW's dev-only worker script must never ship in the production
+          # bundle (BSOD-450) — it is served from dev/ by a vite serve
+          # middleware, not copied from public/.
+          test ! -f dist/mockServiceWorker.js
 
   docker-build:
     name: Docker build

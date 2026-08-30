@@ -254,37 +254,37 @@ async function flushStoreRows<S extends RefreshStagingStoreName>(
   switch (store) {
     case "workspaces":
       await db.workspaces.bulkPut(rows as readonly Workspace[]);
-      return;
+      break;
     case "projects":
       await db.projects.bulkPut(rows as readonly Project[]);
-      return;
+      break;
     case "portfolios":
       await db.portfolios.bulkPut(rows as readonly Portfolio[]);
-      return;
+      break;
     case "asanaTeams":
       await db.asanaTeams.bulkPut(rows as readonly AsanaTeam[]);
-      return;
+      break;
     case "users":
       await db.users.bulkPut(rows as readonly User[]);
-      return;
+      break;
     case "priorityFields":
       await db.priorityFields.bulkPut(rows as readonly PriorityField[]);
-      return;
+      break;
     case "dependencies":
       await db.dependencies.bulkPut(rows as readonly Dependency[]);
-      return;
+      break;
     case "sections":
       await db.sections.bulkPut(rows as readonly Section[]);
-      return;
+      break;
     case "tasks":
       await db.tasks.bulkPut(rows as readonly Task[]);
-      return;
+      break;
     case "refreshSessions":
       await db.refreshSessions.bulkPut(rows as readonly RefreshSession[]);
-      return;
+      break;
     case "snapshots":
       await db.snapshots.bulkPut(rows as readonly Snapshot[]);
-      return;
+      break;
   }
 }
 

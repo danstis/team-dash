@@ -115,7 +115,7 @@ import {
 import type { AsanaClientResult } from "../../data/asana/types";
 import {
   maskedIdentifierFor,
-  MS_PER_SECOND,
+  formatRateLimitedMessage,
   summariseUserValidationResult,
   type CredentialValidationOutcomeKind,
   type CredentialValidationSummary,
@@ -214,9 +214,7 @@ function summariseWorkspaceListFailure(
     case "rate_limited":
       return {
         kind: "rate_limited",
-        message: `Rate limited by Asana. Retry after ${Math.round(
-          result.retryAfterMs / MS_PER_SECOND,
-        )}s.`,
+        message: formatRateLimitedMessage(result.retryAfterMs),
       };
     case "network_error":
       return {

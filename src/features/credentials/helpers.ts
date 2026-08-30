@@ -16,6 +16,24 @@ import type { AsanaClientResult } from "../../data/asana/types";
  */
 export const MS_PER_SECOND = 1_000;
 
+/**
+ * Format a `rate_limited` outcome's `retryAfterMs` as the user-facing
+ * "Retry after Ns" sentence the credential flow surfaces in both the
+ * user-test summary (`summariseUserValidationResult`) and the
+ * post-validation workspace-listing summary
+ * (`summariseWorkspaceListFailure` in `TokenEntry.tsx`). Centralised
+ * so the project-wide "Rate limited by Asana." copy and the
+ * `Math.round(ms / MS_PER_SECOND)` unit conversion are owned by a
+ * single source of truth — a future contributor who changes the
+ * sentence structure (e.g. switches to "in Ns" or adds the seconds
+ * floor) updates one helper rather than two call sites.
+ */
+export function formatRateLimitedMessage(retryAfterMs: number): string {
+  return `Rate limited by Asana. Retry after ${Math.round(
+    retryAfterMs / MS_PER_SECOND,
+  )}s.`;
+}
+
 export type CredentialValidationOutcomeKind =
   | "valid"
   | "invalid_token"
@@ -54,9 +72,7 @@ export function summariseUserValidationResult(
     case "rate_limited":
       return {
         kind: "rate_limited",
-        message: `Rate limited by Asana. Retry after ${Math.round(
-          result.retryAfterMs / MS_PER_SECOND,
-        )}s.`,
+        message: formatRateLimitedMessage(result.retryAfterMs),
       };
     case "network_error":
       return {

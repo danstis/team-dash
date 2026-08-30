@@ -15,7 +15,7 @@ import { VitePWA } from "vite-plugin-pwa";
  * dev workflow unchanged: with `VITE_USE_MOCKS=1 npm run dev`,
  * `startDevWorker()` still registers `/mockServiceWorker.js`.
  */
-function devMockServiceWorker(): Plugin {
+export function devMockServiceWorker(): Plugin {
   return {
     name: "team-dash:dev-mock-service-worker",
     apply: "serve",

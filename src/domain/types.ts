@@ -248,17 +248,12 @@ export type ViewState =
   | "ready";
 
 /**
- * Runtime type-guard for an unknown string so a feature module can
- * defend against data arriving from outside the typed boundary (e.g. an
- * IndexedDB record from a future schema that introduces a new state).
+ * Runtime enumeration of every `ViewState` literal, exposed so the
+ * type-guard below and any feature module that needs to iterate the
+ * set (e.g. an i18n catalogue) can read it from a single source
+ * without hard-coding the union. Declared before its consumer
+ * (`isViewState`) so the guard reads top-to-bottom.
  */
-export function isViewState(value: unknown): value is ViewState {
-  return (
-    typeof value === "string" &&
-    (VIEW_STATES as readonly string[]).includes(value)
-  );
-}
-
 const VIEW_STATES: readonly ViewState[] = [
   "loading",
   "first_run",
@@ -272,6 +267,18 @@ const VIEW_STATES: readonly ViewState[] = [
   "no_results",
   "ready",
 ] as const;
+
+/**
+ * Runtime type-guard for an unknown string so a feature module can
+ * defend against data arriving from outside the typed boundary (e.g. an
+ * IndexedDB record from a future schema that introduces a new state).
+ */
+export function isViewState(value: unknown): value is ViewState {
+  return (
+    typeof value === "string" &&
+    (VIEW_STATES as readonly string[]).includes(value)
+  );
+}
 
 /* -------------------------------------------------------------------------- */
 /* DataQualityFlag (FR-079 / FR-084)                                           */
@@ -305,6 +312,21 @@ export interface DataQualityFlag {
 }
 
 /**
+ * Runtime enumeration of every `DataQualityFlagKind` literal, exposed so
+ * the type-guard below and any metric scan that needs to iterate the
+ * set can read it from a single source. Declared before its consumer
+ * (`isDataQualityFlagKind`) so the guard reads top-to-bottom.
+ */
+const DATA_QUALITY_FLAG_KINDS: readonly DataQualityFlagKind[] = [
+  "missing_assignee",
+  "missing_estimate",
+  "missing_priority",
+  "malformed_priority",
+  "missing_due_date",
+  "missing_actual_time",
+] as const;
+
+/**
  * Runtime type-guard for the `DataQualityFlagKind` literal union so a
  * metric scan cannot accidentally widen a kind and silently fall through
  * an unhandled case.
@@ -317,12 +339,3 @@ export function isDataQualityFlagKind(
     (DATA_QUALITY_FLAG_KINDS as readonly string[]).includes(value)
   );
 }
-
-const DATA_QUALITY_FLAG_KINDS: readonly DataQualityFlagKind[] = [
-  "missing_assignee",
-  "missing_estimate",
-  "missing_priority",
-  "malformed_priority",
-  "missing_due_date",
-  "missing_actual_time",
-] as const;

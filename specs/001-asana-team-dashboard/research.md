@@ -9,7 +9,7 @@ by Constitution principles, especially IV (local-first/no server DB), V
 
 ## 1. UI framework
 
-- **Decision**: React 19.2 with function components and hooks, built with Vite 8.1.
+- **Decision**: React 19.2 with function components and hooks, built with Vite 8.2.
 - **Rationale**: Mainstream, strong TypeScript support, largest pool of
   accessible-component and charting libraries (needed for FR-088), fast
   Vite dev/build loop, straightforward `vite-plugin-pwa` integration for
@@ -185,7 +185,7 @@ by Constitution principles, especially IV (local-first/no server DB), V
   linting; GitHub Actions CI running, per Principle III: install → lint
   (ESLint) → format check (Prettier) → typecheck (`tsc --noEmit`, strict,
   TypeScript 6.0) → unit tests (Vitest 4.1) → contract tests (Asana-client
-  + Dexie schema, Vitest+MSW) → production build (Vite 8.1) →
+  + Dexie schema, Vitest+MSW) → production build (Vite 8.2) →
   PWA/service-worker validation (Workbox build output check + a
   Playwright install/offline assertion) → Docker build → a Playwright
   browser smoke test against the built container. Secret and dependency

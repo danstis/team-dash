@@ -15,18 +15,27 @@ jobs:
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
-    # Expose the action's outputs as job outputs so that downstream
+    # Expose the release info as job outputs so that downstream
     # `workflow_run` consumers (currently `.github/workflows/docker-release.yml`)
-    # can read the resolved tag name, the source commit SHA, and the
-    # `releases_created` boolean without depending on the
-    # `release: published` event — which GitHub Actions deliberately
-    # suppresses when the release was created by a workflow using
-    # `secrets.GITHUB_TOKEN` (the anti-recursion policy documented at
+    # can read the resolved tag name, the source commit SHA, the
+    # `releases_created` boolean, and the `prerelease` flag without
+    # depending on the `release: published` event — which GitHub
+    # Actions deliberately suppresses when the release was created by
+    # a workflow using `secrets.GITHUB_TOKEN` (the anti-recursion
+    # policy documented at
     # https://docs.github.com/en/actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow).
+    #
+    # The release-please action itself does not declare these values
+    # in its `action.yml`, so its `core.setOutput()` calls are not
+    # surfaced as step outputs (BSOD-463 — see the "Resolve release
+    # info" step below for the workaround). We re-derive the same
+    # values from the GitHub Releases API, which is the source of
+    # truth for what release-please published.
     outputs:
-      releases_created: ${{ steps.release.outputs.releases_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      sha: ${{ steps.release.outputs.sha }}
+      releases_created: ${{ steps.resolve.outputs.releases_created }}
+      tag_name: ${{ steps.resolve.outputs.tag_name }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -38,3 +47,67 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Workaround for BSOD-463: the release-please action's
+      # `core.setOutput('releases_created', ...)`, `tag_name`, and
+      # `sha` calls are silently dropped because its `action.yml`
+      # doesn't list those output names. Re-derive the values from
+      # the GitHub Releases API and write them as step outputs so the
+      # job-level `outputs:` above carry real values that downstream
+      # `workflow_run` consumers can read via
+      # `github.event.workflow_run.outputs.*`.
+      #
+      # Inputs from the upstream action's setOutput calls are passed
+      # through `env:` (not interpolated into `run:`) per the
+      # script-injection convention used in `docker-release.yml`.
+      - name: Resolve release info for downstream workflow_run consumers
+        id: resolve
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.sha }}
+          ACTION_RELEASES_CREATED: ${{ steps.release.outputs.releases_created }}
+          ACTION_TAG_NAME: ${{ steps.release.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+
+          # Best-effort: if the action's own setOutput calls were
+          # surfaced (i.e. the consumer is a future release-please
+          # version that does declare them in action.yml), trust the
+          # tag and look the canonical release up by tag — that path
+          # costs one API call and returns the precise sha and
+          # prerelease flag for the release we just tagged.
+          #
+          # Otherwise the action's outputs are empty and we fall back
+          # to scanning the most recent releases and matching by
+          # `target_commitish == $HEAD_SHA`. release-please creates
+          # the GitHub Release with `target_commitish` set to the
+          # commit it tagged, so this matches the release we just
+          # produced (if any) with high confidence.
+          RELEASE_JSON=""
+          if [ "$ACTION_RELEASES_CREATED" = "true" ] && [ -n "$ACTION_TAG_NAME" ]; then
+            RELEASE_JSON=$(gh api "repos/${{ github.repository }}/releases/tags/$ACTION_TAG_NAME")
+          else
+            RELEASE_JSON=$(gh api "repos/${{ github.repository }}/releases?per_page=10")
+            RELEASE_JSON=$(printf '%s' "$RELEASE_JSON" | jq --arg sha "$HEAD_SHA" \
+              '[.[] | select(.target_commitish == $sha)] | .[0] // null')
+          fi
+
+          if [ "$RELEASE_JSON" != "null" ] && [ -n "$RELEASE_JSON" ]; then
+            TAG_NAME=$(printf '%s' "$RELEASE_JSON" | jq -r '.tag_name // ""')
+            SHA=$(printf '%s' "$RELEASE_JSON" | jq -r '.target_commitish // ""')
+            PRERELEASE=$(printf '%s' "$RELEASE_JSON" | jq -r '.prerelease // false')
+            {
+              echo "releases_created=true"
+              echo "tag_name=$TAG_NAME"
+              echo "sha=$SHA"
+              echo "prerelease=$PRERELEASE"
+            } >> "$GITHUB_OUTPUT"
+          else
+            # release-please completed without producing a release
+            # (no conventional commits since the last tag, etc.).
+            # Emit `releases_created=false` so the downstream
+            # `if: github.event.workflow_run.outputs.releases_created == 'true'`
+            # guard in `docker-release.yml` cleanly skips the run.
+            echo "releases_created=false" >> "$GITHUB_OUTPUT"
+          fi

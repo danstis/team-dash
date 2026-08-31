@@ -100,6 +100,29 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     expect(source).toMatch(
       /WORKFLOW_RUN_HEAD_BRANCH:\s*\$\{\{\s*github\.event\.workflow_run\.head_branch\s*\}\}/,
     );
+    // BSOD-463: also thread the upstream `prerelease` output (set by
+    // the "Resolve release info" step in release-please.yml) through
+    // an env var so the workflow_run branch can pass it to
+    // `scripts/resolve-docker-tags.mjs`. Hard-coding `prerelease=` to
+    // empty here would silently push `latest` for any release-please
+    // pre-release (e.g. `v1.0.0-rc.1`).
+    expect(source).toMatch(
+      /WORKFLOW_RUN_PRERELEASE:\s*\$\{\{\s*github\.event\.workflow_run\.outputs\.prerelease\s*\}\}/,
+    );
+  });
+
+  it("passes the upstream prerelease flag through to the tag resolver on the workflow_run path", () => {
+    // BSOD-463: previously the workflow_run branch hard-coded
+    // `prerelease=` (empty), so a release-please pre-release would
+    // have incorrectly pushed `latest`. Now we thread
+    // `$WORKFLOW_RUN_PRERELEASE` (resolved by release-please.yml's
+    // "Resolve release info" step from the GitHub Releases API)
+    // through to `scripts/resolve-docker-tags.mjs` so pre-releases
+    // never overwrite `latest`.
+    expect(source).toMatch(/echo "prerelease=\$WORKFLOW_RUN_PRERELEASE"/);
+    // The dispatch branch must keep its semver-derive behavior, not
+    // start importing the workflow_run flag.
+    expect(source).not.toMatch(/echo "prerelease=\$DISPATCH_PRERELEASE"/);
   });
 
   it("hard-fails on a workflow_run with releases_created=true but no tag_name output", () => {

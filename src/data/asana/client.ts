@@ -144,11 +144,18 @@ const ASANA_API_BASE = "https://app.asana.com/api/1.0";
 /**
  * Milliseconds in one second. Used by `parseRetryAfter` to convert the
  * seconds-form `Retry-After` header into the millisecond delay the
- * `rate_limited` outcome surfaces. Held as a named constant so this
- * file matches the project-wide unit-convention used by
- * `src/shared/format/index.ts` and `src/shared/states/RateLimitedState.tsx`
- * (see their `MINUTES_PER_HOUR` / `MS_PER_SECOND` / `SECONDS_PER_MINUTE`
- * declarations) rather than repeating an inline literal.
+ * `rate_limited` outcome surfaces. Held as a named constant to mirror
+ * the project-wide unit-convention used by
+ * `src/shared/states/RateLimitedState.tsx` (which declares
+ * `MS_PER_SECOND`, `SECONDS_PER_MINUTE`, and `MINUTES_PER_HOUR` for its
+ * `formatRetryAfter` helper) rather than repeating an inline literal.
+ * The credential-side companion `src/features/credentials/helpers.ts`
+ * also exports a matching `MS_PER_SECOND` for its
+ * `formatRateLimitedMessage` helper. `src/shared/format/index.ts`
+ * declares only `MINUTES_PER_HOUR` (its duration formatter works in
+ * minutes, not milliseconds), so the seconds-form constants live with
+ * the rate-limit code paths rather than in the shared formatting
+ * module.
  */
 const MS_PER_SECOND = 1_000;
 

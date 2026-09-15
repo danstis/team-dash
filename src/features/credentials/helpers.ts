@@ -4,17 +4,18 @@ import { asanaUserSchema } from "../../data/asana/schemas";
 import type { AsanaClientResult } from "../../data/asana/types";
 
 /**
- * Milliseconds in one second. Converts the `retryAfterMs` carried by
- * the `rate_limited` outcome into a whole-second display value, matching
- * the project-wide unit-convention documented in
- * `src/data/asana/client.ts` and `src/shared/states/RateLimitedState.tsx`.
+ * Milliseconds in one second. Used internally by `formatRateLimitedMessage`
+ * to convert `retryAfterMs` into the whole-second display value the
+ * user-facing message emits, matching the project-wide unit-convention
+ * documented in `src/data/asana/client.ts` and
+ * `src/shared/states/RateLimitedState.tsx`.
  *
- * Exported so the peer `summariseWorkspaceListFailure` summariser in
- * `TokenEntry.tsx` can reuse the same constant instead of an inline
- * `1000` literal — the named constant is the project-wide convention
- * every other rate-limit formatter follows.
+ * File-local — the peer `summariseWorkspaceListFailure` summariser in
+ * `TokenEntry.tsx` consumes the same conversion through
+ * `formatRateLimitedMessage`, so an exported constant here would have
+ * no external consumer.
  */
-export const MS_PER_SECOND = 1_000;
+const MS_PER_SECOND = 1_000;
 
 /**
  * Format a `rate_limited` outcome's `retryAfterMs` as the user-facing

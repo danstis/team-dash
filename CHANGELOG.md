@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/danstis/team-dash/compare/v0.7.0...v0.7.1) (2026-09-18)
+
+
+### Bug fixes
+
+* **deps:** update dependency zod to 4.6 ([#212](https://github.com/danstis/team-dash/issues/212)) ([05bf011](https://github.com/danstis/team-dash/commit/05bf0112db55c5dd407bc4d7398ce7df3a6fd1aa))
+* **deps:** update react packages to 19.3 ([#215](https://github.com/danstis/team-dash/issues/215)) ([7e2ade1](https://github.com/danstis/team-dash/commit/7e2ade129d32db835576a28bb0e5aa94f594fa4b))
+
 ## [0.7.0](https://github.com/danstis/team-dash/compare/v0.6.0...v0.7.0) (2026-08-30)
 
 

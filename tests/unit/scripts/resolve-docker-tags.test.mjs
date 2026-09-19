@@ -153,15 +153,41 @@ describe("resolveDockerTags", () => {
     ).toThrow(/semver/i);
   });
 
-  it("treats prerelease/onMain only as true when strictly the boolean `true`", () => {
+  it("coerces string booleans for prerelease and onMain via coerceBool (BSOD-463)", () => {
+    // The workflow_run branch in `docker-release.yml` invokes the script
+    // with `--prerelease="$WORKFLOW_RUN_PRERELEASE"` (a string), and the
+    // CLI's `coerceBool` converts it to a real boolean. We run the same
+    // coercion inside `resolveDockerTags` itself so the API and the CLI
+    // share one contract — no caller can accidentally trip over the
+    // strict-bool version by passing `"true"` / `"false"` directly.
+    expect(
+      resolveDockerTags({
+        tagName: "v0.5.0",
+        prerelease: "true",
+        onMain: "true",
+      }),
+    ).toMatchObject({
+      version: "0.5.0",
+      prerelease: true,
+      onMain: true,
+      tags: ["0.5.0", "0.5"],
+    });
     expect(
       resolveDockerTags({
         tagName: "v0.1.0",
         prerelease: "false",
         onMain: "true",
       }).tags,
-    ).not.toContain("latest");
+    ).toContain("latest");
+  });
 
+  it("still leaves non-string, non-boolean numeric values as 'not provided'", () => {
+    // Numeric `onMain=1` is neither a strict boolean nor a string coerceBool
+    // recognises (it only coerces string `"1"`, not the number `1`), so it
+    // stays `undefined` and the function falls back to onMain=false.
+    // This guards against the looser JS truthy-coercion trap (the previous
+    // strict-bool contract). Numeric `prerelease=0` and `prerelease=1`
+    // likewise derive from the semver's `-` segment.
     expect(
       resolveDockerTags({
         tagName: "v0.1.0",
@@ -169,6 +195,68 @@ describe("resolveDockerTags", () => {
         onMain: 1,
       }).tags,
     ).not.toContain("latest");
+
+    expect(
+      resolveDockerTags({
+        tagName: "v1.0.0-rc.1",
+        prerelease: 1,
+        onMain: true,
+      }).prerelease,
+    ).toBe(true);
+
+    expect(
+      resolveDockerTags({
+        tagName: "v0.1.0",
+        prerelease: 0,
+        onMain: true,
+      }).prerelease,
+    ).toBe(false);
+  });
+
+  describe("prerelease flag from the workflow_run path (BSOD-463)", () => {
+    // docker-release.yml threads `$WORKFLOW_RUN_PRERELEASE` from the
+    // upstream workflow_run.outputs.prerelease, which is set by
+    // release-please.yml's "Resolve release info" step from the
+    // GitHub Releases API via `jq -r '.prerelease // false'`. That
+    // value arrives at the script as the string "true" / "false".
+    // coerceBool must turn those strings into real booleans so
+    // pre-release tags do not silently push `latest`.
+
+    it('treats prerelease="true" from the workflow_run path as boolean true (no `latest`)', () => {
+      const result = resolveDockerTags({
+        tagName: "v1.0.0-rc.1",
+        prerelease: "true",
+        onMain: true,
+      });
+      expect(result.prerelease).toBe(true);
+      expect(result.tags).toEqual(["1.0.0-rc.1", "1.0"]);
+      expect(result.tags).not.toContain("latest");
+    });
+
+    it('treats prerelease="false" from the workflow_run path as boolean false (pushes `latest`)', () => {
+      const result = resolveDockerTags({
+        tagName: "v1.0.0",
+        prerelease: "false",
+        onMain: true,
+      });
+      expect(result.prerelease).toBe(false);
+      expect(result.tags).toEqual(["1.0.0", "1.0", "latest"]);
+    });
+
+    it("regression: prerelease=true on a stable semver still omits `latest` (workflow_run path)", () => {
+      // The GitHub Releases API may mark a stable semver as a
+      // pre-release if it was published through a draft / pre-release
+      // workflow. The script must trust the explicit flag over the
+      // semver's `-` segment.
+      const result = resolveDockerTags({
+        tagName: "v0.5.0",
+        prerelease: "true",
+        onMain: true,
+      });
+      expect(result.prerelease).toBe(true);
+      expect(result.tags).toEqual(["0.5.0", "0.5"]);
+      expect(result.tags).not.toContain("latest");
+    });
   });
 
   describe("prerelease derivation from semver (workflow_dispatch path)", () => {

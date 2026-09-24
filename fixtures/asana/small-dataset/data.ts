@@ -1,5 +1,4 @@
 export const smallDatasetWorkspaceGid = "1200000000000001";
-export const secondWorkspaceGid = "1200000000000002";
 
 export const smallDataset = {
   workspaces: [
@@ -10,7 +9,7 @@ export const smallDataset = {
       is_organization: true,
     },
     {
-      gid: secondWorkspaceGid,
+      gid: "1200000000000002",
       name: "Personal Sandbox",
       resource_type: "workspace" as const,
       is_organization: false,

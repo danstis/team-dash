@@ -6,7 +6,7 @@ import { parseArgs } from "./parse-args.mjs";
 // Re-export the shared `parseArgs` so the per-script test
 // (`tests/unit/scripts/resolve-version.test.mjs`) can keep importing it
 // from this module. The single source of truth lives in
-// `scripts/lib/parse-args.mjs`.
+// `scripts/parse-args.mjs`.
 export { parseArgs };
 
 export function resolveVersion({ refType, refName, latestTag } = {}) {

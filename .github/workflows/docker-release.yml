@@ -85,6 +85,7 @@ jobs:
           RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
           WORKFLOW_RUN_TAG_NAME: ${{ github.event.workflow_run.outputs.tag_name }}
           WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.outputs.sha }}
+          WORKFLOW_RUN_PRERELEASE: ${{ github.event.workflow_run.outputs.prerelease }}
           WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           DISPATCH_TAG_NAME: ${{ inputs.tag_name }}
           DISPATCH_SOURCE_BRANCH: ${{ inputs.source_branch }}
@@ -130,9 +131,19 @@ jobs:
             else
               ON_MAIN="false"
             fi
+            # Pass through the prerelease flag from the upstream
+            # `Resolve release info` step in release-please.yml. If
+            # the upstream emitted an empty `prerelease` (the
+            # pre-release-please-outputs-declaration world of
+            # v5.0.0), `WORKFLOW_RUN_PRERELEASE` is also empty and
+            # the script (`scripts/resolve-docker-tags.mjs`) falls
+            # back to deriving prerelease from the tag's semver —
+            # which means `v1.0.0-rc.1` will NOT push `latest` even
+            # from a release-please workflow_run that came from
+            # main. (BSOD-463)
             {
               echo "tag_name=$WORKFLOW_RUN_TAG_NAME"
-              echo "prerelease="
+              echo "prerelease=$WORKFLOW_RUN_PRERELEASE"
               echo "on_main=$ON_MAIN"
               echo "commit_sha=$WORKFLOW_RUN_SHA"
             } >> "$GITHUB_OUTPUT"

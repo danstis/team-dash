@@ -63,9 +63,12 @@
  *    raw array literal were used as the Map key, breaking the
  *    "upsert-keyed" invariant and risking unbounded memory growth at
  *    the 25k-task NFR-001 scale. The buffer therefore keys every
- *    store by a stringified form (`` `${taskGid}\0${dependsOnTaskGid}` ``)
- *    with a reserved separator byte between the two opaque identity
- *    components. The contract test
+ *    store by a stringified form; for the two compound-key stores
+ *    (`dependencies`, `snapshots`) that form is
+ *    `JSON.stringify([taskGid, dependsOnTaskGid])` (and the equivalent
+ *    snapshot pair) so opaque identity components remain unambiguous
+ *    even when they contain embedded delimiters, quotes, or multibyte
+ *    characters. The contract test
  *    `tests/contract/refresh-staging.test.ts` "compound-key staging
  *    dedupes successive stageUpsert calls" pins this.
  *

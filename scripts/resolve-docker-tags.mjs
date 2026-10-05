@@ -40,7 +40,9 @@ const SEMVER_RE =
 // Re-export the shared `parseArgs` so the per-script test
 // (`tests/unit/scripts/resolve-docker-tags.test.mjs`) can keep importing
 // it from this module. The single source of truth lives in
-// `scripts/lib/parse-args.mjs`.
+// `scripts/parse-args.mjs` (a `scripts/lib/` subdirectory is rejected
+// because the project's top-level `.gitignore` matches `lib/` for Go/C
+// build output).
 export { parseArgs };
 
 // Coerce a CLI string into a boolean. Returns `undefined` for values

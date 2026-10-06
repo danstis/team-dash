@@ -46,7 +46,7 @@ confirmation surface because no such surface exists in the design.
 2. **`scripts/generate-visual-qa-pngs.mjs`** — Node ESM script that
    composes each captured HTML into a styled document and renders it
    to PNG via Playwright + the preinstalled Chromium
-   (`/home/dan/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome`).
+   (`/home/dan/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome`).
    Output: the seven PNGs in this folder.
 3. **`docs/visual-qa/*.png`** — the PNGs copied to a version-controlled
    location so the visual-QA evidence travels with the branch.

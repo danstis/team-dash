@@ -247,10 +247,19 @@ export async function asanaGet<Schema extends ZodTypeAny>(
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    // `response.json()` rejects on any malformed / non-UTF-8 / empty
+    // body — the wire shape is `application/json` but the server may
+    // still emit an HTML error page, a truncated chunk, or an empty
+    // payload on a transport-level 5xx. As with the `fetch` rejection
+    // path above, the error's `message` may surface the request URL
+    // or other identifying data; `scrubTokenFromMessage` strips any
+    // token substring before the message crosses the client
+    // boundary so FR-008 / FR-010 cannot be broken by a hostile
+    // `Error.message` surface.
     return {
       outcome: "network_error",
-      message: "Response body is not valid JSON",
+      message: scrubTokenFromMessage(extractErrorMessage(error), token),
     };
   }
 

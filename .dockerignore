@@ -25,10 +25,3 @@ coverage
 .vite
 .vscode
 .DS_Store
-# The MSW browser worker is committed at `public/mockServiceWorker.js`
-# so `VITE_USE_MOCKS=1` and the local test suites can find it. It is a
-# development-only fixture and must not ship in the container (BSOD-450
-# covers the in-bundle exclusion; this entry is the image-side guard
-# that keeps it out of the build context). Drop this line once BSOD-450
-# has moved the file out of `public/`.
-public/mockServiceWorker.js

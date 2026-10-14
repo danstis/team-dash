@@ -45,6 +45,17 @@ import { OfflineState } from "./OfflineState";
 import { PartialDataState } from "./PartialDataState";
 import { RateLimitedState } from "./RateLimitedState";
 
+/**
+ * The user-facing label the dispatcher surfaces when a `'cached_stale'`
+ * state arrives without a `lastRefreshedAt` timestamp. Hoisted to a
+ * named constant so the fallback's intent ("we have no value") is
+ * visible at the use site rather than buried in an inline string
+ * literal, and so a future contributor who refines the wording
+ * (e.g. localises it, or switches to an em-dash variant) updates
+ * one source rather than grepping for every duplicate.
+ */
+const UNKNOWN_LAST_REFRESHED_AT = "an unknown time";
+
 export interface ViewStateViewProps {
   /** The current `ViewState` literal. */
   readonly state: ViewState;
@@ -149,7 +160,7 @@ export function ViewStateView({
           className={className}
           data-testid={dataTestId}
           aria-label={ariaLabel}
-          lastRefreshedAt={lastRefreshedAt ?? "an unknown time"}
+          lastRefreshedAt={lastRefreshedAt ?? UNKNOWN_LAST_REFRESHED_AT}
         />
       );
     case "offline":

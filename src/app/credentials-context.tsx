@@ -240,26 +240,55 @@ export function CredentialsProvider({
     return privateTokenRef.current;
   }, []);
 
-  const setSessionToken = useCallback(
-    async (token: string, nextMaskedIdentifier: string): Promise<void> => {
-      await credentialRepository.setSessionToken(token);
+  /**
+   * Shared write path for `setSessionToken` / `setPersistentToken`. The
+   * two siblings differ only in (a) which `credentialRepository` writer
+   * they call and (b) which `CredentialsMode` they transition into —
+   * every other observable side-effect (`privateTokenRef` update,
+   * `setMaskedIdentifier`, `setState("ready")`) is identical, so the
+   * pair is collapsed into a single helper plus two thin wrappers.
+   *
+   * `writeToken` is the repository method to invoke (e.g.
+   * `credentialRepository.setSessionToken`). Callers bind the method
+   * at wrapper construction time so the helper itself stays free of
+   * repository knowledge.
+   */
+  const writeTokenToMode = useCallback(
+    async (
+      token: string,
+      nextMaskedIdentifier: string,
+      nextMode: Exclude<CredentialsMode, null>,
+      writeToken: (token: string) => Promise<void>,
+    ): Promise<void> => {
+      await writeToken(token);
       privateTokenRef.current = token;
-      setMode("session");
+      setMode(nextMode);
       setMaskedIdentifier(nextMaskedIdentifier || maskTokenIdentifier(token));
       setState("ready");
     },
     [],
   );
 
+  const setSessionToken = useCallback(
+    (token: string, nextMaskedIdentifier: string): Promise<void> =>
+      writeTokenToMode(
+        token,
+        nextMaskedIdentifier,
+        "session",
+        credentialRepository.setSessionToken,
+      ),
+    [writeTokenToMode],
+  );
+
   const setPersistentToken = useCallback(
-    async (token: string, nextMaskedIdentifier: string): Promise<void> => {
-      await credentialRepository.setPersistentToken(token);
-      privateTokenRef.current = token;
-      setMode("persistent");
-      setMaskedIdentifier(nextMaskedIdentifier || maskTokenIdentifier(token));
-      setState("ready");
-    },
-    [],
+    (token: string, nextMaskedIdentifier: string): Promise<void> =>
+      writeTokenToMode(
+        token,
+        nextMaskedIdentifier,
+        "persistent",
+        credentialRepository.setPersistentToken,
+      ),
+    [writeTokenToMode],
   );
 
   const clearToSessionOnly = useCallback(async (): Promise<void> => {

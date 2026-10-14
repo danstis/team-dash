@@ -68,7 +68,7 @@ by Constitution principles, especially IV (local-first/no server DB), V
 
 ## 3. Charting
 
-- **Decision**: Recharts 3.9 for all chart views, with every chart backed by
+- **Decision**: Recharts 3.10 for all chart views, with every chart backed by
   the same aggregated data structure that feeds an adjacent/toggleable
   data table.
 - **Rationale**: SVG-based (screen-reader/DOM-inspectable, unlike canvas
@@ -88,7 +88,7 @@ by Constitution principles, especially IV (local-first/no server DB), V
 
 ## 4. Asana API response validation
 
-- **Decision**: Zod 4.4 schemas at the Asana API client boundary (`data/asana`)
+- **Decision**: Zod 4.6 schemas at the Asana API client boundary (`data/asana`)
   validating every response shape before it enters the domain/cache layer.
 - **Rationale**: FR-081/FR-082/FR-083 require visibly flagging missing or
   malformed expected fields (Priority, Estimated Time, etc.) rather than

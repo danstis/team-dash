@@ -72,16 +72,26 @@ export function resolveDockerTags({ tagName, prerelease, onMain } = {}) {
   const version = stripped;
   const majorMinor = `${match[1]}.${match[2]}`;
 
-  // `prerelease`: explicit boolean wins; otherwise derive from the
-  // semver's `-` segment (group 4 of the regex).
+  // `prerelease`: run the caller-supplied value through coerceBool so
+  // both real booleans (`true` / `false`) and the CLI string forms
+  // (`"true"` / `"false"` / `"yes"` / `"1"` / etc.) accepted on the CLI
+  // boundary end up as a real boolean here. Anything coerceBool rejects
+  // — `undefined`, `null`, `""`, numbers that aren't `0`/`1` —
+  // falls through to the semver-derived default (a `-` segment means
+  // pre-release). That keeps the function's contract identical to the
+  // CLI's, which is what `docker-release.yml` actually invokes on the
+  // `workflow_run` path (BSOD-463: `$WORKFLOW_RUN_PRERELEASE` arrives
+  // as the string `"true"` or `"false"`).
+  const prereleaseFlag = coerceBool(prerelease);
   let isPrerelease;
-  if (prerelease === true || prerelease === false) {
-    isPrerelease = prerelease;
+  if (prereleaseFlag === true || prereleaseFlag === false) {
+    isPrerelease = prereleaseFlag;
   } else {
     isPrerelease = match[4] !== undefined;
   }
 
-  const isOnMain = onMain === true;
+  const onMainFlag = coerceBool(onMain);
+  const isOnMain = onMainFlag === true;
   const tags = [version, majorMinor];
   if (!isPrerelease && isOnMain) {
     tags.push("latest");

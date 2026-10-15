@@ -6,15 +6,6 @@ import { SaxesParser } from "saxes";
 
 import { parseArgs } from "./parse-args.mjs";
 
-const TEXT_KEYS = new Set([
-  "name",
-  "classname",
-  "message",
-  "type",
-  "file",
-  "duration",
-]);
-
 function attrNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;

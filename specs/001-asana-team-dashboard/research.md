@@ -185,7 +185,7 @@ by Constitution principles, especially IV (local-first/no server DB), V
   linting; GitHub Actions CI running, per Principle III: install → lint
   (ESLint) → format check (Prettier) → typecheck (`tsc --noEmit`, strict,
   TypeScript 6.0) → unit tests (Vitest 4.1) → contract tests (Asana-client
-  + Dexie schema, Vitest+MSW) → production build (Vite 8.2) →
+  + Dexie schema, Vitest+MSW) → production build (Vite 8.3) →
   PWA/service-worker validation (Workbox build output check + a
   Playwright install/offline assertion) → Docker build → a Playwright
   browser smoke test against the built container. Secret and dependency

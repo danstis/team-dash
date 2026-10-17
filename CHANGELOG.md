@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.1](https://github.com/danstis/team-dash/compare/v0.7.0...v0.7.1) (2026-10-17)
+
+
+### Bug fixes
+
+* **deps:** pin handlebars to 4.7.10 to clear critical injection advisories (BSOD-736) ([#284](https://github.com/danstis/team-dash/issues/284)) ([5512f6d](https://github.com/danstis/team-dash/commit/5512f6de89a5132b322c3036af90c4cf87fa35fa))
+* **deps:** update dependency zod to 4.6 ([#212](https://github.com/danstis/team-dash/issues/212)) ([05bf011](https://github.com/danstis/team-dash/commit/05bf0112db55c5dd407bc4d7398ce7df3a6fd1aa))
+* **deps:** update react packages to 19.3 ([#215](https://github.com/danstis/team-dash/issues/215)) ([7e2ade1](https://github.com/danstis/team-dash/commit/7e2ade129d32db835576a28bb0e5aa94f594fa4b))
+
 ## [0.7.0](https://github.com/danstis/team-dash/compare/v0.6.0...v0.7.0) (2026-08-30)
 
 

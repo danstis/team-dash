@@ -9,7 +9,7 @@ by Constitution principles, especially IV (local-first/no server DB), V
 
 ## 1. UI framework
 
-- **Decision**: React 19.2 with function components and hooks, built with Vite 8.2.
+- **Decision**: React 19.2 with function components and hooks, built with Vite 8.3.
 - **Rationale**: Mainstream, strong TypeScript support, largest pool of
   accessible-component and charting libraries (needed for FR-088), fast
   Vite dev/build loop, straightforward `vite-plugin-pwa` integration for

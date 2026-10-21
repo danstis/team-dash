@@ -9,7 +9,7 @@ by Constitution principles, especially IV (local-first/no server DB), V
 
 ## 1. UI framework
 
-- **Decision**: React 19.2 with function components and hooks, built with Vite 8.3.
+- **Decision**: React 19.3 with function components and hooks, built with Vite 8.3.
 - **Rationale**: Mainstream, strong TypeScript support, largest pool of
   accessible-component and charting libraries (needed for FR-088), fast
   Vite dev/build loop, straightforward `vite-plugin-pwa` integration for
@@ -123,7 +123,7 @@ by Constitution principles, especially IV (local-first/no server DB), V
 
 - **Decision**: Vitest 4.1 (unit + component, via `@testing-library/react`),
   MSW 2.15 (Mock Service Worker) for deterministic Asana API fixtures
-  shared between dev and tests, Playwright 1.61 for browser-level smoke
+  shared between dev and tests, Playwright 1.64 for browser-level smoke
   tests (offline mode, PWA install/service-worker activation, first-run
   flow). Vitest 5.0 is in beta at time of writing — stay on the 4.1
   stable line until 5.0 reaches a stable release.

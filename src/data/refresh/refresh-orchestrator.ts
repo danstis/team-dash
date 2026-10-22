@@ -107,7 +107,12 @@ import {
   fetchEventsSince,
   fetchProjectsPage,
   fetchTasksPage,
+  scrubTokenFromMessage,
 } from "../asana/client";
+import type {
+  asanaProjectSchema,
+  asanaTaskSchema,
+} from "../asana/schemas";
 import type {
   AsanaClientResult,
   AsanaClientResultOutcome,
@@ -115,6 +120,7 @@ import type {
 import { refreshStagingRepository } from "../db/repositories/refresh-staging.repository";
 import { db } from "../db/schema";
 import type { Project, RefreshSession, Task } from "../db/schema";
+import type { z } from "zod";
 
 /* -------------------------------------------------------------------------- */
 /* Public surface                                                              */
@@ -156,16 +162,27 @@ export type RefreshOutcome =
       readonly status: "succeeded";
       readonly sessionId: string;
       readonly itemsRetrieved: number;
+      /**
+       * The `RefreshSession.finishedAt` the atomic commit path wrote.
+       * The banner surfaces it verbatim (FR-021 — "the last successful
+       * refresh timestamp"); it is read back from the committed
+       * session row so the DOM value and the persisted value are the
+       * same string by construction.
+       */
+      readonly completedAt: string;
     }
   | {
       readonly status: "cancelled";
       readonly sessionId: string;
+      readonly itemsRetrieved: number;
+      readonly message: string;
     }
   | {
       readonly status: "failed";
       readonly sessionId: string;
+      readonly itemsRetrieved: number;
       readonly reason: RefreshFailureReason;
-      readonly message?: string;
+      readonly message: string;
     };
 
 /**
@@ -278,30 +295,66 @@ function sessionStatusForReason(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Normalisation (minimal wire → cache row)                                    */
+/* Wire → cache normalisation (moved from T049's RefreshControls)             */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Minimal wire → cache row normalisation for a Project. Full
- * normalisation (priority field extraction, portfolio membership,
- * custom-field handling) is owned by T058; this helper is the
- * minimum needed to write the row into the staging buffer without
- * losing the opaque-`gid`-only invariant (FR-017) and without
- * dropping the `archived` flag the in-scope predicate relies on
- * (FR-012). The cache schema fields that this helper leaves `null`
- * (`portfolioGids`, `asanaTeamGid` when no team reference exists)
- * are filled by the dedicated enrichment step in a later row — T051
- * does not pre-empt T058's normalisation surface.
+ * The wire shapes the Asana client returns. The orchestrator takes
+ * the Zod-inferred types so the normalisers below cannot drift from
+ * the validation boundary (`src/data/asana/schemas.ts`).
  */
-function normaliseProjectAsanaWire(
-  workspaceGid: string,
-  wire: {
-    gid: string;
-    name: string;
-    archived: boolean;
-    team?: { gid: string } | null;
-  },
-): Project {
+type WireProject = z.infer<typeof asanaProjectSchema>;
+type WireTask = z.infer<typeof asanaTaskSchema>;
+
+/**
+ * The Asana prebuilt custom field the dashboard reads as the task's
+ * estimated minutes (FR-016 / data-model.md / spec §"Glossary" —
+ * "Estimated Time"). Held as a named constant rather than an inline
+ * literal so the lookup site, its docstring, and any future
+ * contributor who needs to reference the same field (e.g. a Priority
+ * field sibling reader) refer to one source of truth rather than
+ * re-typing the string in each call site.
+ */
+const ESTIMATED_TIME_FIELD_NAME = "Estimated Time";
+
+/**
+ * Extract the "Estimated Time" custom field's `number_value` as the
+ * cache's `estimatedMinutes` scalar. Returns `null` when the field
+ * is absent or has no numeric value — the data-model.md distinction
+ * between `null` (tracked but not entered) and the literal
+ * `'unavailable'` (workspace without Time Tracking) is recorded here
+ * rather than at the wire-validation boundary.
+ */
+function extractEstimatedMinutes(
+  customFields: WireTask["custom_fields"],
+): number | null {
+  if (customFields === undefined) {
+    return null;
+  }
+  for (const field of customFields) {
+    if (field.name === ESTIMATED_TIME_FIELD_NAME) {
+      return field.number_value ?? null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Collapse a single Asana project wire row into the cache's
+ * `Project` shape. The wire format nests `workspace` and `team` as
+ * compact references; the cache flattens those into
+ * `workspaceGid`/`asanaTeamGid` scalars. `portfolioGids` is left
+ * empty here — T052 (BSOD-306, `SnapshotRepository`) is the row that
+ * owns the portfolio→project edge, and the FR-016 reporting
+ * requirements (FR-039 / FR-040) are downstream of T049.
+ *
+ * The `workspaceGid` is the *selected* workspace rather than the
+ * wire's `workspace.gid` — the two agree for every project the
+ * orchestrator fetches (the projects page is scoped to the selected
+ * workspace), and using the selected gid means a project whose wire
+ * omits the workspace reference still lands in the right scope.
+ */
+function normaliseProject(wire: WireProject, workspaceGid: string): Project {
   return {
     gid: wire.gid,
     name: wire.name,
@@ -313,33 +366,15 @@ function normaliseProjectAsanaWire(
 }
 
 /**
- * Minimal wire → cache row normalisation for a Task. Asana's task
- * wire shape includes a `projects[]` compact-reference array; the
- * minimal projection here flattens it to `projectGids: string[]`
- * (the cache's denormalised membership column). Subtask → parent
- * membership resolution (FR-014) is owned by T058; the T051 helper
- * does not perform it (a future subtask normalisation pass will
- * rewrite the staged rows in-place before commit). The
- * `dependsOnTaskGids[]`, `lastSeenInScopeAt`, and `outOfScopeReason`
- * fields use sensible defaults that downstream enrichment will
- * overwrite.
+ * Collapse a single Asana task wire row into the cache's `Task`
+ * shape. Subtask project-membership inheritance (FR-014) is T058
+ * (BSOD-309) — the orchestrator stages the `projectGids` exactly as
+ * Asana returned them, so a subtask whose `projects[]` is empty in
+ * the wire shape is staged with `projectGids: []` and the future row
+ * (T058) is responsible for resolving the parent's projects into
+ * the subtask at ingestion time.
  */
-function normaliseTaskAsanaWire(
-  wire: {
-    gid: string;
-    name: string;
-    resource_subtype: Task["resourceSubtype"];
-    assignee?: { gid: string } | null;
-    projects?: ReadonlyArray<{ gid: string }>;
-    parent?: { gid: string } | null;
-    created_at: string;
-    modified_at: string;
-    completed_at?: string | null;
-    due_at?: string | null;
-    dependencies?: ReadonlyArray<{ gid: string }>;
-  },
-  nowIso: string,
-): Task {
+function normaliseTask(wire: WireTask, lastSeenAt: string): Task {
   return {
     gid: wire.gid,
     name: wire.name,
@@ -352,12 +387,10 @@ function normaliseTaskAsanaWire(
     completedAt: wire.completed_at ?? null,
     dueAt: wire.due_at ?? null,
     priorityOptionId: null,
-    estimatedMinutes: null,
+    estimatedMinutes: extractEstimatedMinutes(wire.custom_fields),
     actualMinutes: null,
-    dependsOnTaskGids: (wire.dependencies ?? []).map(
-      (dependency) => dependency.gid,
-    ),
-    lastSeenInScopeAt: nowIso,
+    dependsOnTaskGids: (wire.dependencies ?? []).map((dep) => dep.gid),
+    lastSeenInScopeAt: lastSeenAt,
     outOfScopeReason: null,
   };
 }
@@ -394,40 +427,81 @@ async function writeTerminalSessionStatus(
 }
 
 /**
- * Extract a non-credential-bearing message from an
- * `AsanaClientResult` for the `RefreshSession.errorDetail` column.
- * The Asana client's `network_error.message` is already token-
- * scrubbed by the client itself (T025, `scrubTokenFromMessage`); we
- * copy it verbatim. The other variants do not carry a message field
- * (the contract deliberately omits it for `auth_failure`,
- * `permission_failure`, `rate_limited`, `validation_error`).
+ * The failure half of the Asana client's outcome union — every
+ * variant except `'ok'`. The failure variants carry no success
+ * payload, so the union does not depend on the caller's success
+ * type parameter and can be named concretely.
  */
-function extractErrorDetail(
-  reason: RefreshFailureReason,
-  source: AsanaClientResult<unknown>,
-): string | null {
-  if (reason === "network_error" && source.outcome === "network_error") {
-    return source.message;
-  }
-  return null;
+type AsanaClientFailure = Exclude<
+  AsanaClientResult<unknown>,
+  { outcome: "ok" }
+>;
+
+/**
+ * The scope label a failure message names — the Asana resource the
+ * failing request was fetching. A failure message is the only
+ * detail the UI surfaces alongside the failure reason, so it has to
+ * say *what* failed as well as *how*.
+ */
+type FetchScope = "projects" | { readonly tasksForProject: string };
+
+/**
+ * Render a fetch scope as the human-readable fragment the failure
+ * message embeds: `"projects"` or `"tasks for project 1200…"`.
+ */
+function describeScope(scope: FetchScope): string {
+  return typeof scope === "string"
+    ? scope
+    : `tasks for project ${scope.tasksForProject}`;
 }
+
+/**
+ * Build the failure detail the orchestrator surfaces for a failed
+ * Asana request.
+ *
+ * The message is constructed from the request's scope and the
+ * Asana client's outcome discriminant — NEVER from the raw response
+ * body or an arbitrary error string — so the detail is token-free by
+ * construction (FR-008 / FR-010). The format
+ * `"Failed to fetch <scope>: <outcome>"` is the contract the T049
+ * success-path row's failure assertions pin.
+ */
+function buildFailureMessage(
+  scope: FetchScope,
+  outcome: Exclude<AsanaClientResultOutcome, "ok">,
+): string {
+  return `Failed to fetch ${describeScope(scope)}: ${outcome}`;
+}
+
+/**
+ * The cancellation detail the orchestrator surfaces when the caller
+ * aborts mid-refresh. There is no Asana outcome to report (the
+ * request never produced one), so the detail states what happened in
+ * the user's terms.
+ */
+const CANCELLED_MESSAGE =
+  "The refresh was cancelled before the workspace was fully retrieved.";
 
 /* -------------------------------------------------------------------------- */
 /* Orchestrator implementation                                                 */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Generate a v4-shaped session id for the `refreshSessions` table.
- * Uses `crypto.randomUUID()` when available (Node ≥ 19, every modern
- * browser) and falls back to a `Math.random`-based generator in
- * environments without Web Crypto — the test environment does have
- * Web Crypto via `tests/setup.ts`, so this fallback is a defensive
- * guard only.
+ * Generate a per-refresh session id. The `session-` prefix is part
+ * of the id contract T049 pinned (`RefreshSession.id` matches
+ * `/^session-/` so a reader can tell a refresh session row apart
+ * from any other id in the store); the UUID suffix keeps concurrent
+ * or repeated refreshes from colliding on the same Dexie primary
+ * key. Uses `crypto.randomUUID()` when available (Node ≥ 19, every
+ * modern browser) and falls back to a `Math.random`-based generator
+ * in environments without Web Crypto — the test environment does
+ * have Web Crypto via `tests/setup.ts`, so this fallback is a
+ * defensive guard only.
  */
 function generateSessionId(): string {
   const cryptoRef = globalThis.crypto;
   if (typeof cryptoRef?.randomUUID === "function") {
-    return cryptoRef.randomUUID();
+    return `session-${cryptoRef.randomUUID()}`;
   }
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -436,25 +510,52 @@ function generateSessionId(): string {
  * Map a non-`ok` Asana outcome onto the orchestrator's terminal
  * `failed` shape and write the matching session status. Returns the
  * `RefreshOutcome` the orchestrator should surface to the caller.
+ *
+ * The `scope` argument names the request that failed so the detail
+ * says which fetch broke; the `outcome` argument is the Asana
+ * client's own discriminant, which is the classification boundary
+ * (the orchestrator never re-derives the reason from a status code
+ * or a message substring).
  */
 async function failOutcome(
   sessionId: string,
-  reason: RefreshFailureReason,
-  source: AsanaClientResult<unknown>,
+  scope: FetchScope,
+  result: AsanaClientFailure,
+  itemsRetrieved: number,
 ): Promise<Extract<RefreshOutcome, { status: "failed" }>> {
+  const reason = mapFailureReason(result.outcome);
+  const message = buildFailureMessage(scope, result.outcome);
   await writeTerminalSessionStatus(
     sessionId,
     sessionStatusForReason(reason),
-    extractErrorDetail(reason, source),
+    message,
   );
-  return source.outcome === "network_error"
-    ? {
-        status: "failed",
-        sessionId,
-        reason,
-        message: source.message,
-      }
-    : { status: "failed", sessionId, reason };
+  return {
+    status: "failed",
+    sessionId,
+    itemsRetrieved,
+    reason,
+    message,
+  };
+}
+
+/**
+ * Record the user-cancel terminal state and return the matching
+ * `RefreshOutcome`. The staging buffer is discarded first so the
+ * partially-staged rows never reach the cache (FR-022).
+ */
+async function cancelOutcome(
+  sessionId: string,
+  itemsRetrieved: number,
+): Promise<Extract<RefreshOutcome, { status: "cancelled" }>> {
+  await refreshStagingRepository.discard(sessionId);
+  await writeTerminalSessionStatus(sessionId, "cancelled", CANCELLED_MESSAGE);
+  return {
+    status: "cancelled",
+    sessionId,
+    itemsRetrieved,
+    message: CANCELLED_MESSAGE,
+  };
 }
 
 /**
@@ -485,9 +586,9 @@ export const refreshOrchestrator: RefreshOrchestrator = {
 
     if (isAbortRequested(signal)) {
       // Caller aborted before the orchestrator started — surface a
-      // `cancelled` outcome without writing any session row. The
-      // session table is the only state mutated; the cache is
-      // untouched (FR-022).
+      // `cancelled` outcome. The session row is the only state
+      // mutated (it records the cancellation for the FR-068 audit
+      // trail); the cache is untouched (FR-022).
       const sessionId = generateSessionId();
       await db.refreshSessions.put({
         id: sessionId,
@@ -496,10 +597,15 @@ export const refreshOrchestrator: RefreshOrchestrator = {
         finishedAt: new Date().toISOString(),
         status: "cancelled",
         itemsRetrieved: 0,
-        errorDetail: null,
+        errorDetail: CANCELLED_MESSAGE,
         syncMode: mode,
       });
-      return { status: "cancelled", sessionId };
+      return {
+        status: "cancelled",
+        sessionId,
+        itemsRetrieved: 0,
+        message: CANCELLED_MESSAGE,
+      };
     }
 
     // FR-024 incremental/full fallback resolution. The probe uses
@@ -570,13 +676,14 @@ export const refreshOrchestrator: RefreshOrchestrator = {
      * the orchestrator never re-parses the message string.
      */
     const failOnOutcome = async <T>(
+      scope: FetchScope,
       result: AsanaClientResult<T>,
     ): Promise<Extract<RefreshOutcome, { status: "failed" }> | null> => {
       if (result.outcome === "ok") {
         return null;
       }
       await refreshStagingRepository.discard(sessionId);
-      return failOutcome(sessionId, mapFailureReason(result.outcome), result);
+      return failOutcome(sessionId, scope, result, itemsRetrieved);
     };
 
     try {
@@ -591,15 +698,13 @@ export const refreshOrchestrator: RefreshOrchestrator = {
       // outcome is non-`ok`.
       do {
         if (isAbortRequested(signal)) {
-          await refreshStagingRepository.discard(sessionId);
-          await writeTerminalSessionStatus(sessionId, "cancelled", null);
-          return { status: "cancelled", sessionId };
+          return await cancelOutcome(sessionId, itemsRetrieved);
         }
         const projectsPage = await fetchProjectsPage(token, workspaceGid, {
           offset: projectOffset,
           signal,
         });
-        const failure = await failOnOutcome(projectsPage);
+        const failure = await failOnOutcome("projects", projectsPage);
         if (failure !== null) {
           return failure;
         }
@@ -607,14 +712,19 @@ export const refreshOrchestrator: RefreshOrchestrator = {
           // Unreachable — `failOnOutcome` would have returned — but
           // the TypeScript narrowing requires a defensive return so
           // the rest of the function can rely on `projectsPage.data`.
-          return await failOutcome(sessionId, "network_error", {
-            outcome: "network_error",
-            message:
-              "Internal orchestrator error: projectsPage was not ok after failOnOutcome",
-          });
+          return await failOutcome(
+            sessionId,
+            "projects",
+            {
+              outcome: "network_error",
+              message:
+                "Internal orchestrator error: projectsPage was not ok after failOnOutcome",
+            },
+            itemsRetrieved,
+          );
         }
         for (const project of projectsPage.data.data) {
-          const row = normaliseProjectAsanaWire(workspaceGid, project);
+          const row = normaliseProject(project, workspaceGid);
           await refreshStagingRepository.stageUpsert("projects", [row]);
           projectGids.push(row.gid);
           itemsRetrieved += 1;
@@ -632,27 +742,33 @@ export const refreshOrchestrator: RefreshOrchestrator = {
         let taskOffset: string | undefined = undefined;
         do {
           if (isAbortRequested(signal)) {
-            await refreshStagingRepository.discard(sessionId);
-            await writeTerminalSessionStatus(sessionId, "cancelled", null);
-            return { status: "cancelled", sessionId };
+            return await cancelOutcome(sessionId, itemsRetrieved);
           }
           const tasksPage = await fetchTasksPage(token, projectGid, {
             offset: taskOffset,
             signal,
           });
-          const failure = await failOnOutcome(tasksPage);
+          const failure = await failOnOutcome(
+            { tasksForProject: projectGid },
+            tasksPage,
+          );
           if (failure !== null) {
             return failure;
           }
           if (tasksPage.outcome !== "ok") {
-            return await failOutcome(sessionId, "network_error", {
-              outcome: "network_error",
-              message:
-                "Internal orchestrator error: tasksPage was not ok after failOnOutcome",
-            });
+            return await failOutcome(
+              sessionId,
+              { tasksForProject: projectGid },
+              {
+                outcome: "network_error",
+                message:
+                  "Internal orchestrator error: tasksPage was not ok after failOnOutcome",
+              },
+              itemsRetrieved,
+            );
           }
           for (const task of tasksPage.data.data) {
-            const row = normaliseTaskAsanaWire(task, nowIso);
+            const row = normaliseTask(task, nowIso);
             await refreshStagingRepository.stageUpsert("tasks", [row]);
             itemsRetrieved += 1;
             onProgress?.(itemsRetrieved);
@@ -668,7 +784,18 @@ export const refreshOrchestrator: RefreshOrchestrator = {
       // staging buffer intact; the orchestrator catches the throw,
       // discards the buffer, and surfaces the failure reason.
       await refreshStagingRepository.commit(sessionId);
-      return { status: "succeeded", sessionId, itemsRetrieved };
+      // The completion timestamp is read back from the committed
+      // session row so the value the banner renders and the value
+      // the cache persisted are the same string by construction
+      // (FR-021 — "the last successful refresh timestamp").
+      const committed = await db.refreshSessions.get(sessionId);
+      return {
+        status: "succeeded",
+        sessionId,
+        itemsRetrieved,
+        completedAt:
+          committed?.finishedAt ?? new Date().toISOString(),
+      };
     } catch (error) {
       // Internal / unexpected throw — preserve the cache by
       // discarding the staging buffer. A failure here is not the
@@ -688,17 +815,30 @@ export const refreshOrchestrator: RefreshOrchestrator = {
         // error; the cache stores remain untouched because the
         // staging buffer never flushed.
       }
+      // The thrown message is scrubbed of the token before it
+      // becomes the surfaced detail (FR-008 / FR-010) — the
+      // orchestrator is the single producer of that string, so the
+      // scrub has to happen here. `scrubTokenFromMessage` is the
+      // Asana client's own helper (BSOD-748 exported it for exactly
+      // this purpose), so the orchestrator and the client share one
+      // implementation of the rule.
+      const detail = scrubTokenFromMessage(
+        error instanceof Error
+          ? error.message
+          : "Unknown orchestrator error",
+        token,
+      );
       await writeTerminalSessionStatus(
         sessionId,
         "partial_failure",
-        error instanceof Error ? error.message : "Unknown orchestrator error",
+        detail,
       );
       return {
         status: "failed",
         sessionId,
+        itemsRetrieved,
         reason: "network_error",
-        message:
-          error instanceof Error ? error.message : "Unknown orchestrator error",
+        message: detail,
       };
     }
   },

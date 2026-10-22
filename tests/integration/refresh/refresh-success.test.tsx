@@ -345,7 +345,16 @@ describe("BSOD-303 (T049) — refresh success outcome", () => {
 
     const sessions = await db.refreshSessions.toArray();
     expect(sessions).toHaveLength(1);
-    expect(sessions[0]?.status).toBe("running");
-    expect(sessions[0]?.finishedAt).toBeNull();
+    // T051 (BSOD-305) hands the terminal-status transition to the
+    // refresh orchestrator, so the session row now records the
+    // CLASSIFIED failure rather than staying `running`. That is the
+    // behaviour `data-model.md`'s `RefreshSession` state machine
+    // describes and the behaviour `refresh-staging.repository.ts`
+    // documents as the orchestrator's responsibility. The FR-022
+    // invariant this test exists to protect is unaffected: the
+    // staged rows were DISCARDED, not committed, so the live cache
+    // is still empty (asserted above).
+    expect(sessions[0]?.status).toBe("permission_failure");
+    expect(sessions[0]?.finishedAt).not.toBeNull();
   });
 });

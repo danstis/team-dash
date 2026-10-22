@@ -93,7 +93,7 @@ import {
 } from "../../../src/data/refresh/refresh-orchestrator";
 import {
   OutcomeBanner,
-  type OutcomeBannerProps,
+  propsFromOutcome,
 } from "../../../src/features/refresh/RefreshControls";
 import { cacheRepository } from "../../../src/data/db/repositories/cache.repository";
 import { db } from "../../../src/data/db/schema";
@@ -260,7 +260,7 @@ function OutcomeHarness({
     return <div data-testid="harness-empty">no outcome yet</div>;
   }
 
-  const props = bannerPropsFromOutcome(outcomeToRender);
+  const props = propsFromOutcome(outcomeToRender);
   return (
     <div data-testid="harness">
       <OutcomeBanner {...props} data-testid="outcome-banner" />
@@ -271,26 +271,6 @@ function OutcomeHarness({
       </span>
     </div>
   );
-}
-
-function bannerPropsFromOutcome(outcome: RefreshOutcome): OutcomeBannerProps {
-  switch (outcome.status) {
-    case "succeeded":
-      return {
-        state: "succeeded",
-        itemsRetrieved: outcome.itemsRetrieved,
-      };
-    case "cancelled":
-      return {
-        state: "cancelled",
-      };
-    case "failed":
-      return {
-        state: "failed",
-        reason: outcome.reason,
-        message: outcome.message,
-      };
-  }
 }
 
 /* -------------------------------------------------------------------------- */

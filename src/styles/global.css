@@ -364,6 +364,32 @@ a[data-testid="nav-settings"]:hover {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Settings screen (BSOD-360)                                                 */
+/* -------------------------------------------------------------------------- */
+
+/* The Settings screen reuses the app shell's page frame and adds its
+   own header: the title on the left, the screen's controls (the exit
+   control, and after BSOD-359 the theme toggle) on the right. */
+.td-settings-screen__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--td-space-3) var(--td-space-4);
+  margin-bottom: var(--td-space-5);
+}
+
+.td-settings-screen__title {
+  margin-bottom: 0;
+}
+
+.td-settings-screen__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--td-space-2);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Masked token                                                                */
 /* -------------------------------------------------------------------------- */
 

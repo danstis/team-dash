@@ -73,6 +73,19 @@
  * (`tests/integration/credentials/first-run-setup.test.tsx`) walks
  * the user-facing flow through the gate.
  *
+ * ## The BSOD-360 Settings screen
+ *
+ * The `/settings` route renders the `<SettingsScreen />` chrome
+ * (`src/features/settings/SettingsScreen.tsx`) around the credential
+ * panel. The screen owns the header and the exit control that returns
+ * the user to the surface they came from; the credential panel is
+ * mounted as a child so the next settings section (BSOD-359's theme
+ * toggle) can join it without changing the chrome. The exit falls
+ * back to the app shell when the router has no earlier entry to pop —
+ * the memory router clamps a back navigation from its initial entry,
+ * so a user who lands on `/settings` directly would otherwise be
+ * stranded there (the exact case BSOD-360 names).
+ *
  * ## Determinism
  *
  * The router renders synchronously on first paint (no async init,
@@ -94,6 +107,7 @@ import { useCredentials } from "./credentials-context";
 import { useWorkspace } from "./workspace-context";
 import { FirstRunSetup } from "../features/credentials/FirstRunSetup";
 import { SettingsCredentialsPanel } from "../features/credentials/SettingsCredentialsPanel";
+import { SettingsScreen } from "../features/settings/SettingsScreen";
 
 /**
  * The T031 placeholder. Renders the existing T010 shell markup so
@@ -161,13 +175,22 @@ function FirstRunRoute(): React.ReactElement {
 }
 
 /**
- * The Settings credentials surface (BSOD-351 / T131) — the panel the
- * user reaches after first-run completes by following the "Settings"
- * link from the placeholder. The T045 `SettingsCredentialsPanel` is
- * the Settings-screen embodiment of the four US1 credential
- * lifecycle actions (Retest, Replace, Switch-mode, Clear-all); the
- * T044 `MaskedToken` it composes shows the FR-008 last-four-
- * characters identifier.
+ * The Settings surface (BSOD-351 / T131) — the screen the user reaches
+ * after first-run completes by following the "Settings" link from the
+ * placeholder. The T045 `SettingsCredentialsPanel` is the
+ * Settings-screen embodiment of the four US1 credential lifecycle
+ * actions (Retest, Replace, Switch-mode, Clear-all); the T044
+ * `MaskedToken` it composes shows the FR-008 last-four-characters
+ * identifier.
+ *
+ * Since BSOD-360 the panel is mounted *inside* the
+ * `<SettingsScreen />` chrome, which owns the screen header and the
+ * exit control that returns the user to the surface they came from
+ * (falling back to the app shell when the router has no earlier entry
+ * — the memory router's back navigation is a no-op from its initial
+ * entry). The screen takes the panel as a child, so the next settings
+ * section (BSOD-359's theme toggle) can be mounted beside it without
+ * changing the chrome.
  *
  * The route is mounted as a child of the `RouteGuard` layout so the
  * gate contract stays intact — until both providers report `'ready'`,
@@ -175,7 +198,11 @@ function FirstRunRoute(): React.ReactElement {
  * reachable.
  */
 function SettingsRoute(): React.ReactElement {
-  return <SettingsCredentialsPanel />;
+  return (
+    <SettingsScreen>
+      <SettingsCredentialsPanel />
+    </SettingsScreen>
+  );
 }
 
 /**
@@ -235,19 +262,37 @@ const routes: RouteObject[] = [
 ];
 
 /**
- * The shell router. Created with `createMemoryRouter` so tests can
- * drive the router from jsdom without a real `window.location`. The
- * production browser build (a future task) will swap this for
+ * The shell router factory. Created with `createMemoryRouter` so tests
+ * can drive the router from jsdom without a real `window.location`.
+ * The production browser build (a future task) will swap this for
  * `createBrowserRouter`; the route table is shared.
  *
- * The initial `entries` parameter is `["/"]` so the placeholder is
+ * The default `initialEntries` is `["/"]` so the placeholder is
  * rendered on first mount when the gate is open. While the gate is
  * closed the placeholder is replaced by `<FirstRunRoute />`, so the
  * initial entry matters only for the gate-open branch.
+ *
+ * The factory exists so a test can build a router that starts on a
+ * different entry — most importantly `["/settings"]`, which is the
+ * "the user landed on Settings directly" case BSOD-360's exit
+ * affordance has to handle (a memory router's back navigation from
+ * its initial entry is a no-op, so the exit falls back to the app
+ * shell). The exported `router` singleton below keeps the production
+ * entry point unchanged.
  */
-export const router = createMemoryRouter(routes, {
-  initialEntries: ["/"],
-});
+export function createAppRouter(
+  options: { initialEntries?: string[] } = {},
+): ReturnType<typeof createMemoryRouter> {
+  return createMemoryRouter(routes, {
+    initialEntries: options.initialEntries ?? ["/"],
+  });
+}
+
+/**
+ * The shell router singleton the app mounts. See
+ * `createAppRouter` for the factory it is built from.
+ */
+export const router = createAppRouter();
 
 /**
  * Re-export of `<RouterProvider>` for tests and downstream code that

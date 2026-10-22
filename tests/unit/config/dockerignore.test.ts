@@ -59,6 +59,10 @@ describe(".dockerignore (build-context deny-list)", () => {
     it("excludes every .env.* variant", () => {
       expect(patterns).toContain(".env.*");
     });
+
+    it("excludes the .gitnexus analysis cache, a local-only artefact of the same class", () => {
+      expect(patterns).toContain(".gitnexus");
+    });
   });
 
   describe("the deny-list does not starve the image build", () => {

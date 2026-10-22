@@ -42,3 +42,7 @@ dev
 .env
 .env.*
 
+# Local-only GitNexus analysis cache — a developer/agent tool artefact that
+# has no business in a build context (tens of MB per checkout).
+.gitnexus
+

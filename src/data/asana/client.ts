@@ -748,8 +748,14 @@ function extractErrorMessage(error: unknown): string {
  * handle the edge case where the URL-encoded form differs from the
  * raw form, and the difference would be tiny relative to the simpler
  * scrub.
+ *
+ * Exported (BSOD-748) so the refresh UI can enforce the same
+ * invariant at the site that renders a failure detail: `PartialDataState`
+ * and the refresh outcome banner both document that the string they
+ * render "arrives here already scrubbed of any token value", so every
+ * producer of such a string must scrub it rather than assert it.
  */
-function scrubTokenFromMessage(message: string, token: string): string {
+export function scrubTokenFromMessage(message: string, token: string): string {
   if (token === "") {
     return message;
   }

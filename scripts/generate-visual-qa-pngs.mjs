@@ -3,7 +3,7 @@
  * .multica/visual-qa/<label>.html (produced by
  * tests/visual-qa-dump.test.tsx) and render it through Playwright +
  * the local chromium binary at
- * $HOME/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome to
+ * $HOME/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome to
  * produce a PNG screenshot per state at
  * .multica/visual-qa/<label>.png.
  *
@@ -20,7 +20,7 @@ import { resolve } from "node:path";
 const ROOT = process.cwd();
 const VISUAL_QA_DIR = resolve(ROOT, ".multica/visual-qa");
 const CHROMIUM_PATH =
-  "/home/dan/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome";
+  "/home/dan/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome";
 
 const VIEWPORT = { width: 880, height: 1100 };
 
@@ -254,7 +254,11 @@ async function main() {
       existing.delete(`${state.label}.html`);
       existing.delete(`${state.label}.json`);
     }
-    // Clean up old captured artefacts that no longer match a state.
+    // Anything left in `existing` at this point is a .html/.json that
+    // wasn't claimed by the loop above (e.g. a stale "<label>-old.html"
+    // left over from a prior run). Log the ones that look state-shaped
+    // so a future operator can notice them; silently skip anything
+    // that doesn't look like a state capture at all.
     for (const stray of existing) {
       if (!STATES.some((state) => stray.startsWith(state.label))) {
         continue;

@@ -71,12 +71,12 @@ jobs:
     # was therefore skipped and no image was ever published from a
     # release.
     #
-    # A Release Please run that did NOT create a release (no conventional
-    # commits since the last tag) still passes this guard. The tag is
-    # then resolved to the newest published release, and the ghcr
-    # idempotency check ("Check whether the version is already
-    # published") turns the run into a no-op for a version that is
-    # already in the registry.
+    # BSOD-775: a Release Please run that did NOT create a release (no
+    # conventional commits since the last tag — e.g. a `docs:`-only
+    # push) still passes this guard. The release is resolved further
+    # down from the GitHub Releases API by matching the upstream run's
+    # commit, so such a run resolves to no release at all and ends green
+    # without publishing anything.
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'release' ||
@@ -123,6 +123,7 @@ jobs:
               ON_MAIN="false"
             fi
             {
+              echo "publish=true"
               echo "tag_name=$RELEASE_TAG_NAME"
               echo "prerelease=$RELEASE_PRERELEASE"
               echo "on_main=$ON_MAIN"
@@ -131,11 +132,27 @@ jobs:
           elif [ "$EVENT_NAME" = "workflow_run" ]; then
             # The `workflow_run` webhook payload has no `outputs` field
             # (BSOD-466), so the upstream job outputs cannot be read from
-            # it. Resolve the release from the GitHub Releases API
-            # instead: `releases/latest` is the most recently published
-            # (non-draft, non-prerelease) release, which for a Release
-            # Please run that just published a release is exactly the tag
-            # it created.
+            # it. The release this run produced is resolved from the
+            # GitHub Releases API instead — matched against the commit
+            # the upstream run produced (BSOD-775).
+            #
+            # release-please creates the GitHub Release with
+            # `target_commitish` set to the commit it tagged, so the
+            # release whose `target_commitish` equals the upstream run's
+            # `head_sha` is exactly the release this run created.
+            #
+            # Matching on the commit — instead of asking the API for the
+            # newest *stable* release, which is unrelated to the
+            # triggering run — restores the "no release → no-op"
+            # behaviour that the pre-BSOD-466 guard provided (that guard
+            # expected the upstream payload to carry a release-created
+            # flag; the `workflow_run` payload never carried one):
+            #   * a Release Please run that created no release (e.g. a
+            #     `docs:`-only push) resolves to no release at all and
+            #     the run ends green without publishing anything;
+            #   * a release whose image was never published is no longer
+            #     re-published from the current `main` HEAD under the
+            #     old tag.
             #
             # If the API cannot tell us which release to publish, refuse
             # to publish an unversioned image rather than pushing a bogus
@@ -144,8 +161,34 @@ jobs:
             # `gh api` prints the response body on stdout for an HTTP
             # error (a 401/404 body is not a release), so the value is
             # only trusted when the call itself succeeded.
-            TAG_NAME=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name // ""') || TAG_NAME=""
-            if [ -z "$TAG_NAME" ]; then
+            RELEASES_JSON=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=10") || RELEASES_JSON=""
+            if [ -z "$RELEASES_JSON" ]; then
+              echo "::error::Could not resolve a published release tag for the upstream Release Please run. Refusing to publish an unversioned image." >&2
+              exit 1
+            fi
+            RELEASE_JSON=$(printf '%s' "$RELEASES_JSON" | jq --arg sha "$WORKFLOW_RUN_HEAD_SHA" \
+              '[.[] | select(.target_commitish == $sha) | select(.draft == false)] | .[0] // empty')
+            if [ -z "$RELEASE_JSON" ]; then
+              # This upstream run created no release: a legitimate no-op,
+              # not a failure. Exit 0 so the run stays green and nothing
+              # is published (BSOD-775).
+              echo "::notice::The upstream Release Please run ($WORKFLOW_RUN_HEAD_SHA) created no release; nothing to publish."
+              {
+                echo "publish=false"
+                echo "tag_name="
+                echo "prerelease="
+                echo "on_main=false"
+                echo "commit_sha="
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            TAG_NAME=$(printf '%s' "$RELEASE_JSON" | jq -r '.tag_name // ""')
+            # The commit the release was tagged with. release-please sets
+            # `target_commitish` to the commit it tagged, so the image is
+            # built from the exact content the version tag names
+            # (BSOD-775) — never from the current `main` HEAD.
+            RELEASE_SHA=$(printf '%s' "$RELEASE_JSON" | jq -r '.target_commitish // ""')
+            if [ -z "$TAG_NAME" ] || [ -z "$RELEASE_SHA" ]; then
               echo "::error::Could not resolve a published release tag for the upstream Release Please run. Refusing to publish an unversioned image." >&2
               exit 1
             fi
@@ -162,10 +205,11 @@ jobs:
             # `v1.0.0-rc.1` will NOT push `latest` even from a
             # release-please workflow_run that came from main.
             {
+              echo "publish=true"
               echo "tag_name=$TAG_NAME"
               echo "prerelease="
               echo "on_main=$ON_MAIN"
-              echo "commit_sha=$WORKFLOW_RUN_HEAD_SHA"
+              echo "commit_sha=$RELEASE_SHA"
             } >> "$GITHUB_OUTPUT"
           else
             # workflow_dispatch: there is no GitHub-emitted prerelease
@@ -180,6 +224,7 @@ jobs:
               ON_MAIN="false"
             fi
             {
+              echo "publish=true"
               echo "tag_name=$DISPATCH_TAG_NAME"
               echo "prerelease="
               echo "on_main=$ON_MAIN"
@@ -199,30 +244,56 @@ jobs:
           LOG_PRERELEASE: ${{ steps.inputs.outputs.prerelease }}
           LOG_ON_MAIN: ${{ steps.inputs.outputs.on_main }}
           LOG_COMMIT_SHA: ${{ steps.inputs.outputs.commit_sha }}
+          LOG_PUBLISH: ${{ steps.inputs.outputs.publish }}
         run: |
           echo "Resolved Docker image inputs:"
           echo "  tag_name=$LOG_TAG_NAME"
           echo "  prerelease=$LOG_PRERELEASE"
           echo "  on_main=$LOG_ON_MAIN"
           echo "  commit_sha=$LOG_COMMIT_SHA"
+          echo "  publish=$LOG_PUBLISH"
+          if [ "$LOG_PUBLISH" = "false" ]; then
+            echo "Nothing to publish: the upstream Release Please run created no release (BSOD-775)."
+          fi
 
       - name: Check out the tagged commit
+        id: checkout
+        # `continue-on-error` so a tagged commit that cannot be fetched
+        # ends the run green instead of red: publishing an image whose
+        # content does not match the version tag is worse than not
+        # publishing at all (BSOD-775). Every step below is gated on
+        # `steps.checkout.outcome == 'success'`, so a failed checkout
+        # publishes nothing.
+        continue-on-error: true
+        if: steps.inputs.outputs.publish != 'false'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Check out the tag directly so the image is built from the
+          # Check out the tagged commit so the image is built from the
           # exact commit release-please tagged, not from a re-fetched
           # `main` HEAD (which may have moved past the release).
-          # For the `workflow_run` path the upstream run's `head_sha`
-          # (the commit the Release Please workflow ran on) is used
-          # directly, because the tag may not yet be visible on
-          # `origin` when this downstream workflow fires, and forcing a
-          # tag checkout would race with the upstream's tag push.
+          #
+          # For the `workflow_run` path the commit comes from the
+          # resolved release itself (`target_commitish`, BSOD-775), so
+          # the image content always matches the version it is tagged
+          # with. We still prefer a SHA over a tag ref, because the tag
+          # may not yet be visible on `origin` when this downstream
+          # workflow fires, and a `ref: <tag>` checkout would race
+          # against the upstream's tag push.
           # (BSOD-466)
           ref: ${{ steps.inputs.outputs.commit_sha || steps.inputs.outputs.tag_name }}
           fetch-depth: 1
 
+      - name: Report a skipped publish
+        # The checkout above is `continue-on-error`, so a tagged commit
+        # that cannot be fetched leaves the run green — say why, instead
+        # of ending silently (BSOD-775).
+        if: "steps.inputs.outputs.publish != 'false' && steps.checkout.outcome != 'success'"
+        run: |
+          echo "::notice::The tagged commit could not be checked out; skipping the publish rather than shipping content that does not match the version tag."
+
       - name: Resolve source commit SHA
         id: source
+        if: "steps.inputs.outputs.publish != 'false' && steps.checkout.outcome == 'success'"
         run: |
           set -euo pipefail
           SHA=$(git rev-parse HEAD)
@@ -231,6 +302,7 @@ jobs:
 
       - name: Resolve Docker tags
         id: tags
+        if: "steps.inputs.outputs.publish != 'false' && steps.checkout.outcome == 'success'"
         env:
           TAG_NAME: ${{ steps.inputs.outputs.tag_name }}
           PRERELEASE: ${{ steps.inputs.outputs.prerelease }}
@@ -263,9 +335,11 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
+        if: "steps.inputs.outputs.publish != 'false' && steps.checkout.outcome == 'success'"
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to ghcr.io
+        if: "steps.inputs.outputs.publish != 'false' && steps.checkout.outcome == 'success'"
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
@@ -274,6 +348,7 @@ jobs:
 
       - name: Check whether the version is already published (idempotent)
         id: check
+        if: "steps.inputs.outputs.publish != 'false' && steps.checkout.outcome == 'success'"
         env:
           VERSION: ${{ fromJSON(steps.tags.outputs.tags_json).version }}
           OWNER: ${{ github.repository_owner }}
@@ -306,7 +381,7 @@ jobs:
           fi
 
       - name: Build & push
-        if: steps.check.outputs.already_published != 'true'
+        if: "steps.inputs.outputs.publish != 'false' && steps.checkout.outcome == 'success' && steps.check.outputs.already_published != 'true'"
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .

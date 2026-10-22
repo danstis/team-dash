@@ -38,76 +38,44 @@ describe(".github/workflows/release-please.yml (BSOD-357)", () => {
     );
   });
 
-  it("exposes job outputs for downstream workflow_run consumers (BSOD-357, BSOD-463)", () => {
-    // BSOD-357: release-please creates the GitHub Release via the
-    // workflow's `secrets.GITHUB_TOKEN`, which GitHub Actions refuses
-    // to surface as a `release: published` event to other workflows.
-    // The downstream `docker-release.yml` therefore listens on
-    // `workflow_run: types: [completed]` and reads these job outputs.
-    // Removing any of them breaks the trigger handoff silently — the
-    // workflow file will still parse and run, but the docker image
-    // will never be published. Regression guard.
+  it("no longer declares job outputs for downstream workflow_run consumers (BSOD-775)", () => {
+    // BSOD-357 made release-please's release reachable to the
+    // downstream `docker-release.yml` through job outputs. BSOD-466
+    // established that the `workflow_run` webhook payload carries NO
+    // `outputs` field at all (see the workflow-run schema published by
+    // octokit/webhooks: `conclusion`, `name`, `head_branch`,
+    // `head_repository`, `head_sha`, ... but no `outputs`), so those
+    // job outputs could never be read by any consumer — BSOD-775
+    // removes the dead plumbing instead of leaving it declared and
+    // unread.
     //
-    // BSOD-463: as of googleapis/release-please-action@v5.0.0
-    // (45996ed1f...) the action does NOT declare its outputs in
-    // `action.yml`, so `steps.release.outputs.releases_created` /
-    // `tag_name` / `sha` are empty even when release-please did
-    // create a release. The job outputs below therefore reference
-    // the dedicated "Resolve release info" step (`steps.resolve`),
-    // which queries the GitHub Releases API to re-derive the same
-    // values and writes them to `$GITHUB_OUTPUT` as proper step
-    // outputs. Reverting any of these to `steps.release.outputs.*`
-    // would silently break the docker-image publish path again.
-    expect(source).toMatch(/^\s{4}outputs:\s*$/m);
-    expect(source).toMatch(
-      /^\s{6}releases_created:\s*\$\{\{\s*steps\.resolve\.outputs\.releases_created\s*\}\}\s*$/m,
-    );
-    expect(source).toMatch(
-      /^\s{6}tag_name:\s*\$\{\{\s*steps\.resolve\.outputs\.tag_name\s*\}\}\s*$/m,
-    );
-    expect(source).toMatch(
-      /^\s{6}sha:\s*\$\{\{\s*steps\.resolve\.outputs\.sha\s*\}\}\s*$/m,
-    );
-    expect(source).toMatch(
-      /^\s{6}prerelease:\s*\$\{\{\s*steps\.resolve\.outputs\.prerelease\s*\}\}\s*$/m,
-    );
+    // The downstream workflow now resolves the release itself, from the
+    // GitHub Releases API, matched on the upstream run's commit.
+    expect(source).not.toMatch(/^\s{4}outputs:\s*$/m);
+    expect(source).not.toMatch(/steps\.resolve\.outputs\./);
+    expect(source).not.toMatch(/releases_created/);
   });
 
-  it("re-derives release info from the GitHub Releases API (BSOD-463 workaround)", () => {
-    // The release-please action's `core.setOutput('releases_created',
-    // ...)` etc. calls are silently dropped because its `action.yml`
-    // doesn't list those output names. We re-derive the same values
-    // by querying the GitHub Releases API, then write them to
-    // `$GITHUB_OUTPUT` from a dedicated step so the job-level
-    // `outputs:` above (and therefore `github.event.workflow_run.outputs.*`
-    // in downstream consumers) carry real values.
+  it("no longer runs the 'Resolve release info' step (BSOD-775)", () => {
+    // The step re-derived `releases_created` / `tag_name` / `sha` /
+    // `prerelease` from the GitHub Releases API for a consumer that
+    // does not exist any more. With the job outputs gone, the step is
+    // dead weight: it costs one API call on every release-please run
+    // and its results are read by nobody.
+    expect(source).not.toMatch(/Resolve release info/);
+    expect(source).not.toMatch(/^\s{8}id:\s*resolve\s*$/m);
+    expect(source).not.toMatch(/gh api/);
+  });
+
+  it("still runs the SHA-pinned release-please action against main (BSOD-775)", () => {
+    // Removing the dead plumbing must not touch the release-please
+    // action itself (nor its pinned version).
+    expect(source).toMatch(/^\s{6}- id: release\s*$/m);
     expect(source).toMatch(
-      /^\s{6}-\s+name:\s*Resolve release info for downstream workflow_run consumers\s*$/m,
+      /uses:\s*googleapis\/release-please-action@[a-f0-9]{40} # v\d+\.\d+\.\d+/,
     );
-    expect(source).toMatch(/^\s{8}id:\s*resolve\s*$/m);
-    // Must consult the GitHub Releases API for the canonical sha and
-    // prerelease flag — the action's setOutput calls are unreliable.
-    expect(source).toMatch(
-      /gh api "repos\/\$\{\{\s*github\.repository\s*\}\}\/releases/,
-    );
-    // Must thread untrusted upstream outputs through `env:` (never
-    // interpolated into `run:`) per the script-injection convention
-    // used in `docker-release.yml`.
-    expect(source).toMatch(
-      /ACTION_RELEASES_CREATED:\s*\$\{\{\s*steps\.release\.outputs\.releases_created\s*\}\}/,
-    );
-    expect(source).toMatch(
-      /ACTION_TAG_NAME:\s*\$\{\{\s*steps\.release\.outputs\.tag_name\s*\}\}/,
-    );
-    // Must write the resolved values to $GITHUB_OUTPUT so they
-    // propagate to `github.event.workflow_run.outputs.*`.
-    expect(source).toMatch(/>>\s*"\$GITHUB_OUTPUT"/);
-    // Must distinguish "release created" from "no release" — when
-    // release-please completes without a release (no conventional
-    // commits since the last tag), the downstream guard must skip
-    // the run cleanly.
-    expect(source).toMatch(/releases_created=true/);
-    expect(source).toMatch(/releases_created=false/);
+    expect(source).toMatch(/config-file:\s*release-please-config\.json/);
+    expect(source).toMatch(/manifest-file:\s*\.release-please-manifest\.json/);
   });
 
   it("does not request `packages: write` (BSOD-258 intentionally stays out of ghcr.io)", () => {

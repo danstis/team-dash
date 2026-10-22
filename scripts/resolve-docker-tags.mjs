@@ -79,9 +79,12 @@ export function resolveDockerTags({ tagName, prerelease, onMain } = {}) {
   // — `undefined`, `null`, `""`, numbers that aren't `0`/`1` —
   // falls through to the semver-derived default (a `-` segment means
   // pre-release). That keeps the function's contract identical to the
-  // CLI's, which is what `docker-release.yml` actually invokes on the
-  // `workflow_run` path (BSOD-463: `$WORKFLOW_RUN_PRERELEASE` arrives
-  // as the string `"true"` or `"false"`).
+  // CLI's, which is what `docker-release.yml` actually invokes: the
+  // `release: published` path passes the payload's flag through as the
+  // string `"true"` / `"false"`, while the `workflow_run` path leaves it
+  // empty and lets the tag's semver decide (BSOD-775: the `workflow_run`
+  // payload carries no prerelease output any more, so the resolved
+  // release tag is the source of truth).
   const prereleaseFlag = coerceBool(prerelease);
   let isPrerelease;
   if (prereleaseFlag === true || prereleaseFlag === false) {

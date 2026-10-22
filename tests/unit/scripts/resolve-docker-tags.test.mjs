@@ -154,12 +154,13 @@ describe("resolveDockerTags", () => {
   });
 
   it("coerces string booleans for prerelease and onMain via coerceBool (BSOD-463)", () => {
-    // The workflow_run branch in `docker-release.yml` invokes the script
-    // with `--prerelease="$WORKFLOW_RUN_PRERELEASE"` (a string), and the
-    // CLI's `coerceBool` converts it to a real boolean. We run the same
-    // coercion inside `resolveDockerTags` itself so the API and the CLI
-    // share one contract — no caller can accidentally trip over the
-    // strict-bool version by passing `"true"` / `"false"` directly.
+    // The `release: published` branch in `docker-release.yml` invokes
+    // the script with `--prerelease="$RELEASE_PRERELEASE"` (a string),
+    // and the CLI's `coerceBool` converts it to a real boolean. We run
+    // the same coercion inside `resolveDockerTags` itself so the API
+    // and the CLI share one contract — no caller can accidentally trip
+    // over the strict-bool version by passing `"true"` / `"false"`
+    // directly.
     expect(
       resolveDockerTags({
         tagName: "v0.5.0",
@@ -213,14 +214,17 @@ describe("resolveDockerTags", () => {
     ).toBe(false);
   });
 
-  describe("prerelease flag from the workflow_run path (BSOD-463)", () => {
-    // docker-release.yml threads `$WORKFLOW_RUN_PRERELEASE` from the
-    // upstream workflow_run.outputs.prerelease, which is set by
-    // release-please.yml's "Resolve release info" step from the
-    // GitHub Releases API via `jq -r '.prerelease // false'`. That
-    // value arrives at the script as the string "true" / "false".
-    // coerceBool must turn those strings into real booleans so
-    // pre-release tags do not silently push `latest`.
+  describe("prerelease flag from the release event path (BSOD-463)", () => {
+    // docker-release.yml threads `$RELEASE_PRERELEASE` from the
+    // `release: published` payload, whose boolean arrives at the
+    // script as the string "true" / "false". coerceBool must turn
+    // those strings into real booleans so pre-release tags do not
+    // silently push `latest`.
+    //
+    // The `workflow_run` path leaves the flag empty and lets the
+    // tag's semver decide (BSOD-775) — see the "derives the prerelease
+    // flag from the tag semver" case in
+    // `tests/unit/config/docker-release-workflow.test.ts`.
 
     it('treats prerelease="true" from the workflow_run path as boolean true (no `latest`)', () => {
       const result = resolveDockerTags({

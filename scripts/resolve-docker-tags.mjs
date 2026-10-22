@@ -33,9 +33,7 @@
 import process from "node:process";
 
 import { parseArgs } from "./parse-args.mjs";
-
-const SEMVER_RE =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+import { SEMVER_RE } from "./semver.mjs";
 
 // Re-export the shared `parseArgs` so the per-script test
 // (`tests/unit/scripts/resolve-docker-tags.test.mjs`) can keep importing

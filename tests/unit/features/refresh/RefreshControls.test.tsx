@@ -7,7 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   CredentialsProvider,
@@ -21,6 +21,7 @@ import {
   type SelectedWorkspace,
   type WorkspaceContextValue,
 } from "../../../../src/app/workspace-context";
+import { refreshStagingRepository } from "../../../../src/data/db/repositories/refresh-staging.repository";
 import { db } from "../../../../src/data/db/schema";
 import {
   OutcomeBanner,
@@ -117,6 +118,7 @@ describe("RefreshControls", () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
   });
 
   it("renders the exported leaf components with their documented states", () => {
@@ -234,6 +236,52 @@ describe("RefreshControls", () => {
     expect(sessions).toHaveLength(1);
     expect(sessions[0]?.status).toBe("running");
     expect(sessions[0]?.finishedAt).toBeNull();
+  });
+
+  it("scrubs the personal access token out of the rendered partial-failure detail", async () => {
+    // BSOD-748 — the refresh catch assigns the thrown `Error.message`
+    // to `errorDetail` verbatim. Any error that echoes the token (a
+    // buggy `fetch`, a third-party `Error` subclass, or a future
+    // orchestrator throw inside the refresh `try` block) would render
+    // the personal access token into the DOM.
+    vi.spyOn(refreshStagingRepository, "stageUpsert").mockRejectedValue(
+      new Error(`boom ${FIXTURE_TOKEN} boom`),
+    );
+
+    const handlesRef = renderRefreshControls();
+    await driveProvidersToReady(handlesRef);
+
+    fireEvent.click(screen.getByTestId("refresh-button"));
+
+    const banner = await waitFor(() => {
+      const node = screen.getByTestId("outcome-banner");
+      expect(node).toHaveAttribute("data-outcome", "partial_failure");
+      return node;
+    });
+
+    expect(banner).not.toHaveTextContent(FIXTURE_TOKEN);
+    expect(banner).toHaveTextContent("[redacted]");
+    expect(banner).toHaveTextContent("boom [redacted] boom");
+  });
+
+  it("renders a token-free partial-failure detail verbatim", async () => {
+    vi.spyOn(refreshStagingRepository, "stageUpsert").mockRejectedValue(
+      new Error("Failed to stage projects: disk full"),
+    );
+
+    const handlesRef = renderRefreshControls();
+    await driveProvidersToReady(handlesRef);
+
+    fireEvent.click(screen.getByTestId("refresh-button"));
+
+    const banner = await waitFor(() => {
+      const node = screen.getByTestId("outcome-banner");
+      expect(node).toHaveAttribute("data-outcome", "partial_failure");
+      return node;
+    });
+
+    expect(banner).toHaveTextContent("Failed to stage projects: disk full");
+    expect(banner).not.toHaveTextContent("[redacted]");
   });
 
   it("renders the supplied partial-failure detail when one exists", () => {

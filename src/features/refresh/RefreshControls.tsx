@@ -74,7 +74,8 @@
  *   permission, rate-limited): T051. The component routes any
  *   non-`ok` projects/tasks fetch outcome through the
  *   `'partial_failure'` state and preserves the thrown message
- *   verbatim; T051's failure-reason rendering is the second consumer
+ *   verbatim apart from the token scrub (BSOD-748) documented
+ *   below; T051's failure-reason rendering is the second consumer
  *   of that field.
  * - Cached-vs-fresh labelling: T050 (`FreshnessBanner`).
  * - Subtask project-membership resolution: T058 (BSOD-309) extends
@@ -142,7 +143,11 @@ import type { z } from "zod";
 
 import { useCredentialTokenAccessor } from "../../app/credentials-context";
 import { useWorkspace } from "../../app/workspace-context";
-import { fetchProjectsPage, fetchTasksPage } from "../../data/asana/client";
+import {
+  fetchProjectsPage,
+  fetchTasksPage,
+  scrubTokenFromMessage,
+} from "../../data/asana/client";
 import type {
   asanaProjectSchema,
   asanaTaskSchema,
@@ -575,6 +580,15 @@ export function RefreshControls(): ReactElement {
       // that transitions a session to a terminal failure
       // status); the discarded staging buffer leaves the live
       // cache untouched, satisfying FR-022.
+      //
+      // The thrown `Error.message` is scrubbed of the current
+      // token before it becomes `errorDetail` (BSOD-748): the
+      // outcome banner documents that the detail it renders
+      // "arrives here already scrubbed of any token value", and
+      // this catch is a producer of that string — it accepts any
+      // throw from the block above (Dexie, a staging validation
+      // failure, a future orchestrator error), so the invariant
+      // has to be enforced here rather than assumed.
       await refreshStagingRepository.discard(sessionId).catch(() => {
         // Discard is best-effort cleanup; an already-discarded
         // session (e.g. the orchestrator discarded it on a
@@ -585,7 +599,7 @@ export function RefreshControls(): ReactElement {
         completedAt: null,
         errorDetail:
           error instanceof Error
-            ? error.message
+            ? scrubTokenFromMessage(error.message, currentToken)
             : "The refresh stopped before the workspace was fully retrieved.",
       });
       setState("partial_failure");

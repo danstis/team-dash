@@ -89,6 +89,10 @@ describe("docker/nginx.conf (T012 nginx runtime config)", () => {
     it("uses index.html as the directory index for SPA shell fallback", () => {
       expect(serverBlock).toMatch(/^\s*index\s+index\.html\s*;/m);
     });
+
+    it("disables nginx version disclosure (server_tokens off)", () => {
+      expect(serverBlock).toMatch(/^\s*server_tokens\s+off\s*;/m);
+    });
   });
 
   describe("(1) SPA fallback routing", () => {

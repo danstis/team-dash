@@ -494,10 +494,15 @@ export function OutcomeBanner({
   );
   const isFailure = resolvedState === "failed";
   const cacheIsIntact = cacheIntact ?? resolvedState !== "succeeded";
-  const reasonCopy =
-    isFailure && resolvedReason in FAILURE_REASON_COPY
-      ? FAILURE_REASON_COPY[resolvedReason as OutcomeBannerReason]
-      : null;
+  const reasonCopy = failureReasonCopy(resolvedReason);
+  const heading = resolveHeading(resolvedState, reasonCopy);
+  const body = resolveBody(
+    resolvedState,
+    reasonCopy,
+    resolvedDetail,
+    completedAt ?? null,
+    itemsRetrieved,
+  );
 
   return (
     <section
@@ -512,43 +517,12 @@ export function OutcomeBanner({
       data-outcome-cache-intact={String(cacheIsIntact)}
       role={isFailure ? "alert" : "status"}
       aria-live={isFailure ? "assertive" : "polite"}
-      aria-label={
-        ariaLabel ?? reasonCopy?.heading ?? defaultHeading(resolvedState)
-      }
+      aria-label={ariaLabel ?? heading}
     >
-      <h2>
-        {resolvedState === "succeeded"
-          ? "Refresh complete"
-          : resolvedState === "cancelled"
-            ? "Refresh cancelled"
-            : (reasonCopy?.heading ?? "Partial refresh result")}
-      </h2>
-      {resolvedState === "succeeded" ? (
-        <>
-          <p>
-            {completedAt === null || completedAt === undefined
-              ? "Your workspace data is up to date."
-              : `Your workspace data is up to date as of ${completedAt}.`}
-          </p>
-          {typeof itemsRetrieved === "number" ? (
-            <p data-testid="outcome-items-retrieved">
-              {itemsRetrieved} items retrieved.
-            </p>
-          ) : null}
-        </>
-      ) : null}
-      {resolvedState === "cancelled" ? (
-        <p>The refresh was cancelled before it could complete.</p>
-      ) : null}
-      {isFailure ? (
-        <>
-          {reasonCopy === null ? null : <p>{reasonCopy.body}</p>}
-          {resolvedDetail === null ? null : <p>{resolvedDetail}</p>}
-          {reasonCopy === null && resolvedDetail === null ? (
-            <p>{DEFAULT_PARTIAL_FAILURE_COPY}</p>
-          ) : null}
-        </>
-      ) : null}
+      <h2>{heading}</h2>
+      {body.map((line, index) => (
+        <p key={`${index}-${line}`}>{line}</p>
+      ))}
       {cacheIsIntact && resolvedState !== "succeeded" ? (
         <p data-testid="cache-intact-notice">
           The previous good cache is still intact.
@@ -559,18 +533,83 @@ export function OutcomeBanner({
 }
 
 /**
- * The default accessible label for the states that have no
- * reason-specific heading.
+ * The per-reason copy for a failure reason, or `null` when the reason
+ * is not one of the documented failure modes (the banner then falls
+ * back to the generic copy).
  */
-function defaultHeading(state: OutcomeBannerState): string {
+function failureReasonCopy(
+  reason: string,
+): { readonly heading: string; readonly body: string } | null {
+  if (reason in FAILURE_REASON_COPY) {
+    return FAILURE_REASON_COPY[reason as OutcomeBannerReason];
+  }
+  return null;
+}
+
+/**
+ * The banner's heading for an outcome state. The success and
+ * cancellation states have their own headings; a failure uses its
+ * reason-specific heading when it has one and the generic
+ * "Partial refresh result" heading otherwise.
+ */
+function resolveHeading(
+  state: OutcomeBannerState,
+  reasonCopy: { readonly heading: string; readonly body: string } | null,
+): string {
   switch (state) {
     case "succeeded":
       return "Refresh complete";
     case "cancelled":
       return "Refresh cancelled";
     case "failed":
-      return "Refresh failed";
+      return reasonCopy?.heading ?? "Partial refresh result";
   }
+}
+
+/**
+ * The banner's body lines for an outcome state, in reading order.
+ *
+ * - **Success** — the FR-021 completion statement plus the item count
+ *   when the orchestrator reported one.
+ * - **Cancellation** — what happened, in the user's terms.
+ * - **Failure** — the reason-specific explanation (when the reason is
+ *   a documented failure mode), the failure detail (when there is
+ *   one), and the generic T049 copy when there is neither.
+ */
+function resolveBody(
+  state: OutcomeBannerState,
+  reasonCopy: { readonly heading: string; readonly body: string } | null,
+  detail: string | null,
+  completedAt: string | null,
+  itemsRetrieved: number | undefined,
+): string[] {
+  if (state === "succeeded") {
+    const lines = [
+      completedAt === null
+        ? "Your workspace data is up to date."
+        : `Your workspace data is up to date as of ${completedAt}.`,
+    ];
+    if (typeof itemsRetrieved === "number") {
+      lines.push(`${itemsRetrieved} items retrieved.`);
+    }
+    return lines;
+  }
+
+  if (state === "cancelled") {
+    return ["The refresh was cancelled before it could complete."];
+  }
+
+  const lines: string[] = [];
+  if (reasonCopy !== null) {
+    lines.push(reasonCopy.body);
+  }
+  if (detail !== null) {
+    lines.push(detail);
+  }
+  if (lines.length === 0) {
+    lines.push(DEFAULT_PARTIAL_FAILURE_COPY);
+  }
+  return lines;
 }
 
 /**

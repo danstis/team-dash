@@ -490,17 +490,36 @@ const CANCELLED_MESSAGE =
  * from any other id in the store); the UUID suffix keeps concurrent
  * or repeated refreshes from colliding on the same Dexie primary
  * key. Uses `crypto.randomUUID()` when available (Node ≥ 19, every
- * modern browser) and falls back to a `Math.random`-based generator
- * in environments without Web Crypto — the test environment does
- * have Web Crypto via `tests/setup.ts`, so this fallback is a
- * defensive guard only.
+ * modern browser) and falls back to a Web Crypto
+ * `getRandomValues`-derived v4 UUID in the (older) environments that
+ * predate `randomUUID`.
+ *
+ * The fallback deliberately does NOT use `Math.random()`: the session
+ * id is a cache-store primary key and an audit-trail identifier, and
+ * a predictable pseudo-random id is the kind of thing Sonar's
+ * `typescript:S2245` (and a security reviewer) rightly flags. Web
+ * Crypto is already a hard dependency of the app — the token crypto
+ * module (`src/data/crypto/token-crypto.ts`) cannot run without it —
+ * so requiring it here adds no new constraint.
  */
 function generateSessionId(): string {
   const cryptoRef = globalThis.crypto;
   if (typeof cryptoRef?.randomUUID === "function") {
     return `session-${cryptoRef.randomUUID()}`;
   }
-  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  if (typeof cryptoRef?.getRandomValues !== "function") {
+    throw new Error(
+      "refreshOrchestrator: this environment provides no Web Crypto random source; cannot mint a RefreshSession id",
+    );
+  }
+  const bytes = cryptoRef.getRandomValues(new Uint8Array(16));
+  // RFC 4122 §4.4 — set the version (4) and variant (10xx) bits.
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `session-${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 /**
@@ -565,6 +584,233 @@ function isAbortRequested(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Refresh context                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The ambient state every stage of a refresh run needs. Bundling it
+ * into one object keeps the stage helpers' signatures small and makes
+ * it obvious that no stage carries hidden state between them.
+ */
+interface RefreshContext {
+  readonly token: string;
+  readonly workspaceGid: string;
+  readonly sessionId: string;
+  readonly signal: AbortSignal | undefined;
+  readonly onProgress: ((itemsRetrieved: number) => void) | undefined;
+}
+
+/**
+ * The result of a pagination walk. Either the walk completed and
+ * carries its data, or the walk ended in a terminal refresh outcome
+ * (a failure or a cancellation) and the refresh stops there.
+ */
+type WalkResult<T> =
+  | { readonly status: "walked"; readonly data: T }
+  | { readonly status: "terminal"; readonly outcome: RefreshOutcome };
+
+/* -------------------------------------------------------------------------- */
+/* FR-024 sync-mode resolution                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Resolve the sync mode this session actually uses.
+ *
+ * FR-024 — "the system MUST prefer incremental/delta retrieval when
+ * it can be done validly per Asana's documented capabilities, and MUST
+ * detect when incremental state is stale, invalid, or insufficient and
+ * fall back to a full reconciliation that restores correctness without
+ * corrupting the existing cache during the fallback."
+ *
+ * The probe reads the stored sync state through the Events API. Its
+ * outcomes split into two groups:
+ *
+ * - **Stale / invalid / insufficient incremental state** — no stored
+ *   sync token, Asana's documented `412 Precondition Failed`
+ *   sync-token-expired, a transport failure, a rate-limit, or a
+ *   schema mismatch. Each one means the incremental state cannot be
+ *   trusted, so the refresh continues as a full reconciliation. This
+ *   is the FR-024 fallback and it is never surfaced to the user as a
+ *   failure — an expired sync token is not the user's fault.
+ * - **A rejected token** (`auth_failure`) — the credential itself is
+ *   invalid, so no reconciliation can succeed either. The refresh
+ *   fails with the auth reason instead of walking the whole
+ *   workspace for a result that cannot arrive.
+ *
+ * T051 implements the *fallback* half of the contract: the
+ * reconciliation is the full walk, which is always a correct superset
+ * of the incremental result and never corrupts the existing cache
+ * (the whole walk is staged and committed atomically). The row that
+ * implements the incremental fast path branches on the probe's
+ * outcome here.
+ */
+async function resolveSyncMode(
+  context: RefreshContext,
+  mode: RefreshSyncMode,
+  syncToken: string | null,
+): Promise<
+  | { readonly status: "resolved"; readonly mode: RefreshSyncMode }
+  | { readonly status: "terminal"; readonly outcome: RefreshOutcome }
+> {
+  if (mode !== "incremental") {
+    return { status: "resolved", mode };
+  }
+
+  const probe = await fetchEventsSince(
+    context.token,
+    context.workspaceGid,
+    syncToken ?? undefined,
+    { signal: context.signal },
+  );
+
+  if (probe.outcome === "auth_failure") {
+    // The token is rejected — surface the authentication failure
+    // rather than walking the workspace for a result that cannot
+    // arrive.
+    return {
+      status: "terminal",
+      outcome: {
+        status: "failed",
+        sessionId: context.sessionId,
+        itemsRetrieved: 0,
+        reason: "auth_failure",
+        message: buildFailureMessage("projects", probe.outcome),
+      },
+    };
+  }
+
+  // Every other probe outcome — including a successful one — resolves
+  // to the full reconciliation. See the docblock for why.
+  return { status: "resolved", mode: "full" };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pagination walks                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Walk the workspace's project pages, staging every project row as it
+ * arrives.
+ *
+ * The walk is sequential by necessity: Asana's offset pagination
+ * hands out the *next* offset in the current page's response, so the
+ * pages cannot be requested in parallel. The `await` inside the loop
+ * is therefore intentional, not an oversight.
+ *
+ * @returns the staged project gids and the running item count, or the
+ * terminal outcome that ended the walk.
+ */
+async function walkProjectPages(
+  context: RefreshContext,
+  itemsRetrieved: number,
+): Promise<WalkResult<{ projectGids: string[]; itemsRetrieved: number }>> {
+  const projectGids: string[] = [];
+  let projectOffset: string | undefined = undefined;
+
+  do {
+    if (isAbortRequested(context.signal)) {
+      return {
+        status: "terminal",
+        outcome: await cancelOutcome(context.sessionId, itemsRetrieved),
+      };
+    }
+
+    const page = await fetchProjectsPage(context.token, context.workspaceGid, {
+      offset: projectOffset,
+      signal: context.signal,
+    });
+
+    if (page.outcome !== "ok") {
+      await refreshStagingRepository.discard(context.sessionId);
+      return {
+        status: "terminal",
+        outcome: await failOutcome(
+          context.sessionId,
+          "projects",
+          page,
+          itemsRetrieved,
+        ),
+      };
+    }
+
+    for (const project of page.data.data) {
+      const row = normaliseProject(project, context.workspaceGid);
+      await refreshStagingRepository.stageUpsert("projects", [row]);
+      projectGids.push(row.gid);
+      itemsRetrieved += 1;
+      context.onProgress?.(itemsRetrieved);
+    }
+
+    projectOffset = page.data.next_page?.offset;
+  } while (projectOffset !== undefined);
+
+  return { status: "walked", data: { projectGids, itemsRetrieved } };
+}
+
+/**
+ * Walk every in-scope project's task pages, staging every task row as
+ * it arrives. The walk is sequential per project for the same reason
+ * the project walk is (Asana's offset pagination hands out the next
+ * offset in the current page's response).
+ *
+ * @returns the running item count, or the terminal outcome that ended
+ * the walk.
+ */
+async function walkTaskPages(
+  context: RefreshContext,
+  projectGids: readonly string[],
+  itemsRetrieved: number,
+): Promise<WalkResult<{ itemsRetrieved: number }>> {
+  const lastSeenAt = new Date().toISOString();
+
+  for (const projectGid of projectGids) {
+    let taskOffset: string | undefined = undefined;
+
+    do {
+      if (isAbortRequested(context.signal)) {
+        return {
+          status: "terminal",
+          outcome: await cancelOutcome(context.sessionId, itemsRetrieved),
+        };
+      }
+
+      const page = await fetchTasksPage(context.token, projectGid, {
+        offset: taskOffset,
+        signal: context.signal,
+      });
+
+      if (page.outcome !== "ok") {
+        await refreshStagingRepository.discard(context.sessionId);
+        return {
+          status: "terminal",
+          outcome: await failOutcome(
+            context.sessionId,
+            { tasksForProject: projectGid },
+            page,
+            itemsRetrieved,
+          ),
+        };
+      }
+
+      for (const task of page.data.data) {
+        const row = normaliseTask(task, lastSeenAt);
+        await refreshStagingRepository.stageUpsert("tasks", [row]);
+        itemsRetrieved += 1;
+        context.onProgress?.(itemsRetrieved);
+      }
+
+      taskOffset = page.data.next_page?.offset;
+    } while (taskOffset !== undefined);
+  }
+
+  return { status: "walked", data: { itemsRetrieved } };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Orchestrator implementation                                                 */
+/* -------------------------------------------------------------------------- */
+
 /**
  * The orchestrator singleton. The module exports both the interface
  * and the implementation so a test can construct a fake
@@ -605,57 +851,39 @@ export const refreshOrchestrator: RefreshOrchestrator = {
       };
     }
 
-    // FR-024 incremental/full fallback resolution. The probe uses
-    // `fetchEventsSince` when `mode === 'incremental'`; any of the
-    // four "stale/invalid incremental state" triggers cascades to a
-    // full reconciliation (never to a hard failure — the user is
-    // never punished for an expired sync token). On a successful
-    // incremental probe the orchestrator would apply events and
-    // commit; for T051's scope (failure modes only) we treat the
-    // successful incremental probe as a no-op that still triggers a
-    // full reconciliation so the success-path commit behaviour is
-    // testable end-to-end.
-    let effectiveMode: RefreshSyncMode = mode;
-    if (mode === "incremental") {
-      const probe = await fetchEventsSince(
-        token,
-        workspaceGid,
-        syncToken ?? undefined,
-        { signal },
+    const sessionId = generateSessionId();
+    const context: RefreshContext = {
+      token,
+      workspaceGid,
+      sessionId,
+      signal,
+      onProgress,
+    };
+
+    // FR-024 — resolve the sync mode before the session row is
+    // seeded, so the recorded `syncMode` is the mode the session
+    // actually runs in. A rejected token terminates the refresh here.
+    const syncMode = await resolveSyncMode(context, mode, syncToken);
+    if (syncMode.status === "terminal") {
+      await writeTerminalSessionStatus(
+        sessionId,
+        "auth_failure",
+        syncMode.outcome.status === "failed"
+          ? syncMode.outcome.message
+          : CANCELLED_MESSAGE,
       );
-      if (probe.outcome === "ok") {
-        // Successful incremental probe — FR-024 says "incremental
-        // MAY be used to improve efficiency but MUST NOT be
-        // treated as infallible". For T051's red→green slice we
-        // cascade to a full reconciliation anyway; future rows can
-        // short-circuit on a successful probe and apply the events
-        // diff without the full walk. The fallback path here is
-        // also what the test exercises when the probe succeeds
-        // but the orchestrator's downstream pages fail — the UI
-        // sees the same `failed` / `cancelled` / `succeeded`
-        // surface either way.
-        effectiveMode = "full";
-      } else {
-        // Probe failed — FR-024 fallback. The failure reason on the
-        // probe is informative (the UI could surface "incremental
-        // state stale, falling back to full refresh"), but for T051
-        // we still cascade to full and let the eventual walk's
-        // outcome drive the UI.
-        effectiveMode = "full";
-      }
+      return syncMode.outcome;
     }
 
-    const sessionId = generateSessionId();
-    const startedAt = new Date().toISOString();
     await db.refreshSessions.put({
       id: sessionId,
       workspaceGid,
-      startedAt,
+      startedAt: new Date().toISOString(),
       finishedAt: null,
       status: "running",
       itemsRetrieved: 0,
       errorDetail: null,
-      syncMode: effectiveMode,
+      syncMode: syncMode.mode,
     });
 
     // Begin staging — every write from here until commit() is
@@ -667,112 +895,22 @@ export const refreshOrchestrator: RefreshOrchestrator = {
 
     let itemsRetrieved = 0;
 
-    /**
-     * Local helper to classify a single Asana call's failure. The
-     * `discriminant` from the union is the only signal we trust;
-     * the orchestrator never re-parses the message string.
-     */
-    const failOnOutcome = async <T>(
-      scope: FetchScope,
-      result: AsanaClientResult<T>,
-    ): Promise<Extract<RefreshOutcome, { status: "failed" }> | null> => {
-      if (result.outcome === "ok") {
-        return null;
-      }
-      await refreshStagingRepository.discard(sessionId);
-      return failOutcome(sessionId, scope, result, itemsRetrieved);
-    };
-
     try {
-      // Pagination loop: projects page.
-      const projectGids: string[] = [];
-      let projectOffset: string | undefined = undefined;
-      // The loop is bounded by the Asana-side pagination walk; a
-      // pagination walk that never terminates is a server bug, not
-      // a normal-case state, so the loop is allowed to run to
-      // completion. Each iteration surfaces failure through
-      // `failOnOutcome` above; the loop terminates as soon as the
-      // outcome is non-`ok`.
-      do {
-        if (isAbortRequested(signal)) {
-          return await cancelOutcome(sessionId, itemsRetrieved);
-        }
-        const projectsPage = await fetchProjectsPage(token, workspaceGid, {
-          offset: projectOffset,
-          signal,
-        });
-        const failure = await failOnOutcome("projects", projectsPage);
-        if (failure !== null) {
-          return failure;
-        }
-        if (projectsPage.outcome !== "ok") {
-          // Unreachable — `failOnOutcome` would have returned — but
-          // the TypeScript narrowing requires a defensive return so
-          // the rest of the function can rely on `projectsPage.data`.
-          return await failOutcome(
-            sessionId,
-            "projects",
-            {
-              outcome: "network_error",
-              message:
-                "Internal orchestrator error: projectsPage was not ok after failOnOutcome",
-            },
-            itemsRetrieved,
-          );
-        }
-        for (const project of projectsPage.data.data) {
-          const row = normaliseProject(project, workspaceGid);
-          await refreshStagingRepository.stageUpsert("projects", [row]);
-          projectGids.push(row.gid);
-          itemsRetrieved += 1;
-          onProgress?.(itemsRetrieved);
-        }
-        projectOffset = projectsPage.data.next_page?.offset;
-      } while (projectOffset !== undefined);
-
-      // Pagination loop: tasks page per project. The outer loop
-      // walks projects; the inner loop walks each project's task
-      // pagination walk. Both loops surface failure through the
-      // shared `failOnOutcome` helper.
-      const nowIso = new Date().toISOString();
-      for (const projectGid of projectGids) {
-        let taskOffset: string | undefined = undefined;
-        do {
-          if (isAbortRequested(signal)) {
-            return await cancelOutcome(sessionId, itemsRetrieved);
-          }
-          const tasksPage = await fetchTasksPage(token, projectGid, {
-            offset: taskOffset,
-            signal,
-          });
-          const failure = await failOnOutcome(
-            { tasksForProject: projectGid },
-            tasksPage,
-          );
-          if (failure !== null) {
-            return failure;
-          }
-          if (tasksPage.outcome !== "ok") {
-            return await failOutcome(
-              sessionId,
-              { tasksForProject: projectGid },
-              {
-                outcome: "network_error",
-                message:
-                  "Internal orchestrator error: tasksPage was not ok after failOnOutcome",
-              },
-              itemsRetrieved,
-            );
-          }
-          for (const task of tasksPage.data.data) {
-            const row = normaliseTask(task, nowIso);
-            await refreshStagingRepository.stageUpsert("tasks", [row]);
-            itemsRetrieved += 1;
-            onProgress?.(itemsRetrieved);
-          }
-          taskOffset = tasksPage.data.next_page?.offset;
-        } while (taskOffset !== undefined);
+      const projects = await walkProjectPages(context, itemsRetrieved);
+      if (projects.status === "terminal") {
+        return projects.outcome;
       }
+      itemsRetrieved = projects.data.itemsRetrieved;
+
+      const tasks = await walkTaskPages(
+        context,
+        projects.data.projectGids,
+        itemsRetrieved,
+      );
+      if (tasks.status === "terminal") {
+        return tasks.outcome;
+      }
+      itemsRetrieved = tasks.data.itemsRetrieved;
 
       // Success path — commit atomically flushes the staged rows
       // AND transitions the session to `succeeded` in a single
@@ -796,7 +934,7 @@ export const refreshOrchestrator: RefreshOrchestrator = {
       // Internal / unexpected throw — preserve the cache by
       // discarding the staging buffer. A failure here is not the
       // orchestrator's documented failure surface (those are
-      // surfaced through `failOnOutcome`); it is an unexpected
+      // surfaced through the walk helpers); it is an unexpected
       // exception (e.g. a Dexie write rejection). We surface it as
       // a `network_error` outcome because the UI's
       // RefreshFailureReason vocabulary has no "internal_error"

@@ -44,29 +44,46 @@ jobs:
     # should finish well under this; 15 min is the action default.
     timeout-minutes: 15
     # Skip the whole job when the upstream `Release Please` workflow
-    # completed without producing a release (no conventional commits
-    # since the last tag, etc.). workflow_dispatch and direct
-    # `release: published` always run.
+    # completed unsuccessfully, or was triggered from a fork.
+    # workflow_dispatch and direct `release: published` always run.
     #
     # Security: a `workflow_run` event fires for runs of the named
     # workflow in FORKS of this repository too (see
     # https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_run).
     # Although fork runs don't have access to secrets, the workflow
     # payload is still attacker-controllable (any field on the run
-    # object, including `outputs.*`). Restrict the trigger to runs
-    # that originated in our own repository (`head_repository.full_name`
-    # == `repository.full_name`) and to a single named workflow so a
-    # malicious fork can't name its workflow "Release Please" and
-    # inject a crafted `tag_name`/`sha` output. SonarCloud rule
+    # object). Restrict the trigger to runs that originated in our own
+    # repository (`head_repository.full_name` == `github.repository`) and
+    # to a single named workflow so a malicious fork can't name its
+    # workflow "Release Please". The release tag itself is resolved from
+    # the GitHub Releases API — never from the payload — so a fork run
+    # cannot inject a crafted `tag_name`/`sha`. SonarCloud rule
     # githubactions:S7631 (BSOD-357).
+    #
+    # BSOD-466: two expressions in the old guard could never be true.
+    # `github.repository` is a *string* ("owner/repo"), so dereferencing
+    # `.full_name` on it always yielded null and the comparison could
+    # never be true; and the `workflow_run` webhook payload has no
+    # `outputs` field at all (see the workflow-run schema published by
+    # octokit/webhooks: it carries `conclusion`, `name`, `head_branch`,
+    # `head_repository`, `head_sha`, ... but no `outputs`), so the
+    # upstream job outputs could never be read. Every `workflow_run` run
+    # was therefore skipped and no image was ever published from a
+    # release.
+    #
+    # A Release Please run that did NOT create a release (no conventional
+    # commits since the last tag) still passes this guard. The tag is
+    # then resolved to the newest published release, and the ghcr
+    # idempotency check ("Check whether the version is already
+    # published") turns the run into a no-op for a version that is
+    # already in the registry.
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'release' ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_repository.full_name == github.repository.full_name &&
-       github.event.workflow_run.name == 'Release Please' &&
-       github.event.workflow_run.outputs.releases_created == 'true')
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.name == 'Release Please')
     steps:
       - name: Resolve event inputs
         id: inputs
@@ -83,12 +100,15 @@ jobs:
           RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
           RELEASE_TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
           RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
-          WORKFLOW_RUN_TAG_NAME: ${{ github.event.workflow_run.outputs.tag_name }}
-          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.outputs.sha }}
-          WORKFLOW_RUN_PRERELEASE: ${{ github.event.workflow_run.outputs.prerelease }}
           WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           DISPATCH_TAG_NAME: ${{ inputs.tag_name }}
           DISPATCH_SOURCE_BRANCH: ${{ inputs.source_branch }}
+          # The `workflow_run` payload carries no job outputs (BSOD-466),
+          # so the release is resolved from the GitHub Releases API with
+          # the workflow's own GITHUB_TOKEN — no long-lived secret. The
+          # `contents: read` permission declared above covers it.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "release" ]; then
@@ -109,21 +129,24 @@ jobs:
               echo "commit_sha="
             } >> "$GITHUB_OUTPUT"
           elif [ "$EVENT_NAME" = "workflow_run" ]; then
-            # The `releases_created` job-level guard on this workflow
-            # already filters out the no-release case, so by the time we
-            # get here release-please has stamped a tag. The `tag_name`
-            # output is the exact string release-please used for the
-            # GitHub Release (e.g. `v0.5.0`); the `sha` output is the
-            # commit release-please tagged. The job-level `if` already
-            # guarantees `releases_created == 'true'`, so we don't need
-            # a second guard here.
+            # The `workflow_run` webhook payload has no `outputs` field
+            # (BSOD-466), so the upstream job outputs cannot be read from
+            # it. Resolve the release from the GitHub Releases API
+            # instead: `releases/latest` is the most recently published
+            # (non-draft, non-prerelease) release, which for a Release
+            # Please run that just published a release is exactly the tag
+            # it created.
             #
-            # `WORKFLOW_RUN_TAG_NAME` may legitimately be empty in the
-            # corner case where a future release-please version stops
-            # emitting it; treat that as a hard failure rather than
-            # silently pushing a bogus `:latest` retag.
-            if [ -z "$WORKFLOW_RUN_TAG_NAME" ]; then
-              echo "::error::workflow_run completed with releases_created=true but the upstream workflow emitted no tag_name output. Refusing to publish an unversioned image." >&2
+            # If the API cannot tell us which release to publish, refuse
+            # to publish an unversioned image rather than pushing a bogus
+            # `:latest` retag.
+            #
+            # `gh api` prints the response body on stdout for an HTTP
+            # error (a 401/404 body is not a release), so the value is
+            # only trusted when the call itself succeeded.
+            TAG_NAME=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name // ""') || TAG_NAME=""
+            if [ -z "$TAG_NAME" ]; then
+              echo "::error::Could not resolve a published release tag for the upstream Release Please run. Refusing to publish an unversioned image." >&2
               exit 1
             fi
             if [ "$WORKFLOW_RUN_HEAD_BRANCH" = "main" ]; then
@@ -131,21 +154,18 @@ jobs:
             else
               ON_MAIN="false"
             fi
-            # Pass through the prerelease flag from the upstream
-            # `Resolve release info` step in release-please.yml. If
-            # the upstream emitted an empty `prerelease` (the
-            # pre-release-please-outputs-declaration world of
-            # v5.0.0), `WORKFLOW_RUN_PRERELEASE` is also empty and
-            # the script (`scripts/resolve-docker-tags.mjs`) falls
-            # back to deriving prerelease from the tag's semver —
-            # which means `v1.0.0-rc.1` will NOT push `latest` even
-            # from a release-please workflow_run that came from
-            # main. (BSOD-463)
+            # `prerelease` is left empty on purpose (BSOD-466): the
+            # upstream `prerelease` output is gone with the rest of the
+            # `workflow_run.outputs.*` reads, and the tag resolved above
+            # is the source of truth — `scripts/resolve-docker-tags.mjs`
+            # derives the prerelease flag from the tag's semver, so
+            # `v1.0.0-rc.1` will NOT push `latest` even from a
+            # release-please workflow_run that came from main.
             {
-              echo "tag_name=$WORKFLOW_RUN_TAG_NAME"
-              echo "prerelease=$WORKFLOW_RUN_PRERELEASE"
+              echo "tag_name=$TAG_NAME"
+              echo "prerelease="
               echo "on_main=$ON_MAIN"
-              echo "commit_sha=$WORKFLOW_RUN_SHA"
+              echo "commit_sha=$WORKFLOW_RUN_HEAD_SHA"
             } >> "$GITHUB_OUTPUT"
           else
             # workflow_dispatch: there is no GitHub-emitted prerelease
@@ -192,11 +212,12 @@ jobs:
           # Check out the tag directly so the image is built from the
           # exact commit release-please tagged, not from a re-fetched
           # `main` HEAD (which may have moved past the release).
-          # For the `workflow_run` path the upstream release-please job
-          # stamped the SHA onto its `sha` output, so we check that out
-          # directly (the tag may not yet be visible on `origin` when
-          # this downstream workflow fires, and forcing a tag checkout
-          # would race with the upstream's tag push).
+          # For the `workflow_run` path the upstream run's `head_sha`
+          # (the commit the Release Please workflow ran on) is used
+          # directly, because the tag may not yet be visible on
+          # `origin` when this downstream workflow fires, and forcing a
+          # tag checkout would race with the upstream's tag push.
+          # (BSOD-466)
           ref: ${{ steps.inputs.outputs.commit_sha || steps.inputs.outputs.tag_name }}
           fetch-depth: 1
 

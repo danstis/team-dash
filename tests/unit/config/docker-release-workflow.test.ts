@@ -51,14 +51,25 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     expect(source).toMatch(/^\s{4}types:\s*\[completed\]\s*$/m);
   });
 
-  it("guards the docker job so workflow_run with no release is a no-op", () => {
-    // When release-please completes without producing a release (no new
-    // conventional commits since the last tag), the workflow still runs
-    // to completion; we must skip docker-push in that case. The job-level
-    // `if` checks `github.event.workflow_run.outputs.releases_created`
-    // rather than re-running release-please's logic.
+  it("guards the docker job on workflow_run fields that actually exist in the payload (BSOD-466)", () => {
+    // BSOD-466: the old guard read
+    // `github.event.workflow_run.outputs.releases_created`, but the
+    // `workflow_run` webhook payload has NO `outputs` field at all (the
+    // workflow-run schema published by octokit/webhooks lists
+    // `conclusion`, `name`, `head_branch`, `head_repository`, `head_sha`,
+    // ... but not `outputs`). The comparison was therefore always false
+    // and every `workflow_run` run was skipped — no image was ever
+    // published from a release.
+    //
+    // The guard now only uses payload fields that exist. The "upstream
+    // created no release" case is handled further down: the tag is
+    // resolved from the GitHub Releases API and the ghcr idempotency
+    // check turns an already-published version into a no-op.
     expect(source).toMatch(/^\s{4}if:\s*\|?\s*$/m);
-    expect(source).toMatch(/releases_created == 'true'/);
+    expect(source).toMatch(
+      /github\.event\.workflow_run\.conclusion == 'success'/,
+    );
+    expect(source).not.toMatch(/releases_created/);
   });
 
   it("refuses workflow_run events from forks or unrelated workflows (SonarCloud S7631)", () => {
@@ -69,9 +80,14 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     // holds `packages: write` and pushes to ghcr.io — so a malicious
     // fork could push arbitrary images to our namespace. Defend in
     // depth: restrict to the same repo + the exact workflow name.
+    // BSOD-466: `github.repository` is a *string* ("owner/repo"), not an
+    // object, so `github.repository.full_name` was always `null` and the
+    // comparison could never be true — the guard was evaluated but could
+    // never pass. The right-hand side must be `github.repository`.
     expect(source).toMatch(
-      /github\.event\.workflow_run\.head_repository\.full_name == github\.repository\.full_name/,
+      /github\.event\.workflow_run\.head_repository\.full_name == github\.repository(?![\w.])/,
     );
+    expect(source).not.toMatch(/github\.repository\.full_name/);
     expect(source).toMatch(
       /github\.event\.workflow_run\.name == 'Release Please'/,
     );
@@ -86,60 +102,70 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     expect(source).toMatch(/^\s{8}default:\s*['"]['"]\s*$/m);
   });
 
-  it("threads workflow_run outputs through env vars (no script-injection on upstream payload)", () => {
+  it("threads workflow_run payload fields through env vars (no script-injection on upstream payload)", () => {
     // Same script-injection guard as for workflow_dispatch and
     // `release: published`: every token from the upstream workflow's
     // payload must reach `run:` via an env var, never by literal
     // `${{ github.event.workflow_run.* }}` interpolation.
     expect(source).toMatch(
-      /WORKFLOW_RUN_TAG_NAME:\s*\$\{\{\s*github\.event\.workflow_run\.outputs\.tag_name\s*\}\}/,
-    );
-    expect(source).toMatch(
-      /WORKFLOW_RUN_SHA:\s*\$\{\{\s*github\.event\.workflow_run\.outputs\.sha\s*\}\}/,
-    );
-    expect(source).toMatch(
       /WORKFLOW_RUN_HEAD_BRANCH:\s*\$\{\{\s*github\.event\.workflow_run\.head_branch\s*\}\}/,
     );
-    // BSOD-463: also thread the upstream `prerelease` output (set by
-    // the "Resolve release info" step in release-please.yml) through
-    // an env var so the workflow_run branch can pass it to
-    // `scripts/resolve-docker-tags.mjs`. Hard-coding `prerelease=` to
-    // empty here would silently push `latest` for any release-please
-    // pre-release (e.g. `v1.0.0-rc.1`).
+    // BSOD-466: the tagged commit comes from the upstream run's
+    // `head_sha` — a field that DOES exist on the workflow-run payload.
     expect(source).toMatch(
-      /WORKFLOW_RUN_PRERELEASE:\s*\$\{\{\s*github\.event\.workflow_run\.outputs\.prerelease\s*\}\}/,
+      /WORKFLOW_RUN_HEAD_SHA:\s*\$\{\{\s*github\.event\.workflow_run\.head_sha\s*\}\}/,
     );
+    expect(source).toMatch(/echo "commit_sha=\$WORKFLOW_RUN_HEAD_SHA"/);
   });
 
-  it("passes the upstream prerelease flag through to the tag resolver on the workflow_run path", () => {
-    // BSOD-463: previously the workflow_run branch hard-coded
-    // `prerelease=` (empty), so a release-please pre-release would
-    // have incorrectly pushed `latest`. Now we thread
-    // `$WORKFLOW_RUN_PRERELEASE` (resolved by release-please.yml's
-    // "Resolve release info" step from the GitHub Releases API)
-    // through to `scripts/resolve-docker-tags.mjs` so pre-releases
-    // never overwrite `latest`.
-    expect(source).toMatch(/echo "prerelease=\$WORKFLOW_RUN_PRERELEASE"/);
-    // The dispatch branch must keep its semver-derive behavior, not
-    // start importing the workflow_run flag.
+  it("resolves the workflow_run release from the GitHub Releases API, not from the payload (BSOD-466)", () => {
+    // The payload carries no job outputs, so the release tag can only
+    // come from the API. `releases/latest` is the newest published
+    // (non-draft, non-prerelease) release — for a Release Please run
+    // that just published a release, that is exactly the tag it created.
+    expect(source).not.toMatch(/github\.event\.workflow_run\.outputs\./);
+    expect(source).toMatch(/GH_TOKEN:\s*\$\{\{\s*secrets\.GITHUB_TOKEN\s*\}\}/);
+    expect(source).toMatch(
+      /gh api "repos\/\$GITHUB_REPOSITORY\/releases\/latest"/,
+    );
+    expect(source).toMatch(/--jq '\.tag_name/);
+    expect(source).toMatch(/echo "tag_name=\$TAG_NAME"/);
+    // `gh api` prints the error body on stdout for an HTTP error (a 401
+    // body is not a release), so the resolved tag is only trusted when
+    // the API call itself succeeded.
+    expect(source).toMatch(/\|\| TAG_NAME=""/);
+  });
+
+  it("derives the prerelease flag from the tag semver on the workflow_run path (BSOD-466)", () => {
+    // BSOD-466: the upstream `prerelease` output is gone together with
+    // the rest of the `workflow_run.outputs.*` reads, so the workflow_run
+    // branch leaves `prerelease` empty and
+    // `scripts/resolve-docker-tags.mjs` derives it from the tag's semver
+    // (a `-` segment means pre-release) — exactly like the
+    // workflow_dispatch branch. A `v1.0.0-rc.1` tag therefore never
+    // pushes `latest`, even from a run on `main`.
+    expect(source).not.toMatch(/WORKFLOW_RUN_PRERELEASE/);
+    expect(source).toMatch(/echo "prerelease="/);
     expect(source).not.toMatch(/echo "prerelease=\$DISPATCH_PRERELEASE"/);
   });
 
-  it("hard-fails on a workflow_run with releases_created=true but no tag_name output", () => {
-    // Defense-in-depth: a future release-please-action version that
-    // stops emitting `tag_name` (or a hand-rolled upstream workflow
-    // that emits `releases_created=true` for some non-release reason)
-    // must NOT silently publish a `:latest` retag. The shell step
-    // asserts non-empty before writing `$GITHUB_OUTPUT`.
-    expect(source).toMatch(/WORKFLOW_RUN_TAG_NAME.*may legitimately be empty/s);
+  it("hard-fails when the workflow_run release cannot be resolved (no unversioned image)", () => {
+    // Defense-in-depth: if the GitHub Releases API cannot tell us which
+    // release to publish (no published release yet, API error, ...), the
+    // workflow must NOT silently publish a `:latest` retag. The shell
+    // step asserts the resolved tag is non-empty before writing
+    // `$GITHUB_OUTPUT`.
+    expect(source).toMatch(/Refusing to publish an unversioned image/);
     expect(source).toMatch(/exit 1/);
   });
 
   it("checks out the upstream SHA on the workflow_run path so we don't race the upstream tag push", () => {
-    // The release-please job emits `sha` (the tagged commit) on its
-    // outputs; we prefer that to a tag ref because the tag may not yet
-    // be visible on `origin` when this downstream workflow fires, and a
-    // `ref: <tag>` checkout would race against the upstream's tag push.
+    // BSOD-466: the upstream run's `head_sha` (the commit the Release
+    // Please workflow ran on) replaces the upstream `sha` job output,
+    // which the payload does not carry. We prefer a SHA over a tag ref
+    // because the tag may not yet be visible on `origin` when this
+    // downstream workflow fires, and a `ref: <tag>` checkout would race
+    // against the upstream's tag push.
     expect(source).toMatch(
       /ref:\s*\$\{\{\s*steps\.inputs\.outputs\.commit_sha\s*\|\|\s*steps\.inputs\.outputs\.tag_name\s*\}\}/,
     );

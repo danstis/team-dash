@@ -62,9 +62,10 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     // published from a release.
     //
     // The guard now only uses payload fields that exist. The "upstream
-    // created no release" case is handled further down: the tag is
-    // resolved from the GitHub Releases API and the ghcr idempotency
-    // check turns an already-published version into a no-op.
+    // created no release" case is handled further down (BSOD-775): the
+    // release is resolved from the GitHub Releases API by matching the
+    // upstream run's commit, and a run that created no release exits
+    // green without publishing anything.
     expect(source).toMatch(/^\s{4}if:\s*\|?\s*$/m);
     expect(source).toMatch(
       /github\.event\.workflow_run\.conclusion == 'success'/,
@@ -110,30 +111,108 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     expect(source).toMatch(
       /WORKFLOW_RUN_HEAD_BRANCH:\s*\$\{\{\s*github\.event\.workflow_run\.head_branch\s*\}\}/,
     );
-    // BSOD-466: the tagged commit comes from the upstream run's
-    // `head_sha` — a field that DOES exist on the workflow-run payload.
+    // BSOD-466: the upstream run's `head_sha` — a field that DOES exist
+    // on the workflow-run payload — is what the release is matched
+    // against (BSOD-775).
     expect(source).toMatch(
       /WORKFLOW_RUN_HEAD_SHA:\s*\$\{\{\s*github\.event\.workflow_run\.head_sha\s*\}\}/,
     );
-    expect(source).toMatch(/echo "commit_sha=\$WORKFLOW_RUN_HEAD_SHA"/);
+    // The commit that is checked out is the one the release was tagged
+    // with, not the run head (BSOD-775).
+    expect(source).toMatch(/echo "commit_sha=\$RELEASE_SHA"/);
   });
 
   it("resolves the workflow_run release from the GitHub Releases API, not from the payload (BSOD-466)", () => {
     // The payload carries no job outputs, so the release tag can only
-    // come from the API. `releases/latest` is the newest published
-    // (non-draft, non-prerelease) release — for a Release Please run
-    // that just published a release, that is exactly the tag it created.
+    // come from the API — never from the (attacker-controllable) run
+    // payload.
     expect(source).not.toMatch(/github\.event\.workflow_run\.outputs\./);
     expect(source).toMatch(/GH_TOKEN:\s*\$\{\{\s*secrets\.GITHUB_TOKEN\s*\}\}/);
     expect(source).toMatch(
-      /gh api "repos\/\$GITHUB_REPOSITORY\/releases\/latest"/,
+      /gh api "repos\/\$GITHUB_REPOSITORY\/releases\?per_page=10"/,
     );
-    expect(source).toMatch(/--jq '\.tag_name/);
     expect(source).toMatch(/echo "tag_name=\$TAG_NAME"/);
     // `gh api` prints the error body on stdout for an HTTP error (a 401
-    // body is not a release), so the resolved tag is only trusted when
-    // the API call itself succeeded.
-    expect(source).toMatch(/\|\| TAG_NAME=""/);
+    // body is not a release), so the resolved release is only trusted
+    // when the API call itself succeeded.
+    expect(source).toMatch(/\|\| RELEASES_JSON=""/);
+  });
+
+  it("matches the workflow_run release by the upstream run's commit, not by 'latest' (BSOD-775)", () => {
+    // release-please creates the GitHub Release with `target_commitish`
+    // set to the commit it tagged, so the release whose
+    // `target_commitish` equals the upstream run's `head_sha` is
+    // exactly the release this run produced.
+    //
+    // `releases/latest` (the newest stable release) is NOT good
+    // enough: it is unrelated to the triggering run. It made a
+    // Release Please run that created no release publish an older tag
+    // (from the current `main` HEAD) whenever that tag's image had
+    // never been published.
+    expect(source).not.toMatch(/releases\/latest/);
+    expect(source).toMatch(/--arg sha "\$WORKFLOW_RUN_HEAD_SHA"/);
+    expect(source).toMatch(/select\(\.target_commitish == \$sha\)/);
+  });
+
+  it("exits green without publishing when the upstream run created no release (BSOD-775)", () => {
+    // The `releases_created` guard that used to live in the job-level
+    // `if:` could never be evaluated (the `workflow_run` payload has no
+    // `outputs` field), so a Release Please run that created no release
+    // (a `docs:`-only push) still resolved a release and published it.
+    // The no-release case is a legitimate no-op: exit 0 (green) and
+    // publish nothing.
+    expect(source).toMatch(/created no release/);
+    expect(source).toMatch(/echo "publish=false"/);
+    expect(source).toMatch(/exit 0/);
+  });
+
+  it("keeps the API-failure hard-fail separate from the no-release exit (BSOD-775)", () => {
+    // Two different conditions, two different outcomes:
+    //   * the Releases API call failed -> hard fail (`exit 1`), the
+    //     workflow must not silently publish an unversioned image;
+    //   * the API call succeeded but no release matches this run's
+    //     commit -> no-op (`exit 0`), nothing is published.
+    // They must not collapse into one another.
+    expect(source).toMatch(/Refusing to publish an unversioned image/);
+    expect(source).toMatch(/exit 1/);
+    expect(source).toMatch(/\|\| RELEASES_JSON=""/);
+  });
+
+  it("publishes the commit the release was tagged with, not the run head (BSOD-775)", () => {
+    // The image content must match the version it is tagged with, so
+    // the checked-out commit is the release's own `target_commitish`.
+    expect(source).toMatch(/echo "commit_sha=\$RELEASE_SHA"/);
+    expect(source).not.toMatch(/echo "commit_sha=\$WORKFLOW_RUN_HEAD_SHA"/);
+  });
+
+  it("gates every publishing step on the publish flag (BSOD-775)", () => {
+    // The no-release case must publish NOTHING: every step from the
+    // checkout to the push has to be skipped when `publish=false`.
+    const gates =
+      source.match(/steps\.inputs\.outputs\.publish != 'false'/g) ?? [];
+    expect(gates.length).toBeGreaterThanOrEqual(7);
+    // ... including the build/push step itself.
+    expect(source).toMatch(
+      /if:[^\n]*steps\.inputs\.outputs\.publish != 'false'[^\n]*steps\.check\.outputs\.already_published != 'true'/,
+    );
+  });
+
+  it("skips the publish when the tagged commit cannot be checked out (BSOD-775)", () => {
+    // Never publish content that does not match the version tag: if the
+    // tagged commit cannot be fetched, the publish is skipped (green)
+    // instead of falling back to some other commit.
+    expect(source).toMatch(/continue-on-error:\s*true/);
+    expect(source).toMatch(/steps\.checkout\.outcome == 'success'/);
+    expect(source).toMatch(/steps\.checkout\.outcome != 'success'/);
+  });
+
+  it("logs the no-release outcome (the log step is not gated on the publish flag)", () => {
+    // The "Log resolved inputs" step has to run even when nothing is
+    // published, so the run shows why it ended without a publish.
+    expect(source).toMatch(
+      /LOG_PUBLISH:\s*\$\{\{\s*steps\.inputs\.outputs\.publish\s*\}\}/,
+    );
+    expect(source).toMatch(/[Nn]othing to publish/);
   });
 
   it("derives the prerelease flag from the tag semver on the workflow_run path (BSOD-466)", () => {
@@ -151,21 +230,20 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
 
   it("hard-fails when the workflow_run release cannot be resolved (no unversioned image)", () => {
     // Defense-in-depth: if the GitHub Releases API cannot tell us which
-    // release to publish (no published release yet, API error, ...), the
+    // release to publish (API error, malformed response, ...), the
     // workflow must NOT silently publish a `:latest` retag. The shell
-    // step asserts the resolved tag is non-empty before writing
+    // step asserts the resolved release is non-empty before writing
     // `$GITHUB_OUTPUT`.
     expect(source).toMatch(/Refusing to publish an unversioned image/);
     expect(source).toMatch(/exit 1/);
   });
 
-  it("checks out the upstream SHA on the workflow_run path so we don't race the upstream tag push", () => {
-    // BSOD-466: the upstream run's `head_sha` (the commit the Release
-    // Please workflow ran on) replaces the upstream `sha` job output,
-    // which the payload does not carry. We prefer a SHA over a tag ref
-    // because the tag may not yet be visible on `origin` when this
-    // downstream workflow fires, and a `ref: <tag>` checkout would race
-    // against the upstream's tag push.
+  it("checks out the release's own commit on the workflow_run path so we don't race the upstream tag push", () => {
+    // The commit is resolved from the release itself (BSOD-775), so the
+    // image content always matches the version it is tagged with. We
+    // still prefer a SHA over a tag ref, because the tag may not yet be
+    // visible on `origin` when this downstream workflow fires, and a
+    // `ref: <tag>` checkout would race against the upstream's tag push.
     expect(source).toMatch(
       /ref:\s*\$\{\{\s*steps\.inputs\.outputs\.commit_sha\s*\|\|\s*steps\.inputs\.outputs\.tag_name\s*\}\}/,
     );
@@ -273,8 +351,10 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     expect(source).toMatch(/docker buildx imagetools inspect/);
     expect(source).toMatch(/already_published=true/);
     expect(source).toMatch(/already_published=false/);
+    // The build/push step is gated on the idempotency check (and, since
+    // BSOD-775, on the publish flag / a successful checkout).
     expect(source).toMatch(
-      /if:\s*steps\.check\.outputs\.already_published != 'true'/,
+      /if:[^\n]*steps\.check\.outputs\.already_published != 'true'/,
     );
   });
 

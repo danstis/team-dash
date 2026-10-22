@@ -22,6 +22,55 @@ function topLevelKeys(text: string): string[] {
   return keys;
 }
 
+type StepEnvBlock = { step: string; startLine: number; values: string[] };
+
+// Collect the `env:` blocks that belong to a workflow *step* (i.e. the
+// direct children of a `- name:` / `- uses:` list item), together with
+// the values declared inside them.
+//
+// This matters for BSOD-776: a step-level `env:` block is materialised
+// even when the step's own `if:` gate evaluates to false, so an
+// expression that throws on an empty input fails the whole job from a
+// step that never runs.
+function collectStepEnvBlocks(text: string): StepEnvBlock[] {
+  const lines = text.split("\n");
+  const blocks: StepEnvBlock[] = [];
+  let stepIndent: number | null = null;
+  let stepName = "";
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+
+    const stepItem = /^(\s*)-\s+(?:name|uses):\s*(.*?)\s*$/.exec(line);
+    if (stepItem) {
+      stepIndent = (stepItem[1] ?? "").length;
+      stepName = stepItem[2] ?? "";
+      continue;
+    }
+
+    const envHeader = /^(\s*)env:\s*$/.exec(line);
+    if (!envHeader || stepIndent === null) continue;
+    const envIndent = (envHeader[1] ?? "").length;
+    // A step's direct children sit two spaces deeper than the step
+    // item; anything else belongs to a nested mapping (`with:` etc.).
+    if (envIndent !== stepIndent + 2) continue;
+
+    const values: string[] = [];
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const entry = lines[j] ?? "";
+      if (entry.trim() === "") continue;
+      const entryIndent = entry.length - entry.trimStart().length;
+      if (entryIndent <= envIndent) break;
+      // YAML comments inside the block are not env values.
+      if (entry.trimStart().startsWith("#")) continue;
+      values.push(entry.trim());
+    }
+    blocks.push({ step: stepName, startLine: i + 1, values });
+  }
+
+  return blocks;
+}
+
 describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
   it("is a non-empty file under .github/workflows/", () => {
     expect(source.length).toBeGreaterThan(0);
@@ -337,7 +386,7 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
   it("embeds OCI source/version/revision labels for provenance", () => {
     expect(source).toMatch(/org\.opencontainers\.image\.title=team-dash/);
     expect(source).toMatch(
-      /org\.opencontainers\.image\.version=\$\{\{\s*fromJSON\(steps\.tags\.outputs\.tags_json\)\.version\s*\}\}/,
+      /org\.opencontainers\.image\.version=\$\{\{\s*steps\.tags\.outputs\.version\s*\}\}/,
     );
     expect(source).toMatch(
       /org\.opencontainers\.image\.revision=\$\{\{\s*steps\.source\.outputs\.commit_sha\s*\}\}/,
@@ -345,6 +394,58 @@ describe(".github/workflows/docker-release.yml (BSOD-258)", () => {
     expect(source).toMatch(
       /org\.opencontainers\.image\.source=\$\{\{\s*github\.server_url\s*\}\}/,
     );
+  });
+
+  it("never calls fromJSON() on a possibly-empty output inside a step-level env block (BSOD-776)", () => {
+    // BSOD-776: a step-level `env:` block is materialised even when the
+    // step's own `if:` gate is false — the gate protects the step's
+    // *body*, not its *environment*. The idempotency step therefore
+    // evaluated `fromJSON(steps.tags.outputs.tags_json)` on the
+    // no-release path, where `tags_json` is the empty string, and
+    // failed the whole job with "The template is not valid. ... Error
+    // reading JToken from JsonReader" — turning every ordinary push to
+    // `main` into a red `Docker Release` run.
+    //
+    // Rule: a step-level `env:` value may only call `fromJSON()` when
+    // the call is short-circuited by an explicit emptiness check.
+    const blocks = collectStepEnvBlocks(source);
+    expect(
+      blocks.length,
+      "test setup error: expected at least one step-level env: block",
+    ).toBeGreaterThan(0);
+
+    for (const block of blocks) {
+      for (const value of block.values) {
+        if (!value.includes("fromJSON(")) continue;
+        const guarded = /!=\s*''\s*&&\s*fromJSON\(/.test(value);
+        expect(
+          guarded,
+          `step-level env value in step "${block.step}" (line ${block.startLine}) calls fromJSON() without an emptiness guard: ${value}`,
+        ).toBe(true);
+      }
+    }
+
+    // The concrete failure mode is gone: nothing parses the (possibly
+    // empty) tags payload with fromJSON any more.
+    expect(source).not.toMatch(/fromJSON\(steps\.tags\.outputs\.tags_json\)/);
+  });
+
+  it("reads the image version from a single source in both the idempotency check and the OCI labels (BSOD-776)", () => {
+    // BSOD-776: the two former `fromJSON(steps.tags.outputs.tags_json)`
+    // call sites could drift apart (and did — one of them was only one
+    // gate change away from failing the same way). The version is now
+    // computed once, by the step that already resolves the tags, and
+    // both consumers read that single step output.
+    expect(source).toMatch(/echo "version=\$VERSION"/);
+    expect(source).toMatch(
+      /VERSION:\s*\$\{\{\s*steps\.tags\.outputs\.version\s*\}\}/,
+    );
+    expect(source).toMatch(
+      /org\.opencontainers\.image\.version=\$\{\{\s*steps\.tags\.outputs\.version\s*\}\}/,
+    );
+    // The version is derived from the payload the tag-resolver script
+    // produced, not re-parsed from a raw JSON string.
+    expect(source).toMatch(/jq -r '\.version \/\/ ""'/);
   });
 
   it("has an idempotent skip step gated on a buildx imagetools inspect of the version tag", () => {

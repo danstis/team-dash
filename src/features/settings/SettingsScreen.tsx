@@ -49,13 +49,13 @@ export interface SettingsScreenProps {
    * The settings sections rendered under the header. The router owns
    * which sections exist; the screen only owns their layout.
    */
-  children: ReactNode;
+  readonly children: ReactNode;
   /**
    * Extra header controls rendered beside the exit control (e.g. the
    * BSOD-359 theme toggle). The exit control always renders last so it
    * stays the terminal action in the header.
    */
-  actions?: ReactNode;
+  readonly actions?: ReactNode;
 }
 
 /**

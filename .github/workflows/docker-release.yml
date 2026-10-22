@@ -282,6 +282,7 @@ jobs:
           # (BSOD-466)
           ref: ${{ steps.inputs.outputs.commit_sha || steps.inputs.outputs.tag_name }}
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Report a skipped publish
         # The checkout above is `continue-on-error`, so a tagged commit

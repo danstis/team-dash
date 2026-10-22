@@ -5,6 +5,7 @@
     "helpers:pinGitHubActionDigests",
     "helpers:githubDigestChangelogs"
   ],
+  "pinDigests": true,
   "dependencyDashboard": true,
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {

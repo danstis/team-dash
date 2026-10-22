@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.28
+# syntax=docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
 #
 # Multi-stage build for Team Dash.
 #
@@ -16,8 +16,8 @@
 # Build:   docker build -f docker/Dockerfile -t team-dash .
 # Run:     docker run --rm -p 8080:8080 team-dash
 
-ARG NODE_IMAGE=node:24
-ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31-alpine
+ARG NODE_IMAGE=node:24@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a
+ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
 
 # ---------------------------------------------------------------------------
 # Stage 1 — build the static production bundle with Vite 8.3.

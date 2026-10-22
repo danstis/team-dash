@@ -233,6 +233,14 @@ describe("docker/nginx.conf (T012 nginx runtime config)", () => {
 });
 
 describe("docker/Dockerfile (T012 wiring)", () => {
+  it("pins the syntax frontend and both base images to sha256 digests", () => {
+    expect(dockerfile).toMatch(
+      /^# syntax=docker\/dockerfile:\S+@sha256:[0-9a-f]{64}$/m,
+    );
+    expect(dockerfile).toMatch(/^ARG NODE_IMAGE=\S+@sha256:[0-9a-f]{64}$/m);
+    expect(dockerfile).toMatch(/^ARG NGINX_IMAGE=\S+@sha256:[0-9a-f]{64}$/m);
+  });
+
   it("installs docker/nginx.conf into the runtime stage so it actually takes effect", () => {
     expect(dockerfile).toMatch(
       /COPY\s+docker\/nginx\.conf\s+\/etc\/nginx\/conf\.d\/default\.conf/,

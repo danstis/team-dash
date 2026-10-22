@@ -11,54 +11,21 @@ const repoRoot = path.resolve(
 const eslintConfigPath = path.join(repoRoot, "eslint.config.js");
 const fixturesRoot = path.join(repoRoot, "tests/fixtures/eslint-boundary");
 
-const PLUGIN_RULE_ID = "boundaries/dependencies";
+const PLUGIN_RULE_ID = "no-restricted-imports";
 
 async function lintFixtureFile(
   relativeFilePath: string,
 ): Promise<{ filePath: string; ruleIds: string[]; messages: string[] }> {
+  // Re-scope the real src/domain/** rule onto the fixture tree so
+  // `npm run lint` does not trip over the deliberately-bad fixtures.
+  const [domainBlock] = (await import(eslintConfigPath)).default.filter(
+    (block: { files?: string[] }) => block.files?.[0] === "src/domain/**",
+  );
   const eslint = new ESLint({
     overrideConfigFile: eslintConfigPath,
     overrideConfig: {
-      settings: {
-        "boundaries/elements": [
-          {
-            type: "domain",
-            pattern: [
-              "**/src/domain/**",
-              "**/tests/fixtures/eslint-boundary/domain/**",
-            ],
-          },
-          {
-            type: "features",
-            pattern: [
-              "**/src/features/**",
-              "**/tests/fixtures/eslint-boundary/features/**",
-            ],
-          },
-          {
-            type: "data-asana",
-            pattern: [
-              "**/src/data/asana/**",
-              "**/tests/fixtures/eslint-boundary/data/asana/**",
-            ],
-          },
-          {
-            type: "data",
-            pattern: [
-              "**/src/data/**",
-              "**/tests/fixtures/eslint-boundary/data/**",
-            ],
-          },
-          {
-            type: "app",
-            pattern: ["**/src/app/**"],
-          },
-          {
-            type: "shared",
-            pattern: ["**/src/shared/**"],
-          },
-        ],
-      },
+      ...domainBlock,
+      files: ["tests/fixtures/eslint-boundary/domain/**"],
     },
     cwd: repoRoot,
   });
@@ -90,32 +57,6 @@ describe("ESLint flat configuration", () => {
     expect(config.rules[PLUGIN_RULE_ID]).toBeDefined();
   });
 
-  it("declares the architecture layers src/domain, src/features, src/data, src/data/asana, src/app, and src/shared as boundaries elements", async () => {
-    const eslint = new ESLint({
-      overrideConfigFile: eslintConfigPath,
-      cwd: repoRoot,
-    });
-
-    const config = await eslint.calculateConfigForFile(
-      path.join(repoRoot, "src/domain/metrics/example.ts"),
-    );
-
-    const elementTypes = (
-      config.settings["boundaries/elements"] as Array<{ type: string }>
-    ).map((descriptor) => descriptor.type);
-
-    expect(elementTypes).toEqual(
-      expect.arrayContaining([
-        "domain",
-        "features",
-        "data-asana",
-        "data",
-        "app",
-        "shared",
-      ]),
-    );
-  });
-
   it("blocks src/domain/** from importing src/features/**, src/data/asana/**, or React", async () => {
     const eslint = new ESLint({
       overrideConfigFile: eslintConfigPath,
@@ -132,20 +73,10 @@ describe("ESLint flat configuration", () => {
     ];
     expect(ruleEntry[0]).toBe(2);
 
-    const options = ruleEntry[1];
-    const policies = options.policies as Array<Record<string, unknown>>;
-
-    const domainPolicy = policies.find((policy) => {
-      const from = policy.from as { element?: { type?: string } };
-      return from?.element?.type === "domain";
-    });
-    expect(domainPolicy).toBeDefined();
-
-    const disallow = (domainPolicy!.disallow as { to: unknown[] }).to;
-    const disallowSelectors = JSON.stringify(disallow);
-    expect(disallowSelectors).toContain("features");
-    expect(disallowSelectors).toContain("data-asana");
-    expect(disallowSelectors).toContain("react");
+    const selectors = JSON.stringify(ruleEntry[1]);
+    expect(selectors).toContain("**/features/**");
+    expect(selectors).toContain("**/data/asana/**");
+    expect(selectors).toContain('"react"');
   });
 
   it("does not flag a domain module that only imports from other domain modules", async () => {

@@ -1,4 +1,3 @@
-import boundaries from "eslint-plugin-boundaries";
 import tsParser from "@typescript-eslint/parser";
 
 const DOMAIN_BOUNDARY_MESSAGE =
@@ -36,48 +35,20 @@ export default [
     },
   },
   {
-    files: [
-      "**/*.js",
-      "**/*.mjs",
-      "**/*.cjs",
-      "**/*.ts",
-      "**/*.tsx",
-      "**/*.jsx",
-    ],
-    plugins: {
-      boundaries,
-    },
-    settings: {
-      "boundaries/elements": [
-        { type: "domain", pattern: "**/src/domain/**" },
-        { type: "features", pattern: "**/src/features/**" },
-        { type: "data-asana", pattern: "**/src/data/asana/**" },
-        { type: "data", pattern: "**/src/data/**" },
-        { type: "app", pattern: "**/src/app/**" },
-        { type: "shared", pattern: "**/src/shared/**" },
-      ],
-    },
+    // Constitution Principle VI — src/domain/** stays presentation-free,
+    // browser-free, and network-free.
+    files: ["src/domain/**"],
     rules: {
-      "boundaries/dependencies": [
+      "no-restricted-imports": [
         "error",
         {
-          default: "allow",
-          checkAllOrigins: true,
-          policies: [
+          paths: ["react", "react-dom", "react/jsx-runtime"].map((name) => ({
+            name,
+            message: DOMAIN_BOUNDARY_MESSAGE,
+          })),
+          patterns: [
             {
-              from: { element: { type: "domain" } },
-              disallow: {
-                to: [
-                  { element: { type: "features" } },
-                  { element: { type: "data-asana" } },
-                  {
-                    module: {
-                      origin: "external",
-                      source: ["react", "react-dom", "react/jsx-runtime"],
-                    },
-                  },
-                ],
-              },
+              group: ["**/features/**", "**/data/asana/**"],
               message: DOMAIN_BOUNDARY_MESSAGE,
             },
           ],

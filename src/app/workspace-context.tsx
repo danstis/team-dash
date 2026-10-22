@@ -39,12 +39,12 @@
  * `src/features/**` — the shell mounts features, not the other way
  * around.
  *
- * The `eslint-plugin-boundaries` configuration in `eslint.config.js`
+ * The `no-restricted-imports` configuration in `eslint.config.js`
  * currently constrains `src/domain/**` only (Constitution Principle
  * VI's lint-enforced half of the boundary); the "no feature import
  * from app" rule is enforced by architectural convention and code
  * review, not by lint. A future contributor may choose to tighten
- * the rule by adding a `boundaries/dependencies` policy on
+ * the rule by adding a `no-restricted-imports` block on
  * `src/app/**` so this convention becomes lint-enforced too.
  */
 import {

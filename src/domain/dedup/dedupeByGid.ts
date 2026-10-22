@@ -29,7 +29,7 @@
  * --------
  * This file lives in `src/domain/**`, so it MUST stay presentation-free,
  * browser-free, and network-free per Constitution Principle VI. The
- * `eslint-plugin-boundaries` rule in `eslint.config.js` enforces that
+ * `no-restricted-imports` rule in `eslint.config.js` enforces that
  * constraint; this file deliberately imports nothing beyond its own
  * helpers.
  *

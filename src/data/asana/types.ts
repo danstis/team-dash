@@ -51,7 +51,7 @@
  * lives here per `contracts/asana-client.md` ("every successful HTTP
  * response is parsed through the resource's Zod schema before being
  * returned as `ok`"). It MUST NOT import React, the React DOM, the app
- * shell, feature UI, or `src/domain/**` — `eslint-plugin-boundaries`
+ * shell, feature UI, or `src/domain/**` — `no-restricted-imports` rule
  * enforces that.
  *
  * Tests

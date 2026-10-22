@@ -1,0 +1,13 @@
+{
+  "$comment": "Advisories carved out of the full-tree dependency-audit gate in .github/workflows/ci.yml (BSOD-493). Each key is the advisory id npm reports — the last path segment of the advisory URL. Delete an entry when the issue named in `trackedBy` closes; the gate then fails on that advisory again.",
+  "advisories": {
+    "GHSA-vfj7-8cjw-p6xm": {
+      "package": "braces",
+      "severity": "high",
+      "scope": "dev",
+      "path": "eslint-plugin-boundaries > @boundaries/elements > micromatch > braces",
+      "reason": "No patched release exists — braces 3.0.3 is the newest published version. The chain is dev-scope and lint-time only (eslint-plugin-boundaries), so it is not reachable from the shipped bundle and the production-tree audit is not filtered by it. Accept-vs-replace-vs-wait is owned by the tracked issues, not by this gate.",
+      "trackedBy": ["BSOD-692", "BSOD-774"]
+    }
+  }
+}

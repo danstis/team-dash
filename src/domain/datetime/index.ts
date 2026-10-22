@@ -33,7 +33,7 @@
  * --------
  * This file lives under `src/domain/**`, so it MUST stay
  * presentation-free, browser-free, and network-free per Constitution
- * Principle VI and the `eslint-plugin-boundaries` rule in
+ * Principle VI and the `no-restricted-imports` rule in
  * `eslint.config.js`. The only external API it relies on is the platform
  * `Date` and `Intl.DateTimeFormat` — both standard ECMAScript, neither
  * a network nor a React surface. No `process.env` is read; local-timezone

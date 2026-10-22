@@ -26,7 +26,7 @@
  * under the router.
  *
  * This "shell does not import features" discipline is architectural
- * convention, not lint-enforced; the `eslint-plugin-boundaries`
+ * convention, not lint-enforced; the `no-restricted-imports` rule
  * configuration in `eslint.config.js` constrains `src/domain/**`
  * only. The convention is what every existing feature test relies
  * on to render a single feature in isolation.

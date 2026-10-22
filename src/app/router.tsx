@@ -29,7 +29,7 @@
  * - Feature components (`features/credentials/*`, `features/tasks/*`,
  *   …) are NOT directly imported here. By architectural convention
  *   the shell mounts providers and a router; features mount under
- *   the router. The `eslint-plugin-boundaries` configuration in
+ *   the router. The `no-restricted-imports` configuration in
  *   `eslint.config.js` constrains `src/domain/**` only (Constitution
  *   Principle VI's lint-enforced half of the boundary); the "shell
  *   does not compose features" rule is enforced by convention and

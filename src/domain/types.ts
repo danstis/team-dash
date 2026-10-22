@@ -18,7 +18,7 @@
  *
  * The file contains NO React, browser, or network imports — `src/domain/**`
  * is the architectural boundary that Constitution Principle VI protects via
- * `eslint-plugin-boundaries` (research.md §7). Any feature, app, or data
+ * the `no-restricted-imports` lint rule (research.md §7). Any feature, app, or data
  * import here would break the CI lint gate.
  *
  * Branded primitives (`ISODate`, `ISODateTime`) use TypeScript's structural

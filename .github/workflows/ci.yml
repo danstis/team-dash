@@ -27,6 +27,72 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
+  audit:
+    name: Dependency audit
+    needs: install
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      # BSOD-493 — the production tree is what ships in the bundle, so it is
+      # held to the stricter bar and is never filtered: a moderate-or-worse
+      # advisory anywhere in it fails the build.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+      # BSOD-493 — the full tree (dev included) is held at `high`. Advisories
+      # carved out in .github/dependency-audit-allowlist.json are removed
+      # before the gate judges what is left; every entry there names the
+      # issue that owns the decision, so the carve-out can be deleted when
+      # that issue closes.
+      - name: Audit full dependency tree
+        run: |
+          set -euo pipefail
+
+          # The audit exits 1 when it finds advisories, which is not an
+          # error for us — the JSON report is what the gate judges.
+          npm audit --json --audit-level=high > audit-report.json || true
+
+          # Fail closed: a registry or advisory-endpoint outage must not be
+          # mistaken for a clean tree.
+          if jq -e 'has("error")' audit-report.json > /dev/null; then
+            echo "::error::npm audit could not complete:"
+            jq -r '.message // (.error | tostring)' audit-report.json
+            exit 1
+          fi
+
+          # Advisory ids of every high or critical advisory in the tree.
+          jq -r '[.vulnerabilities // {}
+                 | to_entries[]
+                 | .value.via[]?
+                 | select(type == "object")
+                 | select(.severity == "high" or .severity == "critical")
+                 | (.url // "" | split("/") | last)
+                 | select(length > 0)]
+                | unique | .[]' audit-report.json > high-advisories.txt
+
+          jq -r '.advisories | keys[]' \
+            .github/dependency-audit-allowlist.json > allowed-advisories.txt
+
+          remaining=$(LC_ALL=C comm -23 \
+            <(LC_ALL=C sort -u high-advisories.txt) \
+            <(LC_ALL=C sort -u allowed-advisories.txt))
+          if [ -n "$remaining" ]; then
+            echo "::error::High-severity advisories in the dependency tree:"
+            echo "$remaining"
+            exit 1
+          fi
+
+          echo "No high-severity advisories outside the allowlist."
+
   lint:
     name: Lint
     needs: install
@@ -335,6 +401,7 @@ jobs:
     name: SonarQube scan
     needs:
       [
+        audit,
         lint,
         format-check,
         typecheck,

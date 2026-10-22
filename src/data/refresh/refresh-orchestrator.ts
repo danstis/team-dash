@@ -109,10 +109,7 @@ import {
   fetchTasksPage,
   scrubTokenFromMessage,
 } from "../asana/client";
-import type {
-  asanaProjectSchema,
-  asanaTaskSchema,
-} from "../asana/schemas";
+import type { asanaProjectSchema, asanaTaskSchema } from "../asana/schemas";
 import type {
   AsanaClientResult,
   AsanaClientResultOutcome,
@@ -793,8 +790,7 @@ export const refreshOrchestrator: RefreshOrchestrator = {
         status: "succeeded",
         sessionId,
         itemsRetrieved,
-        completedAt:
-          committed?.finishedAt ?? new Date().toISOString(),
+        completedAt: committed?.finishedAt ?? new Date().toISOString(),
       };
     } catch (error) {
       // Internal / unexpected throw — preserve the cache by
@@ -823,16 +819,10 @@ export const refreshOrchestrator: RefreshOrchestrator = {
       // this purpose), so the orchestrator and the client share one
       // implementation of the rule.
       const detail = scrubTokenFromMessage(
-        error instanceof Error
-          ? error.message
-          : "Unknown orchestrator error",
+        error instanceof Error ? error.message : "Unknown orchestrator error",
         token,
       );
-      await writeTerminalSessionStatus(
-        sessionId,
-        "partial_failure",
-        detail,
-      );
+      await writeTerminalSessionStatus(sessionId, "partial_failure", detail);
       return {
         status: "failed",
         sessionId,

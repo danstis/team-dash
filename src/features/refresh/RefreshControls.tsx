@@ -250,7 +250,10 @@ const DEFAULT_PARTIAL_FAILURE_COPY =
  * and so the reason is legible without reading a data attribute.
  */
 const FAILURE_REASON_COPY: Readonly<
-  Record<OutcomeBannerReason, { readonly heading: string; readonly body: string }>
+  Record<
+    OutcomeBannerReason,
+    { readonly heading: string; readonly body: string }
+  >
 > = {
   network_error: {
     heading: "Refresh interrupted by a network error",
@@ -493,23 +496,25 @@ export function OutcomeBanner({
   const cacheIsIntact = cacheIntact ?? resolvedState !== "succeeded";
   const reasonCopy =
     isFailure && resolvedReason in FAILURE_REASON_COPY
-      ? FAILURE_REASON_COPY[
-          resolvedReason as OutcomeBannerReason
-        ]
+      ? FAILURE_REASON_COPY[resolvedReason as OutcomeBannerReason]
       : null;
 
   return (
     <section
       className={className ?? "td-outcome-banner"}
       data-testid={dataTestId ?? "outcome-banner"}
-      data-outcome={resolvedState === "succeeded" ? "success" : "partial_failure"}
+      data-outcome={
+        resolvedState === "succeeded" ? "success" : "partial_failure"
+      }
       data-completed-at={completedAt ?? ""}
       data-outcome-state={resolvedState}
       data-outcome-reason={resolvedReason}
       data-outcome-cache-intact={String(cacheIsIntact)}
       role={isFailure ? "alert" : "status"}
       aria-live={isFailure ? "assertive" : "polite"}
-      aria-label={ariaLabel ?? reasonCopy?.heading ?? defaultHeading(resolvedState)}
+      aria-label={
+        ariaLabel ?? reasonCopy?.heading ?? defaultHeading(resolvedState)
+      }
     >
       <h2>
         {resolvedState === "succeeded"
@@ -621,11 +626,7 @@ export function propsFromOutcome(
  * non-success terminals the orchestrator reports.
  */
 type RefreshState =
-  | "idle"
-  | "running"
-  | "success"
-  | "partial_failure"
-  | "cancelled";
+  "idle" | "running" | "success" | "partial_failure" | "cancelled";
 
 /**
  * The US2 refresh surface. Reads the current token and workspace

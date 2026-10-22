@@ -20,9 +20,25 @@ node_modules
 # via `COPY --from=build`, so a context copy would be redundant and
 # would also race the build.
 dist
+
 # Vite/Sonar/IDE noise that must never enter a build image.
 coverage
 .vite
 .vscode
 .DS_Store
+
+# Development-only MSW worker (BSOD-450 moved it here from `public/`). It
+# is served by the `team-dash:dev-mock-service-worker` vite plugin during
+# `vite serve` only and must never enter a build context.
+dev
+
+# Repository history — never needed by the build, and would otherwise be
+# exported by `cache-to: type=gha,mode=max` in the release workflow.
+.git
+.gitignore
+
+# Local environment files. `.gitignore` permits developers to create these;
+# they must not reach the daemon or the BuildKit cache.
+.env
+.env.*
 

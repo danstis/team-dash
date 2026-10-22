@@ -210,6 +210,13 @@ describe("docker/nginx.conf (T012 nginx runtime config)", () => {
       );
     });
 
+    it("enforces HSTS for one year without preload", () => {
+      expect(securityHeaders).toMatch(
+        /^\s*add_header\s+Strict-Transport-Security\s+"max-age=31536000; includeSubDomains"\s+always\s*;/m,
+      );
+      expect(securityHeaders).not.toMatch(/preload/);
+    });
+
     it("disables browser features the app does not need", () => {
       expect(securityHeaders).toMatch(
         /^\s*add_header\s+Permissions-Policy\s+"geolocation=\(\), camera=\(\), microphone=\(\)"\s+always\s*;/m,

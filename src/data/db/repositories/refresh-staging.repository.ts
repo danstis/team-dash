@@ -356,21 +356,23 @@ async function commitStagedSnapshots(): Promise<void> {
     rowsByDate.set(row.localCalendarDate, row);
   }
 
-  for (const [workspaceGid, rowsByDate] of rowsByWorkspace) {
-    await snapshotRepository.backfillSnapshots(
-      workspaceGid,
-      Array.from(rowsByDate.keys()),
-      (date) => {
-        const row = rowsByDate.get(date);
-        if (row === undefined) {
-          throw new Error(
-            `refreshStagingRepository.commit: the staged snapshot for "${date}" is missing from the staging buffer`,
-          );
-        }
-        return row;
-      },
-    );
-  }
+  await Promise.all(
+    Array.from(rowsByWorkspace, ([workspaceGid, rowsByDate]) =>
+      snapshotRepository.backfillSnapshots(
+        workspaceGid,
+        Array.from(rowsByDate.keys()),
+        (date) => {
+          const row = rowsByDate.get(date);
+          if (row === undefined) {
+            throw new Error(
+              `refreshStagingRepository.commit: the staged snapshot for "${date}" is missing from the staging buffer`,
+            );
+          }
+          return row;
+        },
+      ),
+    ),
+  );
 }
 
 /**

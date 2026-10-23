@@ -273,13 +273,18 @@ describe("T052 [US2] same-day snapshot replacement", () => {
     ]);
   });
 
-  it("writes the day's snapshot inside the commit's own transaction", async () => {
+  it("writes snapshots for multiple workspaces inside the commit's own transaction", async () => {
     const today = localCalendarDateOf(new Date());
     const transactionSpy = vi.spyOn(db, "transaction");
 
     await runSuccessfulRefresh("session-t052-9", [
       makeSnapshot({
         workspaceGid: WORKSPACE_GID,
+        localCalendarDate: today,
+        computedFromRefreshId: "session-t052-9",
+      }),
+      makeSnapshot({
+        workspaceGid: "ws-other",
         localCalendarDate: today,
         computedFromRefreshId: "session-t052-9",
       }),
@@ -298,6 +303,12 @@ describe("T052 [US2] same-day snapshot replacement", () => {
     const rows = await storedSnapshots();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.computedFromRefreshId).toBe("session-t052-9");
+    expect(
+      await snapshotRepository.getSnapshot("ws-other", today),
+    ).toMatchObject({
+      workspaceGid: "ws-other",
+      computedFromRefreshId: "session-t052-9",
+    });
   });
 
   it("does not produce or replace a snapshot when the refresh fails", async () => {

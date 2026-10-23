@@ -68,15 +68,6 @@ import { db } from "../schema";
 import type { Snapshot } from "../schema";
 
 /**
- * A local calendar day in the `YYYY-MM-DD` form the `snapshots` table is
- * keyed by (data-model.md → Snapshot → `localCalendarDate`). The schema
- * types the column as a plain `string`; this alias names the shape at
- * the repository boundary so a caller cannot pass an arbitrary string
- * without it being obvious in the signature.
- */
-export type LocalCalendarDate = string;
-
-/**
  * The `SnapshotRepository` surface — the contract declared in
  * `specs/001-asana-team-dashboard/contracts/storage-repository.md`:
  *
@@ -97,10 +88,7 @@ export interface SnapshotRepository {
    * answer for an unrecorded day — the snapshot layer is a derived cache
    * (FR-026a), so it never invents a row.
    */
-  getSnapshot(
-    workspaceGid: string,
-    date: LocalCalendarDate,
-  ): Promise<Snapshot | null>;
+  getSnapshot(workspaceGid: string, date: string): Promise<Snapshot | null>;
 
   /**
    * Derive and store one snapshot row per local calendar day.
@@ -118,8 +106,8 @@ export interface SnapshotRepository {
    */
   backfillSnapshots(
     workspaceGid: string,
-    dates: readonly LocalCalendarDate[],
-    compute: (date: LocalCalendarDate) => Snapshot | Promise<Snapshot>,
+    dates: readonly string[],
+    compute: (date: string) => Snapshot | Promise<Snapshot>,
   ): Promise<void>;
 }
 
@@ -133,7 +121,7 @@ export interface SnapshotRepository {
  * snapshot-day boundary. The month and day are zero-padded so the result
  * sorts lexicographically in the same order as it sorts chronologically.
  */
-export function localCalendarDateOf(instant: Date): LocalCalendarDate {
+export function localCalendarDateOf(instant: Date): string {
   const year = String(instant.getFullYear());
   const month = String(instant.getMonth() + 1).padStart(2, "0");
   const day = String(instant.getDate()).padStart(2, "0");
@@ -166,7 +154,7 @@ function isInsideTransaction(): boolean {
  */
 function assertRowMatchesRequest(
   workspaceGid: string,
-  date: LocalCalendarDate,
+  date: string,
   row: Snapshot,
 ): void {
   if (row.workspaceGid !== workspaceGid) {
@@ -191,7 +179,7 @@ export function createSnapshotRepository(): SnapshotRepository {
   return {
     async getSnapshot(
       workspaceGid: string,
-      date: LocalCalendarDate,
+      date: string,
     ): Promise<Snapshot | null> {
       const row = await db.snapshots.get([workspaceGid, date]);
       return row ?? null;
@@ -199,8 +187,8 @@ export function createSnapshotRepository(): SnapshotRepository {
 
     async backfillSnapshots(
       workspaceGid: string,
-      dates: readonly LocalCalendarDate[],
-      compute: (date: LocalCalendarDate) => Snapshot | Promise<Snapshot>,
+      dates: readonly string[],
+      compute: (date: string) => Snapshot | Promise<Snapshot>,
     ): Promise<void> {
       // A repeated date is one row, not two: deduping here keeps the
       // "one snapshot per local calendar day" invariant true even if a
@@ -210,12 +198,13 @@ export function createSnapshotRepository(): SnapshotRepository {
         return;
       }
 
-      const rows: Snapshot[] = [];
-      for (const date of uniqueDates) {
-        const row = await compute(date);
-        assertRowMatchesRequest(workspaceGid, date, row);
-        rows.push(row);
-      }
+      const rows = await Promise.all(
+        uniqueDates.map(async (date) => {
+          const row = await compute(date);
+          assertRowMatchesRequest(workspaceGid, date, row);
+          return row;
+        }),
+      );
 
       const write = async (): Promise<void> => {
         // `bulkPut` REPLACES a row whose `[workspaceGid+localCalendarDate]`

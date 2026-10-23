@@ -2,6 +2,18 @@
 import { createRoot } from "react-dom/client";
 
 import { App } from "./app/App";
+import { applyThemePreference, readStoredThemePreference } from "./app/theme";
+
+/**
+ * BSOD-359 — apply the stored theme preference before React mounts, so
+ * a returning user with a saved "dark" preference sees it on first
+ * paint instead of a light flash that flips to dark once the app
+ * boots. `applyThemePreference` is synchronous (it only touches
+ * `localStorage` and a DOM attribute), so this runs to completion
+ * during module evaluation, before `mountRootApp` below renders
+ * anything.
+ */
+applyThemePreference(readStoredThemePreference());
 
 /**
  * BSOD-356 — the app's only stylesheet is loaded via the `<link

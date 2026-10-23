@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import process from "node:process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -75,6 +75,67 @@ describe("resolveVersion", () => {
       }),
     ).toBe("1.4.7");
   });
+
+  // BSOD-631 — the resolved value is written to `$GITHUB_OUTPUT` and then
+  // interpolated into the Sonar scanner arguments, so it must be a plain
+  // semver string. A ref name is attacker-influencable text (git allows
+  // `$`, backticks, `"`, `;`, `|`, `&`, `(`, `)` in ref names), so it
+  // cannot be trusted to be a version.
+  it("accepts a legitimate tag ref name", () => {
+    expect(
+      resolveVersion({
+        refType: "tag",
+        refName: "v1.4.2",
+        latestTag: "v0.1.0",
+      }),
+    ).toBe("1.4.2");
+  });
+
+  it("rejects a tag ref name that is not a valid semver", () => {
+    expect(
+      resolveVersion({
+        refType: "tag",
+        refName: 'v1.0.0"; id; echo "',
+      }),
+    ).toBe("0.0.0-dev");
+  });
+
+  it("rejects a tag ref name that carries a command substitution", () => {
+    expect(
+      resolveVersion({
+        refType: "tag",
+        refName: "v1.0.0$(id)",
+      }),
+    ).toBe("0.0.0-dev");
+  });
+
+  it("rejects a tag ref name that carries a newline", () => {
+    expect(
+      resolveVersion({
+        refType: "tag",
+        refName: "v1.0.0\nsecond=line",
+      }),
+    ).toBe("0.0.0-dev");
+  });
+
+  it("rejects a latest tag that is not a valid semver", () => {
+    expect(
+      resolveVersion({
+        refType: "branch",
+        refName: "main",
+        latestTag: "not-a-version",
+      }),
+    ).toBe("0.0.0-dev");
+  });
+
+  it("keeps a pre-release version", () => {
+    expect(
+      resolveVersion({
+        refType: "tag",
+        refName: "v1.0.0-rc.1",
+      }),
+    ).toBe("1.0.0-rc.1");
+  });
 });
 
 describe("parseArgs", () => {
@@ -102,5 +163,19 @@ describe("resolve-version CLI", () => {
       { encoding: "utf8" },
     );
     expect(output).toBe("2.3.4\n");
+  });
+
+  it("prints the fallback version and explains the rejection on stderr", () => {
+    const result = spawnSync(
+      process.execPath,
+      [scriptPath, "--ref-type=tag", '--ref-name=v1.0.0"; id; echo "'],
+      { encoding: "utf8" },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("0.0.0-dev\n");
+    expect(result.stderr).toContain("not a valid semver");
+    // The reason must stay on a single line — a rejected candidate could
+    // otherwise forge extra log lines (or step outputs).
+    expect(result.stderr.trimEnd().split("\n")).toHaveLength(1);
   });
 });

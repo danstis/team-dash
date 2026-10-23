@@ -33,9 +33,7 @@
 import process from "node:process";
 
 import { parseArgs } from "./parse-args.mjs";
-
-const SEMVER_RE =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+import { parseSemver } from "./semver.mjs";
 
 // Re-export the shared `parseArgs` so the per-script test
 // (`tests/unit/scripts/resolve-docker-tags.test.mjs`) can keep importing
@@ -65,12 +63,12 @@ export function resolveDockerTags({ tagName, prerelease, onMain } = {}) {
     throw new Error("tagName is required");
   }
   const stripped = tagName.startsWith("v") ? tagName.slice(1) : tagName;
-  const match = SEMVER_RE.exec(stripped);
-  if (!match) {
+  const parsed = parseSemver(stripped);
+  if (!parsed) {
     throw new Error(`tagName '${tagName}' is not a valid semver string`);
   }
   const version = stripped;
-  const majorMinor = `${match[1]}.${match[2]}`;
+  const majorMinor = `${parsed.major}.${parsed.minor}`;
 
   // `prerelease`: run the caller-supplied value through coerceBool so
   // both real booleans (`true` / `false`) and the CLI string forms
@@ -90,7 +88,7 @@ export function resolveDockerTags({ tagName, prerelease, onMain } = {}) {
   if (prereleaseFlag === true || prereleaseFlag === false) {
     isPrerelease = prereleaseFlag;
   } else {
-    isPrerelease = match[4] !== undefined;
+    isPrerelease = parsed.prerelease !== undefined;
   }
 
   const onMainFlag = coerceBool(onMain);

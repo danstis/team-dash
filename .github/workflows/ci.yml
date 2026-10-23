@@ -450,11 +450,21 @@ jobs:
           path: artifacts/contract
       - name: Resolve version
         id: version
+        env:
+          # Thread the untrusted ref context through env vars rather than
+          # interpolating it into the `run:` shell block. `${{ }}` is
+          # substituted textually by the runner *before* the shell parses
+          # the script, so a ref name containing `$(...)`, backticks or a
+          # double quote would break out of the quoted argument. Git's ref
+          # rules allow all three (BSOD-631).
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
           latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           version=$(node scripts/resolve-version.mjs \
-            --ref-type="${{ github.ref_type }}" \
-            --ref-name="${{ github.ref_name }}" \
+            --ref-type="$REF_TYPE" \
+            --ref-name="$REF_NAME" \
             --latest-tag="$latest_tag")
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: SonarQube Scan

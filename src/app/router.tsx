@@ -108,6 +108,7 @@ import { useWorkspace } from "./workspace-context";
 import { FirstRunSetup } from "../features/credentials/FirstRunSetup";
 import { SettingsCredentialsPanel } from "../features/credentials/SettingsCredentialsPanel";
 import { SettingsScreen } from "../features/settings/SettingsScreen";
+import { ThemeToggle } from "../features/settings/ThemeToggle";
 
 /**
  * The T031 placeholder. Renders the existing T010 shell markup so
@@ -199,7 +200,7 @@ function FirstRunRoute(): React.ReactElement {
  */
 function SettingsRoute(): React.ReactElement {
   return (
-    <SettingsScreen>
+    <SettingsScreen actions={<ThemeToggle />}>
       <SettingsCredentialsPanel />
     </SettingsScreen>
   );

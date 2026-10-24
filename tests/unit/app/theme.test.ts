@@ -24,6 +24,7 @@ describe("BSOD-359 theme preference storage", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     localStorage.clear();
     delete document.documentElement.dataset.theme;
   });
@@ -61,6 +62,29 @@ describe("BSOD-359 theme preference storage", () => {
       });
     expect(readStoredThemePreference()).toBe("system");
     getItemSpy.mockRestore();
+  });
+
+  it("does not throw when storing a preference is denied", () => {
+    const setItemSpy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("denied");
+      });
+
+    expect(() => storeThemePreference("dark")).not.toThrow();
+    expect(setItemSpy).toHaveBeenCalledWith(STORAGE_KEY, "dark");
+  });
+
+  it("does not throw when clearing a preference is denied", () => {
+    localStorage.setItem(STORAGE_KEY, "dark");
+    const removeItemSpy = vi
+      .spyOn(Storage.prototype, "removeItem")
+      .mockImplementation(() => {
+        throw new DOMException("denied");
+      });
+
+    expect(() => storeThemePreference("system")).not.toThrow();
+    expect(removeItemSpy).toHaveBeenCalledWith(STORAGE_KEY);
   });
 
   it("stamps data-theme for an explicit light/dark preference", () => {

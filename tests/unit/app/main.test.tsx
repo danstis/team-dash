@@ -187,7 +187,20 @@ describe("T031 mountRootApp (BSOD-348 dev-server boot sequence)", () => {
     vi.resetModules();
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    localStorage.removeItem("team-dash:theme-preference");
+    delete document.documentElement.dataset.theme;
     document.body.innerHTML = "";
+  });
+
+  it("applies a stored theme during module evaluation before mounting React", async () => {
+    document.body.innerHTML = "";
+    localStorage.setItem("team-dash:theme-preference", "dark");
+    delete document.documentElement.dataset.theme;
+
+    vi.resetModules();
+    await import("../../../src/main");
+
+    expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
   it("runs bootstrapDevMocks then renderApp(rootElement) when VITE_USE_MOCKS=1 (BSOD-348, Sonar new-code coverage)", async () => {

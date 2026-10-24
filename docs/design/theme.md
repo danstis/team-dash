@@ -61,13 +61,13 @@ surface rather than computed from the light one. See
 double-declaration pattern, including the `:where(:not(...))` specificity
 guard).
 
-**No manual toggle ships in BSOD-356.** The app currently has no settings
-surface with room for a "theme" control, and building one is a feature
-change, not a theme design change. What ships is the _hook_: any future
-toggle only has to set `document.documentElement.dataset.theme = "dark" |
-"light"` (or delete the attribute to fall back to the OS preference) — the
-CSS already reacts to it. Today, the app follows `prefers-color-scheme`
-only.
+**BSOD-356 shipped the CSS hook; BSOD-359 added the Settings control.**
+The System / Light / Dark selector stores an explicit choice in
+`localStorage` and applies it before React mounts on subsequent visits.
+It sets `document.documentElement.dataset.theme = "dark" | "light"` for
+an explicit mode, or deletes the attribute for System so
+`prefers-color-scheme` continues to decide the theme for users without a
+saved choice.
 
 ## Color
 

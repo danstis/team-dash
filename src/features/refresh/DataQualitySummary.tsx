@@ -200,12 +200,11 @@ export function DataQualitySummary({
     0,
   );
 
+  const issueVerb = totalIssueCount === 1 ? "issue was" : "issues were";
   const summaryText =
     totalIssueCount === 0
       ? "No data-completeness issues were found in the most recent refresh."
-      : `${totalIssueCount} data-completeness ${
-          totalIssueCount === 1 ? "issue was" : "issues were"
-        } found in the most recent refresh. Metrics that depend on the affected fields may be incomplete.`;
+      : `${totalIssueCount} data-completeness ${issueVerb} found in the most recent refresh. Metrics that depend on the affected fields may be incomplete.`;
 
   return (
     <section

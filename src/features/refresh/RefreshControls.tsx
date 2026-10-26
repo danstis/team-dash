@@ -43,8 +43,8 @@
  * - **T050 (BSOD-304)** owns the cached-vs-fresh labelling
  *   (`FreshnessBanner`).
  * - **T058 (BSOD-309)** owns the FR-014 subtask → parent project
- *   inheritance in the task normaliser (which now lives in the
- *   orchestrator module).
+ *   inheritance in the task normaliser (which lives in
+ *   `src/data/asana/normalise.ts`).
  * - **T053 (BSOD-307)** owns the offline branch of the refresh
  *   action: while the browser is offline the control is rendered as
  *   the T050 `OfflineRefreshState` (visibly disabled, with the
@@ -94,7 +94,7 @@
  *   (T051).
  * - Cached-vs-fresh labelling: T050 (`FreshnessBanner`).
  * - Subtask project-membership resolution: T058 (BSOD-309) extends
- *   the task normaliser (in the orchestrator module) with
+ *   the task normaliser (in `src/data/asana/normalise.ts`) with
  *   parent→subtask project inheritance.
  * - The `WorkspaceProvider` / `CredentialsProvider` / route guard
  *   wiring: pre-existing (T031, T046). The component reads the

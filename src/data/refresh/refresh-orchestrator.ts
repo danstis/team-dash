@@ -55,12 +55,12 @@
  *   switches on the closed `AsanaClientResult` union verbatim — no
  *   try/catch around network calls because the client never throws
  *   for documented failure modes.
- * - The schema-level normalisation of `Task.projectGids` from
- *   compact references to opaque `gid[]`, parent→subtask membership
- *   resolution (FR-014), and any other cache-side reshaping. The
- *   minimal `normaliseProject` / `normaliseTask` helpers below only
- *   translate wire → cache row shape — they do NOT enrich or
- *   deduplicate. Full normalisation is owned by T058's normalise.ts.
+ * - The wire → cache normalisation itself: the compact-reference
+ *   flattening (`Task.projectGids` from opaque `gid[]`), the
+ *   parent→subtask membership resolution (FR-014), and every other
+ *   cache-side reshaping. That belongs to `src/data/asana/normalise.ts`
+ *   (T058) — this module calls `normaliseProject` / `normaliseTask` /
+ *   `resolveSubtaskProjectGids` and never re-implements the mapping.
  * - The Snapshot backfill / replace path (FR-026a, FR-026b). The
  *   `RefreshStagingRepository.commit()` implementation calls
  *   `SnapshotRepository.backfillSnapshots()` (T052) inside the same
@@ -109,15 +109,18 @@ import {
   fetchTasksPage,
   scrubTokenFromMessage,
 } from "../asana/client";
-import type { asanaProjectSchema, asanaTaskSchema } from "../asana/schemas";
+import {
+  normaliseProject,
+  normaliseTask,
+  resolveSubtaskProjectGids,
+} from "../asana/normalise";
 import type {
   AsanaClientResult,
   AsanaClientResultOutcome,
 } from "../asana/types";
 import { refreshStagingRepository } from "../db/repositories/refresh-staging.repository";
 import { db } from "../db/schema";
-import type { Project, RefreshSession, Task } from "../db/schema";
-import type { z } from "zod";
+import type { RefreshSession, Task } from "../db/schema";
 
 /* -------------------------------------------------------------------------- */
 /* Public surface                                                              */
@@ -292,105 +295,19 @@ function sessionStatusForReason(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Wire → cache normalisation (moved from T049's RefreshControls)             */
+/* -------------------------------------------------------------------------- */
+/* Wire → cache normalisation                                                  */
 /* -------------------------------------------------------------------------- */
 
 /**
- * The wire shapes the Asana client returns. The orchestrator takes
- * the Zod-inferred types so the normalisers below cannot drift from
- * the validation boundary (`src/data/asana/schemas.ts`).
+ * The wire → cache translation itself lives in
+ * `src/data/asana/normalise.ts` (T058, BSOD-309) — the compact-reference
+ * flattening, the "Estimated Time" custom-field read, and the FR-014
+ * parent→subtask project-membership resolution. This module calls
+ * `normaliseProject` / `normaliseTask` / `resolveSubtaskProjectGids`
+ * rather than re-implementing the mapping, so there is exactly one
+ * definition of what a cache row looks like.
  */
-type WireProject = z.infer<typeof asanaProjectSchema>;
-type WireTask = z.infer<typeof asanaTaskSchema>;
-
-/**
- * The Asana prebuilt custom field the dashboard reads as the task's
- * estimated minutes (FR-016 / data-model.md / spec §"Glossary" —
- * "Estimated Time"). Held as a named constant rather than an inline
- * literal so the lookup site, its docstring, and any future
- * contributor who needs to reference the same field (e.g. a Priority
- * field sibling reader) refer to one source of truth rather than
- * re-typing the string in each call site.
- */
-const ESTIMATED_TIME_FIELD_NAME = "Estimated Time";
-
-/**
- * Extract the "Estimated Time" custom field's `number_value` as the
- * cache's `estimatedMinutes` scalar. Returns `null` when the field
- * is absent or has no numeric value — the data-model.md distinction
- * between `null` (tracked but not entered) and the literal
- * `'unavailable'` (workspace without Time Tracking) is recorded here
- * rather than at the wire-validation boundary.
- */
-function extractEstimatedMinutes(
-  customFields: WireTask["custom_fields"],
-): number | null {
-  if (customFields === undefined) {
-    return null;
-  }
-  for (const field of customFields) {
-    if (field.name === ESTIMATED_TIME_FIELD_NAME) {
-      return field.number_value ?? null;
-    }
-  }
-  return null;
-}
-
-/**
- * Collapse a single Asana project wire row into the cache's
- * `Project` shape. The wire format nests `workspace` and `team` as
- * compact references; the cache flattens those into
- * `workspaceGid`/`asanaTeamGid` scalars. `portfolioGids` is left
- * empty here — T052 (BSOD-306, `SnapshotRepository`) is the row that
- * owns the portfolio→project edge, and the FR-016 reporting
- * requirements (FR-039 / FR-040) are downstream of T049.
- *
- * The `workspaceGid` is the *selected* workspace rather than the
- * wire's `workspace.gid` — the two agree for every project the
- * orchestrator fetches (the projects page is scoped to the selected
- * workspace), and using the selected gid means a project whose wire
- * omits the workspace reference still lands in the right scope.
- */
-function normaliseProject(wire: WireProject, workspaceGid: string): Project {
-  return {
-    gid: wire.gid,
-    name: wire.name,
-    workspaceGid,
-    asanaTeamGid: wire.team?.gid ?? null,
-    portfolioGids: [],
-    archived: wire.archived,
-  };
-}
-
-/**
- * Collapse a single Asana task wire row into the cache's `Task`
- * shape. Subtask project-membership inheritance (FR-014) is T058
- * (BSOD-309) — the orchestrator stages the `projectGids` exactly as
- * Asana returned them, so a subtask whose `projects[]` is empty in
- * the wire shape is staged with `projectGids: []` and the future row
- * (T058) is responsible for resolving the parent's projects into
- * the subtask at ingestion time.
- */
-function normaliseTask(wire: WireTask, lastSeenAt: string): Task {
-  return {
-    gid: wire.gid,
-    name: wire.name,
-    assigneeGid: wire.assignee?.gid ?? null,
-    projectGids: (wire.projects ?? []).map((project) => project.gid),
-    parentTaskGid: wire.parent?.gid ?? null,
-    resourceSubtype: wire.resource_subtype,
-    createdAt: wire.created_at,
-    modifiedAt: wire.modified_at,
-    completedAt: wire.completed_at ?? null,
-    dueAt: wire.due_at ?? null,
-    priorityOptionId: null,
-    estimatedMinutes: extractEstimatedMinutes(wire.custom_fields),
-    actualMinutes: null,
-    dependsOnTaskGids: (wire.dependencies ?? []).map((dep) => dep.gid),
-    lastSeenInScopeAt: lastSeenAt,
-    outOfScopeReason: null,
-  };
-}
 
 /* -------------------------------------------------------------------------- */
 /* Failure write-through                                                       */
@@ -764,6 +681,16 @@ async function walkTaskPages(
 ): Promise<WalkResult<{ itemsRetrieved: number }>> {
   const lastSeenAt = new Date().toISOString();
 
+  /**
+   * Every task row normalised during this walk, keyed by gid.
+   *
+   * The map is the parent lookup the FR-014 resolution needs: a
+   * subtask's parent is a task of the same workspace, so it is in the
+   * map by the time the walk ends — no matter which project's page the
+   * parent was retrieved from, or on which page it appeared.
+   */
+  const normalisedTasks = new Map<string, Task>();
+
   for (const projectGid of projectGids) {
     let taskOffset: string | undefined = undefined;
 
@@ -795,6 +722,7 @@ async function walkTaskPages(
 
       for (const task of page.data.data) {
         const row = normaliseTask(task, lastSeenAt);
+        normalisedTasks.set(row.gid, row);
         await refreshStagingRepository.stageUpsert("tasks", [row]);
         itemsRetrieved += 1;
         context.onProgress?.(itemsRetrieved);
@@ -802,6 +730,29 @@ async function walkTaskPages(
 
       taskOffset = page.data.next_page?.offset;
     } while (taskOffset !== undefined);
+  }
+
+  // FR-014 — resolve each subtask's project memberships from its
+  // parent's, now that every parent row of this walk is known.
+  //
+  // The resolution runs over the whole walk rather than per page: a
+  // subtask and its parent may sit on different pages, and the parent
+  // may belong to a different project than the subtask was retrieved
+  // from. Only the rows the resolution actually changed are re-staged
+  // — the staging buffer is keyed by gid, so a re-staged row replaces
+  // the earlier one and the commit writes the resolved memberships.
+  //
+  // The resolution is a cache-side reshaping only: it never marks a
+  // row out-of-scope and never drops a row, so FR-023 (a record is
+  // only removed or marked when the condition can be determined
+  // reliably) is unaffected.
+  const walkedRows = Array.from(normalisedTasks.values());
+  const resolvedRows = resolveSubtaskProjectGids(walkedRows);
+  const changedRows = resolvedRows.filter(
+    (row, index) => row !== walkedRows[index],
+  );
+  if (changedRows.length > 0) {
+    await refreshStagingRepository.stageUpsert("tasks", changedRows);
   }
 
   return { status: "walked", data: { itemsRetrieved } };

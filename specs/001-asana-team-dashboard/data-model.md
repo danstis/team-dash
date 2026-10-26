@@ -21,7 +21,7 @@ not delete another workspace's cached rows — they simply stop being read
 ### Project
 
 - `gid: string`
-- `name: string`
+- `name: string` — may be empty: Asana allows untitled projects and returns `name: ""`. Stored verbatim; display surfaces label it rather than the refresh rejecting it.
 - `workspaceGid: string`
 - `asanaTeamGid: string | null` — owning Asana team (default reporting-team source, FR-041).
 - `portfolioGids: string[]` — portfolios containing this project.

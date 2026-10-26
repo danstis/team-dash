@@ -256,10 +256,14 @@ export const asanaWorkspaceListResponseSchema =
  *   custom fields; the schemas accept it as `unknown[]` because
  *   each entry's shape varies by field type. Per-field validation
  *   belongs to `PriorityField` normalisation (T058 / T084).
+ * - `name` may be an empty string: Asana lets a project be saved
+ *   untitled and returns `name: ""`. Rejecting it would fail the whole
+ *   projects page and abort the refresh, so the blank name is accepted
+ *   and stored verbatim; a display surface labels it.
  */
 export const asanaProjectSchema = z.object({
   gid: gidSchema,
-  name: z.string().min(1),
+  name: z.string(),
   resource_type: z.literal("project"),
   archived: z.boolean(),
   workspace: asanaReferenceSchema.optional(),

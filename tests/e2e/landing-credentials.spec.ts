@@ -36,7 +36,7 @@
  * Asana API with a user-supplied PAT). The Vitest / integration layer
  * mocks the same endpoints server-side via `tests/setup.ts`'s MSW
  * node server; the e2e layer mocks them at the browser's network
- * boundary via Playwright's `page.route()`. The fixture data is the
+ * boundary via Playwright's `context.route()`. The fixture data is the
  * same `smallDataset` the BSOD-165 / BSOD-347 integration tests
  * read, so the e2e and integration layers are pinned to the same
  * Asana response shapes by construction.
@@ -60,7 +60,7 @@
  * The fixture PATs are synthetic strings (`fixture-e2e…`) that are
  * obviously not real Asana tokens, used so the test never
  * accidentally submits a real PAT to the production Asana API if the
- * `page.route()` mock is ever bypassed by a CI regression. The
+ * `context.route()` mock is ever bypassed by a CI regression. The
  * small-dataset handlers authorise any `Authorization: Bearer …`
  * request, so the retest round-trip succeeds. The FR-008 invariant
  * (full token never rendered, logged, or embedded in a URL) is
@@ -86,7 +86,13 @@
  * `Asana` network calls are intercepted at the browser's network
  * layer.
  */
-import { test, expect, type Page, type Request } from "@playwright/test";
+import {
+  test,
+  expect,
+  type BrowserContext,
+  type Page,
+  type Request,
+} from "@playwright/test";
 
 import { smallDataset } from "../../fixtures/asana/small-dataset/data";
 
@@ -94,7 +100,7 @@ import { smallDataset } from "../../fixtures/asana/small-dataset/data";
  * The synthetic PAT the test submits during the first-run walk. A
  * string that is obviously not a real Asana token (`fixture-e2e…`),
  * used so the test never accidentally submits a real PAT to the
- * production Asana API if the `page.route()` mock is ever bypassed
+ * production Asana API if the `context.route()` mock is ever bypassed
  * by a CI regression. The last four characters (`7890`) are the
  * masked identifier the retest / replace assertions below anchor on.
  */
@@ -111,7 +117,7 @@ const REPLACEMENT_TOKEN = "fixture-e2e-landing-credentials-replacement-zzzz9";
 /**
  * The Asana API base URL the production client always targets. The
  * browser's CSP (`index.html`'s `connect-src 'self' https://app.asana.com`)
- * whitelists this origin, so the test's `page.route()` wildcard must
+ * whitelists this origin, so the test's `context.route()` wildcard must
  * cover the same host.
  */
 const ASANA_API_BASE = "https://app.asana.com/api/1.0";
@@ -187,8 +193,10 @@ const PRIMARY_WORKSPACE_GID = smallDataset.workspaces[0].gid;
  * "Invalid token" summary in the panel rather than a silent green
  * test.
  */
-async function mockAsanaApiForSettingsPanel(page: Page): Promise<void> {
-  await page.route(`${ASANA_API_BASE}/users/me*`, async (route) => {
+async function mockAsanaApiForSettingsPanel(
+  context: BrowserContext,
+): Promise<void> {
+  await context.route(`${ASANA_API_BASE}/users/me*`, async (route) => {
     const request: Request = route.request();
     if (!request.headers().authorization?.startsWith("Bearer ")) {
       await route.fulfill({
@@ -212,7 +220,7 @@ async function mockAsanaApiForSettingsPanel(page: Page): Promise<void> {
     });
   });
 
-  await page.route(`${ASANA_API_BASE}/workspaces*`, async (route) => {
+  await context.route(`${ASANA_API_BASE}/workspaces*`, async (route) => {
     const request: Request = route.request();
     if (!request.headers().authorization?.startsWith("Bearer ")) {
       await route.fulfill({
@@ -298,8 +306,8 @@ async function walkFirstRunFlowToGateOpen(page: Page): Promise<void> {
 /* -------------------------------------------------------------------------- */
 
 test.describe("BSOD-351 (T131) first landing surface on `/settings`", () => {
-  test.beforeEach(async ({ page }) => {
-    await mockAsanaApiForSettingsPanel(page);
+  test.beforeEach(async ({ context }) => {
+    await mockAsanaApiForSettingsPanel(context);
   });
 
   test("renders the masked-token display, retest, replace, switch-mode, and clear-all surfaces", async ({

@@ -1,4 +1,10 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import {
+  expect,
+  test,
+  type BrowserContext,
+  type Page,
+  type Route,
+} from "@playwright/test";
 
 import {
   smallDataset,
@@ -9,13 +15,13 @@ const ASANA_API_BASE = "https://app.asana.com/api/1.0";
 const FIXTURE_TOKEN = "fixture-e2e-landing-shell-token-1234567890";
 
 async function mockAsanaApi(
-  page: Page,
+  context: BrowserContext,
   options: {
     user?: (route: Route) => Promise<void>;
     workspaces?: (route: Route) => Promise<void>;
   } = {},
 ): Promise<void> {
-  await page.route(`${ASANA_API_BASE}/users/me*`, async (route) => {
+  await context.route(`${ASANA_API_BASE}/users/me*`, async (route) => {
     if (options.user) {
       await options.user(route);
       return;
@@ -26,7 +32,7 @@ async function mockAsanaApi(
       body: JSON.stringify({ data: smallDataset.users[0] }),
     });
   });
-  await page.route(`${ASANA_API_BASE}/workspaces*`, async (route) => {
+  await context.route(`${ASANA_API_BASE}/workspaces*`, async (route) => {
     if (options.workspaces) {
       await options.workspaces(route);
       return;
@@ -57,8 +63,9 @@ async function chooseSessionOnlyMode(page: Page): Promise<void> {
 test.describe("landing shell navigation, view states, and route guard", () => {
   test("renders app-shell navigation chrome after first-run completes", async ({
     page,
+    context,
   }) => {
-    await mockAsanaApi(page);
+    await mockAsanaApi(context);
     await openFirstRun(page);
     await validateToken(page);
     await chooseSessionOnlyMode(page);
@@ -79,8 +86,9 @@ test.describe("landing shell navigation, view states, and route guard", () => {
 
   test("gates protected routes behind the first-run surface without navigating away", async ({
     page,
+    context,
   }) => {
-    await mockAsanaApi(page);
+    await mockAsanaApi(context);
     await page.goto("/settings");
 
     await expect(page).toHaveURL(/\/settings$/);
@@ -90,8 +98,9 @@ test.describe("landing shell navigation, view states, and route guard", () => {
 
   test("reaches current first-run loading, empty, and error states through per-test API overrides", async ({
     page,
+    context,
   }) => {
-    await mockAsanaApi(page, {
+    await mockAsanaApi(context, {
       user: async (route) => {
         await new Promise((resolve) => setTimeout(resolve, 500));
         await route.fulfill({
@@ -108,8 +117,8 @@ test.describe("landing shell navigation, view states, and route guard", () => {
       page.getByRole("button", { name: /testing token/i }),
     ).toBeVisible();
 
-    await page.unrouteAll({ behavior: "ignoreErrors" });
-    await mockAsanaApi(page, {
+    await context.unrouteAll({ behavior: "ignoreErrors" });
+    await mockAsanaApi(context, {
       workspaces: async (route) => {
         await route.fulfill({
           status: 200,
@@ -126,8 +135,8 @@ test.describe("landing shell navigation, view states, and route guard", () => {
       page.getByText(/no accessible workspaces|no workspaces/i),
     ).toBeVisible();
 
-    await page.unrouteAll({ behavior: "ignoreErrors" });
-    await mockAsanaApi(page, {
+    await context.unrouteAll({ behavior: "ignoreErrors" });
+    await mockAsanaApi(context, {
       user: async (route) => {
         await route.fulfill({ status: 500, body: "server error" });
       },

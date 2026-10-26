@@ -107,6 +107,7 @@ import { useCredentials } from "./credentials-context";
 import { useWorkspace } from "./workspace-context";
 import { FirstRunSetup } from "../features/credentials/FirstRunSetup";
 import { SettingsCredentialsPanel } from "../features/credentials/SettingsCredentialsPanel";
+import { RefreshStatusPanel } from "../features/refresh/RefreshStatusPanel";
 import { SettingsScreen } from "../features/settings/SettingsScreen";
 import { ThemeToggle } from "../features/settings/ThemeToggle";
 
@@ -127,6 +128,15 @@ import { ThemeToggle } from "../features/settings/ThemeToggle";
  * credentials panel. The link is the canonical in-app entry point
  * for the `/settings` route; the `data-testid="nav-settings"`
  * attribute is the stable anchor the Playwright e2e spec uses.
+ *
+ * BSOD-307 (T053) — the route now also mounts the
+ * `<RefreshStatusPanel />`, the refresh-status surface that reports
+ * whether the data on screen is cached or fresh and disables the
+ * refresh action while the browser is offline (FR-021 / FR-087).
+ * Before T053 the panel had no home, so the offline branch of the
+ * refresh action existed only as a component: the service-worker
+ * layer that makes the branch reachable (a reload with no network)
+ * landed in the same row.
  */
 function PlaceholderRoute(): React.ReactElement {
   return (
@@ -146,6 +156,7 @@ function PlaceholderRoute(): React.ReactElement {
           Settings
         </Link>
       </p>
+      <RefreshStatusPanel />
     </main>
   );
 }

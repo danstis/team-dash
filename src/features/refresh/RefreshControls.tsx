@@ -45,6 +45,10 @@
  * - **T058 (BSOD-309)** owns the FR-014 subtask → parent project
  *   inheritance in the task normaliser (which now lives in the
  *   orchestrator module).
+ * - **T053 (BSOD-307)** owns the offline branch of the refresh
+ *   action: while the browser is offline the control is rendered as
+ *   the T050 `OfflineRefreshState` (visibly disabled, with the
+ *   reason stated) instead of the plain `RefreshButton`.
  *
  * The two rows share this file, so the banner's prop surface is the
  * union of both families rather than a rename of one into the other:
@@ -137,6 +141,12 @@
  * enforced by `eslint.config.js` rejects a domain import here) and
  * it does NOT mutate Dexie directly (Constitution Principle VI:
  * every storage side effect goes through a repository).
+ *
+ * It DOES import the T050 `OfflineRefreshState` from
+ * `./FreshnessBanner` — the offline branch of the refresh action
+ * reuses that component's copy instead of restating it, so the
+ * disabled state and its explanation cannot drift apart from the
+ * component the T050 contract test pins.
  */
 import { useCallback, useState, type ReactElement } from "react";
 
@@ -147,6 +157,8 @@ import {
   type RefreshFailureReason,
   type RefreshOutcome as RefreshRunOutcome,
 } from "../../data/refresh/refresh-orchestrator";
+import { useOnlineStatus } from "../../shared/hooks/useOnlineStatus";
+import { OfflineRefreshState } from "./FreshnessBanner";
 
 /* -------------------------------------------------------------------------- */
 /* Outcome surface                                                            */
@@ -668,6 +680,24 @@ type RefreshState =
   "idle" | "running" | "success" | "partial_failure" | "cancelled";
 
 /**
+ * Props for the `<RefreshControls />` composition.
+ */
+export interface RefreshControlsProps {
+  /**
+   * Called with the commit timestamp after a refresh completes
+   * successfully.
+   *
+   * BSOD-307 (T053) — the dashboard's refresh-status surface needs to
+   * know that the data on screen is now FRESH (the `FreshnessBanner`
+   * variant) rather than the cached copy it showed before the
+   * refresh. The callback is how that surface learns about the
+   * completed refresh without re-reading the session store; it is
+   * optional so the existing T049 / T051 callers are unaffected.
+   */
+  readonly onRefreshCompleted?: (completedAt: string) => void;
+}
+
+/**
  * The US2 refresh surface. Reads the current token and workspace
  * from the shell's provider tree, drives a refresh through the
  * `refreshOrchestrator` on click, and surfaces the outcome through
@@ -679,12 +709,15 @@ type RefreshState =
  * refresh never replaces the live cache. The component's job is to
  * render the orchestrator's verdict honestly.
  */
-export function RefreshControls(): ReactElement {
+export function RefreshControls({
+  onRefreshCompleted,
+}: Readonly<RefreshControlsProps> = {}): ReactElement {
   const tokenAccessor = useCredentialTokenAccessor();
   const workspace = useWorkspace();
   const [state, setState] = useState<RefreshState>("idle");
   const [banner, setBanner] = useState<OutcomeBannerProps | null>(null);
   const [itemsRetrieved, setItemsRetrieved] = useState(0);
+  const isOnline = useOnlineStatus();
 
   const isRunning = state === "running";
   const preconditionsMet =
@@ -722,6 +755,7 @@ export function RefreshControls(): ReactElement {
       switch (outcome.status) {
         case "succeeded":
           setState("success");
+          onRefreshCompleted?.(outcome.completedAt);
           break;
         case "cancelled":
           setState("cancelled");
@@ -748,7 +782,13 @@ export function RefreshControls(): ReactElement {
       });
       setState("partial_failure");
     }
-  }, [handleProgress, isRunning, tokenAccessor, workspace.workspace]);
+  }, [
+    handleProgress,
+    isRunning,
+    onRefreshCompleted,
+    tokenAccessor,
+    workspace.workspace,
+  ]);
 
   return (
     <section
@@ -756,13 +796,26 @@ export function RefreshControls(): ReactElement {
       data-testid="refresh-controls"
       aria-label="Refresh"
     >
-      <RefreshButton
-        onClick={() => {
-          void runRefresh();
-        }}
-        disabled={buttonDisabled}
-        busy={isRunning}
-      />
+      {isOnline ? (
+        <RefreshButton
+          onClick={() => {
+            void runRefresh();
+          }}
+          disabled={buttonDisabled}
+          busy={isRunning}
+        />
+      ) : (
+        // BSOD-307 (T053) — FR-087: while the browser is offline the
+        // refresh action must be visibly disabled and the reason must
+        // be stated. The T050 `OfflineRefreshState` owns that copy, so
+        // it is composed here rather than re-implemented; only one
+        // Refresh control is rendered at a time.
+        <OfflineRefreshState
+          onRefresh={() => {
+            void runRefresh();
+          }}
+        />
+      )}
       {state === "running" && (
         <ProgressIndicator itemsRetrieved={itemsRetrieved} />
       )}

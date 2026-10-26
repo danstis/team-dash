@@ -90,7 +90,7 @@
  * — the browser itself is the only runtime dependency, and `Asana`
  * network calls are intercepted at the browser's network layer.
  */
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext } from "@playwright/test";
 
 import {
   smallDataset,
@@ -101,14 +101,14 @@ import {
  * The synthetic PAT the test submits. A string that is obviously not
  * a real Asana token (`fixture-e2e…`), used so the test never
  * accidentally submits a real PAT to the production Asana API if the
- * `page.route()` mock is ever bypassed by a CI regression.
+ * `context.route()` mock is ever bypassed by a CI regression.
  */
 const FIXTURE_TOKEN = "fixture-e2e-first-run-page-token-1234567890";
 
 /**
  * The Asana API base URL the production client always targets. The
  * browser's CSP (`index.html`'s `connect-src 'self' https://app.asana.com`)
- * whitelists this origin, so the test's `page.route()` wildcard must
+ * whitelists this origin, so the test's `context.route()` wildcard must
  * cover the same host.
  */
 const ASANA_API_BASE = "https://app.asana.com/api/1.0";
@@ -144,6 +144,13 @@ const MOCK_USER = smallDataset.users[0];
  *     call in `TokenEntryForm.tsx` hits this to fetch the
  *     workspaces the validated token can access (FR-011).
  *
+ * BSOD-307 (T053) — the routes are registered on the BROWSER
+ * CONTEXT rather than on the page. Once the app's service worker
+ * controls the page, the page's outbound requests are issued by the
+ * worker, and a page-level route no longer sees them; a
+ * context-level route covers both the page's requests and the
+ * worker's.
+ *
  * Routes are matched against the URL + query string via glob
  * (`*` matches any path suffix including `?opt_fields=…`); the
  * matchers MUST NOT be exact because the production client adds
@@ -157,8 +164,8 @@ const MOCK_USER = smallDataset.users[0];
  * "Invalid token" summary in the form rather than a silent green
  * test.
  */
-async function mockAsanaApiForFirstRun(page: Page): Promise<void> {
-  await page.route(`${ASANA_API_BASE}/users/me*`, async (route) => {
+async function mockAsanaApiForFirstRun(context: BrowserContext): Promise<void> {
+  await context.route(`${ASANA_API_BASE}/users/me*`, async (route) => {
     const request = route.request();
     if (!request.headers().authorization?.startsWith("Bearer ")) {
       await route.fulfill({
@@ -182,7 +189,7 @@ async function mockAsanaApiForFirstRun(page: Page): Promise<void> {
     });
   });
 
-  await page.route(`${ASANA_API_BASE}/workspaces*`, async (route) => {
+  await context.route(`${ASANA_API_BASE}/workspaces*`, async (route) => {
     const request = route.request();
     if (!request.headers().authorization?.startsWith("Bearer ")) {
       await route.fulfill({
@@ -205,8 +212,8 @@ async function mockAsanaApiForFirstRun(page: Page): Promise<void> {
 /* -------------------------------------------------------------------------- */
 
 test.describe("BSOD-350 (T130) first-run page on the live `/` route", () => {
-  test.beforeEach(async ({ page }) => {
-    await mockAsanaApiForFirstRun(page);
+  test.beforeEach(async ({ context }) => {
+    await mockAsanaApiForFirstRun(context);
   });
 
   test("renders the three first-run forms with no credentials cached", async ({

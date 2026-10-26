@@ -342,7 +342,7 @@ export function FilterBar({
               className="td-filter-bar__field"
               htmlFor="filter-date-range-start"
             >
-              From
+              From{" "}
               <input
                 id="filter-date-range-start"
                 className="td-filter-bar__date-input"
@@ -358,7 +358,7 @@ export function FilterBar({
               className="td-filter-bar__field"
               htmlFor="filter-date-range-end"
             >
-              To
+              To{" "}
               <input
                 id="filter-date-range-end"
                 className="td-filter-bar__date-input"

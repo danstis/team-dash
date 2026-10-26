@@ -42,3 +42,7 @@ This project is indexed by GitNexus as **team-dash** (2338 symbols, 5695 relatio
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+# UI work
+
+Before building or changing any screen, read `DESIGN.md` (especially **Interaction & Copy**) and `docs/design/ux-findings.md`. Resolve the open findings for the surface you touch in the same change and update their status in the ledger.

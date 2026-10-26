@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.8.0](https://github.com/danstis/team-dash/compare/v0.7.0...v0.8.0) (2026-10-26)
+
+
+### Features
+
+* **docker:** add HSTS header to nginx hardening (BSOD-469) ([#304](https://github.com/danstis/team-dash/issues/304)) ([70feb8f](https://github.com/danstis/team-dash/commit/70feb8f4b2bdb2cc1338f036aa5fcd0f8cde6580))
+* **pwa:** serve the app shell offline with a disabled refresh action (BSOD-307) ([#322](https://github.com/danstis/team-dash/issues/322)) ([5dc95b3](https://github.com/danstis/team-dash/commit/5dc95b38b6e0ab11af17f3939518eb81ab9cd2e3))
+* **refresh:** failure integrity orchestrator + OutcomeBanner reasons (BSOD-305) ([#191](https://github.com/danstis/team-dash/issues/191)) ([7da722a](https://github.com/danstis/team-dash/commit/7da722a204b02ffd4f96408995b371841945b6ee))
+* **settings:** add an exit affordance to the Settings screen (BSOD-360) ([#316](https://github.com/danstis/team-dash/issues/316)) ([a9c6c5d](https://github.com/danstis/team-dash/commit/a9c6c5dc80b12ee48c6f62cb46da9e6ba29143ec))
+* **settings:** add light/dark theme toggle (BSOD-359) ([#318](https://github.com/danstis/team-dash/issues/318)) ([6cb3319](https://github.com/danstis/team-dash/commit/6cb3319b8c385257749db050aac727d2c49754e0))
+* **snapshots:** add SnapshotRepository with same-day snapshot replacement (BSOD-306) ([#319](https://github.com/danstis/team-dash/issues/319)) ([1c0e448](https://github.com/danstis/team-dash/commit/1c0e4480e2cce4ce22edbf68d3cf8ac40c758db5))
+
+
+### Bug fixes
+
+* **ci:** disable checkout credential persistence (BSOD-567) ([#315](https://github.com/danstis/team-dash/issues/315)) ([b131d4e](https://github.com/danstis/team-dash/commit/b131d4ea670f828aa211919ec6e29d5612301354))
+* **ci:** re-derive release-please job outputs so docker images publish (BSOD-463) ([#193](https://github.com/danstis/team-dash/issues/193)) ([6518dc6](https://github.com/danstis/team-dash/commit/6518dc6f291a457d0107c689c3b60beeddf7c4d2))
+* **ci:** resolve the docker-release workflow_run release by commit (BSOD-775) ([#312](https://github.com/danstis/team-dash/issues/312)) ([74588ee](https://github.com/danstis/team-dash/commit/74588eea0d5948d8ba73b223abcf8808f1f0e79f))
+* **ci:** revive the docker-release workflow_run path (BSOD-466) ([#305](https://github.com/danstis/team-dash/issues/305)) ([63e3437](https://github.com/danstis/team-dash/commit/63e3437eefd689fea0d40faf764e07366df1a44d))
+* **ci:** stop docker-release failing the job on the no-release path (BSOD-776) ([#313](https://github.com/danstis/team-dash/issues/313)) ([067612e](https://github.com/danstis/team-dash/commit/067612ef8c8d76d1c5fb80f0a6f641947c39d04f))
+* **ci:** validate sonar version and stop interpolating ref names (BSOD-631) ([#314](https://github.com/danstis/team-dash/issues/314)) ([277ca3a](https://github.com/danstis/team-dash/commit/277ca3af2cc694bab943d8393bff7127d941ffe8))
+* **deps:** pin handlebars to 4.7.10 to clear critical injection advisories (BSOD-736) ([#284](https://github.com/danstis/team-dash/issues/284)) ([5512f6d](https://github.com/danstis/team-dash/commit/5512f6de89a5132b322c3036af90c4cf87fa35fa))
+* **deps:** update dependency zod to 4.6 ([#212](https://github.com/danstis/team-dash/issues/212)) ([05bf011](https://github.com/danstis/team-dash/commit/05bf0112db55c5dd407bc4d7398ce7df3a6fd1aa))
+* **deps:** update react packages to 19.3 ([#215](https://github.com/danstis/team-dash/issues/215)) ([7e2ade1](https://github.com/danstis/team-dash/commit/7e2ade129d32db835576a28bb0e5aa94f594fa4b))
+* **docker:** extend .dockerignore deny-list to dev/, .git and .env* (BSOD-470) ([#308](https://github.com/danstis/team-dash/issues/308)) ([1f73b74](https://github.com/danstis/team-dash/commit/1f73b74f2e75ba201b766726d40899647a6562a8))
+* **docker:** pin base images and syntax frontend to digests (BSOD-494) ([#307](https://github.com/danstis/team-dash/issues/307)) ([ed87455](https://github.com/danstis/team-dash/commit/ed8745566cc7aad7ff8dd4195f951de9b146b66f))
+* **lint:** enforce read-only fetch gate outside src/data/asana (BSOD-468) ([#303](https://github.com/danstis/team-dash/issues/303)) ([cb0ea89](https://github.com/danstis/team-dash/commit/cb0ea89cb8a705f31ec5dc1b4a0e878124367db6))
+* **refresh:** scrub the token from the partial-failure error detail (BSOD-748) ([#301](https://github.com/danstis/team-dash/issues/301)) ([e7ce4a3](https://github.com/danstis/team-dash/commit/e7ce4a350db4d44c64014d480f7b7c636e144938))
+* **renovate:** add release-age cooldown before automerge (BSOD-467) ([#306](https://github.com/danstis/team-dash/issues/306)) ([34e9d97](https://github.com/danstis/team-dash/commit/34e9d97f8bf7cb8f8c57620ec4a1ef58d0c95729))
+* **scripts:** correct stale parseArgs source-of-truth path comments (BSOD-672) ([#255](https://github.com/danstis/team-dash/issues/255)) ([030364b](https://github.com/danstis/team-dash/commit/030364b5ccee29e81f2aac8b845e86f149b47a10))
+* **scripts:** point visual-qa PNG generator at installed chromium-1234 (BSOD-698) ([#268](https://github.com/danstis/team-dash/issues/268)) ([770ce82](https://github.com/danstis/team-dash/commit/770ce82aa6c94e4f619f1f7c21b4b343357a0b1b))
+* **security:** disable nginx version disclosure via server_tokens off (BSOD-521) ([#317](https://github.com/danstis/team-dash/issues/317)) ([3706361](https://github.com/danstis/team-dash/commit/3706361bfae6e60327655f4a94843504343fd2c1))
+* **security:** disable nginx version disclosure with server_tokens off (BSOD-521) ([3706361](https://github.com/danstis/team-dash/commit/3706361bfae6e60327655f4a94843504343fd2c1))
+* **sonar:** stop excluding scripts/** from static analysis (BSOD-749) ([#302](https://github.com/danstis/team-dash/issues/302)) ([f617a06](https://github.com/danstis/team-dash/commit/f617a061b06deb5e0017937c7ae29649f19e5d20))
+* **specs:** sync research.md Vite 8.2 → 8.3 (BSOD-700) ([#274](https://github.com/danstis/team-dash/issues/274)) ([d0a708a](https://github.com/danstis/team-dash/commit/d0a708a5b036b5df16500d2907f36423f79063eb))
+
 ## [0.7.0](https://github.com/danstis/team-dash/compare/v0.6.0...v0.7.0) (2026-08-30)
 
 

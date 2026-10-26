@@ -389,6 +389,27 @@ a[data-testid="nav-settings"]:hover {
   gap: var(--td-space-2);
 }
 
+/* BSOD-359 — the theme toggle sits beside the exit control in the
+   header, so it gets a compact horizontal layout instead of the
+   stacked, full-width `fieldset` treatment body-section selectors
+   (e.g. `StorageModeSelector`) use. */
+.td-theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--td-space-3);
+  margin: 0;
+  padding: var(--td-space-2) var(--td-space-3);
+  border-radius: var(--td-radius-sm);
+}
+.td-theme-toggle legend {
+  font-size: var(--td-font-size-sm);
+  padding: 0;
+}
+.td-theme-toggle label:has(> input[type="radio"]) {
+  gap: var(--td-space-1);
+  font-size: var(--td-font-size-sm);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Masked token                                                                */
 /* -------------------------------------------------------------------------- */

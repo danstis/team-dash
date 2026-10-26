@@ -500,6 +500,23 @@ describe("T023 Asana Zod resource schemas", () => {
       expect(result.success).toBe(true);
     });
 
+    it("asanaProjectSchema accepts an untitled project (empty name)", () => {
+      // Asana allows a project to be saved without a name and returns
+      // it as `name: ""`. One untitled project must not fail the whole
+      // projects page and abort the refresh.
+      const result = asanaProjectSchema.safeParse(projectFixture({ name: "" }));
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("");
+      }
+    });
+
+    it("asanaProjectSchema rejects a missing name", () => {
+      const { name: _name, ...withoutName } = projectFixture();
+      const result = asanaProjectSchema.safeParse(withoutName);
+      expect(result.success).toBe(false);
+    });
+
     it("asanaProjectSchema rejects a missing archived flag", () => {
       // archived MUST be a required boolean per FR-012 — Asana's
       // default-field behaviour must not silently start treating a

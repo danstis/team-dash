@@ -306,6 +306,31 @@ describe("T048 Asana client pagination + events-since contract", () => {
       expect(observedOffset).toBe("verbatim-offset-token");
     });
 
+    it("returns `ok` when the page contains untitled projects (empty name)", async () => {
+      // Regression: a live workspace returned two projects with
+      // `name: ""` and the whole refresh failed with
+      // "Failed to fetch projects: validation_error".
+      const untitledProject: ProjectFixture = {
+        ...sampleProjectA,
+        gid: "1200000000000904",
+        name: "",
+      };
+      server.use(
+        http.get("https://app.asana.com/api/1.0/projects", () =>
+          HttpResponse.json({
+            data: [sampleProjectA, untitledProject],
+            next_page: null,
+          }),
+        ),
+      );
+
+      const result = await fetchProjectsPage(token, workspaceGid);
+
+      expect(result.outcome).toBe("ok");
+      if (result.outcome !== "ok") return;
+      expect(result.data.data).toEqual([sampleProjectA, untitledProject]);
+    });
+
     it("returns `validation_error` when the projects response body fails schema validation", async () => {
       server.use(
         http.get("https://app.asana.com/api/1.0/projects", () =>

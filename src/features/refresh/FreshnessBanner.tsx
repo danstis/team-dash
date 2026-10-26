@@ -77,7 +77,9 @@
  * PWA integration in T053 will mount the same component
  * unchanged.
  */
-import { useEffect, useState, type ReactElement } from "react";
+import { type ReactElement } from "react";
+
+import { useOnlineStatus } from "../../shared/hooks/useOnlineStatus";
 
 /* -------------------------------------------------------------------------- */
 /* FreshnessBanner                                                            */
@@ -151,23 +153,6 @@ export function FreshnessBanner({
 /* -------------------------------------------------------------------------- */
 
 /**
- * Read the current online / offline state from the browser. The
- * helper exists so the test can override the value via
- * `Object.defineProperty(window.navigator, "onLine", …)` and the
- * `OfflineRefreshState` reads the same source the test
- * overrides — the offline branch's "is the browser offline?"
- * question is delegated to the platform, not to a synthetic
- * prop, so a reload or a network reconnection is reflected
- * without a state lift.
- */
-function readNavigatorOnline(): boolean {
-  if (typeof navigator === "undefined") {
-    return true;
-  }
-  return navigator.onLine !== false;
-}
-
-/**
  * Props for the offline-disabled Refresh state. `onRefresh` is
  * the action the button triggers when the browser is online; the
  * component refuses to invoke it while offline (a `disabled`
@@ -197,28 +182,16 @@ export interface OfflineRefreshStateProps {
  * across the component's lifetime. The initial state is read
  * from `navigator.onLine` at mount; a reload is the test
  * harness's job, not the component's.
+ *
+ * BSOD-307 (T053) — the browser state is read through the shared
+ * `useOnlineStatus` hook (`src/shared/hooks/useOnlineStatus.ts`) so
+ * this component and the dashboard's refresh-status surface share one
+ * implementation of the same browser fact.
  */
 export function OfflineRefreshState({
   onRefresh,
 }: Readonly<OfflineRefreshStateProps>): ReactElement {
-  const [isOnline, setIsOnline] = useState<boolean>(() =>
-    readNavigatorOnline(),
-  );
-
-  useEffect(() => {
-    const handleOnline = (): void => {
-      setIsOnline(true);
-    };
-    const handleOffline = (): void => {
-      setIsOnline(false);
-    };
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
+  const isOnline = useOnlineStatus();
 
   const handleClick = (): void => {
     if (!isOnline) {

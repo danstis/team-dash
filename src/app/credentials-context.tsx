@@ -89,6 +89,7 @@ import {
   maskTokenIdentifier,
 } from "../data/db/repositories/credential.repository";
 import type { ViewState } from "../domain/types";
+import { clearServiceWorkerApiCache } from "../shared/service-worker-cache";
 
 export type CredentialsMode = "session" | "persistent" | null;
 
@@ -279,6 +280,13 @@ export function CredentialsProvider({
 
   const clearAll = useCallback(async (): Promise<void> => {
     await credentialRepository.clearAll();
+    // BSOD-307 (T053) — the service worker keeps the last complete
+    // Asana responses in its own cache. FR-007 promises the user that
+    // one explicit action removes every trace of the Asana data this
+    // browser holds, so the worker's copy is deleted too. The call is
+    // best-effort and happens after the Dexie wipe, so a browser that
+    // refuses it cannot stop the credential wipe itself.
+    await clearServiceWorkerApiCache();
     privateTokenRef.current = null;
     setMode(null);
     setMaskedIdentifier("");

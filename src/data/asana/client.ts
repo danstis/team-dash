@@ -128,10 +128,45 @@ import {
   asanaWorkspaceListResponseSchema,
 } from "./schemas";
 import type { AsanaClientResult } from "./types";
+import {
+  SERVICE_WORKER_CACHE_HEADER,
+  SERVICE_WORKER_CACHE_HEADER_VALUE,
+} from "../../shared/service-worker-cache";
 
 /* -------------------------------------------------------------------------- */
 /* Configuration                                                               */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Options every call may pass to {@link asanaGet}.
+ *
+ * `allowServiceWorkerCache` decides what the client does with a
+ * response the service worker served from its own runtime cache (the
+ * worker marks such a response with the
+ * `X-Team-Dash-Served-From: service-worker-cache` header — see
+ * `src/shared/service-worker-cache.ts`).
+ *
+ * The default is `false`: a cached response is NOT live data, and the
+ * refresh walk may only ever commit live data (FR-022 / Constitution
+ * Principle V — "a failed, cancelled, or incomplete refresh MUST NOT
+ * replace a previously complete cache"). With the default in place a
+ * refresh whose transport failed surfaces as a `network_error` — the
+ * previous complete cache stays intact and the user is told the
+ * refresh did not happen. A read-only caller that genuinely wants the
+ * offline copy (a future offline dashboard read) opts in explicitly.
+ */
+export interface AsanaGetOptions {
+  readonly signal?: AbortSignal;
+  readonly allowServiceWorkerCache?: boolean;
+}
+
+/**
+ * The `network_error` detail a service-worker-cached response
+ * produces. The message names the source and never carries the token
+ * (FR-008 / FR-010).
+ */
+const SERVICE_WORKER_CACHE_MESSAGE =
+  "The response came from the offline service-worker cache, not from Asana";
 
 /**
  * Asana's documented API base. Hard-coded so the read-only guarantee
@@ -183,7 +218,7 @@ export async function asanaGet<Schema extends ZodTypeAny>(
   schema: Schema,
   token: string,
   searchParams?: Readonly<Record<string, string | undefined>>,
-  options?: Readonly<{ signal?: AbortSignal }>,
+  options?: AsanaGetOptions,
 ): Promise<AsanaClientResult<z.infer<Schema>>> {
   const url = buildAsanaUrl(path, searchParams);
 
@@ -248,6 +283,21 @@ export async function asanaGet<Schema extends ZodTypeAny>(
     return {
       outcome: "network_error",
       message: `Unexpected HTTP ${response.status}`,
+    };
+  }
+
+  // A response the service worker served from its runtime cache is not
+  // live data. The refresh walk refuses it by default (FR-022) so a
+  // transport failure can never be mistaken for a successful refresh
+  // that re-committed the previous cache. See `AsanaGetOptions`.
+  if (
+    options?.allowServiceWorkerCache !== true &&
+    response.headers.get(SERVICE_WORKER_CACHE_HEADER) ===
+      SERVICE_WORKER_CACHE_HEADER_VALUE
+  ) {
+    return {
+      outcome: "network_error",
+      message: SERVICE_WORKER_CACHE_MESSAGE,
     };
   }
 

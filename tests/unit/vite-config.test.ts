@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { devMockServiceWorker } from "../../vite.config";
+import {
+  SERVICE_WORKER_CACHE_HEADER,
+  SERVICE_WORKER_CACHE_HEADER_VALUE,
+} from "../../src/shared/service-worker-cache";
 
 const { vitePwaMock } = vi.hoisted(() => ({
   vitePwaMock: vi.fn((options: unknown) => ({
@@ -18,42 +22,171 @@ vi.mock("vite-plugin-pwa", () => ({
 
 await import("../../vite.config");
 
+/**
+ * The options the PWA plugin is configured with, as the shape the
+ * assertions below read them. The object is built once so the
+ * "verbatim options" assertion and the focused assertions below
+ * cannot drift apart.
+ */
+function pwaOptions(): Record<string, unknown> {
+  return {
+    strategies: "generateSW",
+    injectRegister: false,
+    registerType: "autoUpdate",
+    manifest: {
+      name: "Team Dash",
+      short_name: "Team Dash",
+      description:
+        "A local-first Asana team performance and workload dashboard.",
+      lang: "en-AU",
+      start_url: "/",
+      scope: "/",
+      display: "standalone",
+      background_color: "#ffffff",
+      theme_color: "#0f172a",
+      icons: [
+        {
+          src: "/icons/team-dash-192.png",
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "any maskable",
+        },
+        {
+          src: "/icons/team-dash-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any maskable",
+        },
+      ],
+    },
+    workbox: {
+      globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest,woff2}"],
+      navigateFallback: "/index.html",
+      cleanupOutdatedCaches: true,
+      skipWaiting: true,
+      clientsClaim: true,
+      runtimeCaching: [asanaApiRuntimeCaching()],
+    },
+  };
+}
+
+/**
+ * The runtime-caching entry the Asana API responses are stored under.
+ *
+ * The plugin's `cachedResponseWillBeUsed` hook is a FUNCTION, so the
+ * "verbatim options" assertion compares it by type. The hook is
+ * exercised directly by the marker test below, which is what pins
+ * the header the hook writes.
+ */
+function asanaApiRuntimeCaching(): Record<string, unknown> {
+  return {
+    urlPattern: /^https:\/\/app\.asana\.com\/api\/1\.0\/.*/,
+    handler: "NetworkFirst",
+    options: {
+      cacheName: "team-dash-asana-api",
+      cacheableResponse: { statuses: [0, 200] },
+      expiration: {
+        maxEntries: 200,
+        maxAgeSeconds: 60 * 60 * 24 * 7,
+      },
+      plugins: [
+        {
+          // The hook is a function, so the verbatim assertion compares
+          // it by type; the marker test below invokes the real hook
+          // and pins what it writes.
+          cachedResponseWillBeUsed: expect.any(Function),
+        },
+      ],
+    },
+  };
+}
+
 describe("Vite PWA configuration", () => {
-  it("defines the Team Dash manifest without activating offline runtime caching", () => {
+  it("defines the Team Dash manifest and the offline caching strategy", () => {
     expect(vitePwaMock).toHaveBeenCalledOnce();
-    expect(vitePwaMock).toHaveBeenCalledWith({
-      strategies: "generateSW",
-      injectRegister: false,
-      manifest: {
-        name: "Team Dash",
-        short_name: "Team Dash",
-        description:
-          "A local-first Asana team performance and workload dashboard.",
-        lang: "en-AU",
-        start_url: "/",
-        scope: "/",
-        display: "standalone",
-        background_color: "#ffffff",
-        theme_color: "#0f172a",
-        icons: [
-          {
-            src: "/icons/team-dash-192.png",
-            sizes: "192x192",
-            type: "image/png",
-            purpose: "any maskable",
-          },
-          {
-            src: "/icons/team-dash-512.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "any maskable",
-          },
-        ],
-      },
+    expect(vitePwaMock).toHaveBeenCalledWith(pwaOptions());
+  });
+
+  it("precaches the app shell so the app boots with no network", () => {
+    const options = vitePwaMock.mock.calls[0]?.[0] as {
+      workbox: { globPatterns: string[]; navigateFallback: string };
+    };
+    // The entry document, the hashed build assets, the manifest, the
+    // PWA icons and the bundled fonts are all part of the app shell.
+    expect(options.workbox.globPatterns).toEqual([
+      "**/*.{js,css,html,ico,png,svg,webmanifest,woff2}",
+    ]);
+    // Every navigation is answered with the precached entry document,
+    // so a reload with no network still boots the SPA.
+    expect(options.workbox.navigateFallback).toBe("/index.html");
+  });
+
+  it("takes control of the open page as soon as the worker activates", () => {
+    const options = vitePwaMock.mock.calls[0]?.[0] as {
+      registerType: string;
+      workbox: { skipWaiting: boolean; clientsClaim: boolean };
+    };
+    expect(options.registerType).toBe("autoUpdate");
+    expect(options.workbox.skipWaiting).toBe(true);
+    expect(options.workbox.clientsClaim).toBe(true);
+  });
+
+  it("keeps the last complete Asana responses for the offline surface", () => {
+    const options = vitePwaMock.mock.calls[0]?.[0] as {
       workbox: {
-        runtimeCaching: [],
-      },
-    });
+        runtimeCaching: {
+          urlPattern: RegExp;
+          handler: string;
+          options: { cacheName: string };
+        }[];
+      };
+    };
+    const entry = options.workbox.runtimeCaching[0];
+    expect(entry?.handler).toBe("NetworkFirst");
+    expect(entry?.options.cacheName).toBe("team-dash-asana-api");
+    // The entry only covers the read-only Asana API surface — the
+    // read-only guarantee (FR-009 / NFR-004) must not be widened by
+    // the offline layer.
+    expect(
+      entry?.urlPattern.test("https://app.asana.com/api/1.0/projects"),
+    ).toBe(true);
+    expect(
+      entry?.urlPattern.test("https://app.asana.com/api/1.0/tasks/1"),
+    ).toBe(true);
+    expect(entry?.urlPattern.test("https://example.com/api/1.0/projects")).toBe(
+      false,
+    );
+  });
+
+  it("marks a service-worker-cached response with the shared header", async () => {
+    const options = vitePwaMock.mock.calls[0]?.[0] as {
+      workbox: {
+        runtimeCaching: {
+          options: {
+            plugins: {
+              cachedResponseWillBeUsed: (param: {
+                cachedResponse?: Response;
+              }) => Promise<Response | undefined>;
+            }[];
+          };
+        }[];
+      };
+    };
+    const hook =
+      options.workbox.runtimeCaching[0]?.options.plugins[0]
+        ?.cachedResponseWillBeUsed;
+    expect(typeof hook).toBe("function");
+
+    const cached = new Response("{}", { status: 200 });
+    const marked = await hook?.({ cachedResponse: cached });
+    // The app's Asana client refuses a response that carries this
+    // header (FR-022: a refresh may only ever commit live data), so
+    // the header the worker writes and the header the client reads
+    // have to be the same one.
+    expect(marked?.headers.get(SERVICE_WORKER_CACHE_HEADER)).toBe(
+      SERVICE_WORKER_CACHE_HEADER_VALUE,
+    );
+    expect(await marked?.text()).toBe("{}");
   });
 });
 

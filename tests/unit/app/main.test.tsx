@@ -17,6 +17,13 @@ vi.mock("../../../src/app/credentials-context", () => ({
     clearToSessionOnly: vi.fn(),
     clearAll: vi.fn(),
   }),
+  // BSOD-307 (T053) — the dashboard route mounts the refresh-status
+  // surface, which reads the plaintext-token accessor the refresh
+  // controls use. The mock reports "no token", so the refresh action
+  // renders in its disabled state.
+  useCredentialTokenAccessor: () => ({
+    getPlaintextToken: () => null,
+  }),
 }));
 
 vi.mock("../../../src/app/workspace-context", () => ({

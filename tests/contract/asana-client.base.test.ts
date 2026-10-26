@@ -62,9 +62,14 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  asanaResourceResponseSchema,
   asanaUserSchema,
   asanaWorkspaceListResponseSchema,
 } from "../../src/data/asana/schemas";
+import {
+  SERVICE_WORKER_CACHE_HEADER,
+  SERVICE_WORKER_CACHE_HEADER_VALUE,
+} from "../../src/shared/service-worker-cache";
 import { server } from "../setup";
 
 /**
@@ -454,6 +459,112 @@ describe("T025 base Asana HTTP client (contracts/asana-client.md)", () => {
         offset: "offset-1",
         path: "/projects/123/tasks",
       });
+    });
+  });
+  /**
+   * BSOD-307 (T053) — the service-worker cache contract.
+   *
+   * The worker keeps the last complete Asana responses in its runtime
+   * cache and marks every response it serves from that cache with the
+   * `X-Team-Dash-Served-From: service-worker-cache` header. A cached
+   * response is NOT live data, so the client refuses it by default:
+   * a refresh whose transport failed must surface as a failure
+   * (FR-022 / Constitution Principle V) instead of silently
+   * re-committing the previous cache and reporting success.
+   */
+  describe("service-worker-cached responses are refused by default", () => {
+    const cachedUserResponseSchema =
+      asanaResourceResponseSchema(asanaUserSchema);
+
+    it("maps a service-worker-cached response to `network_error`", async () => {
+      server.use(
+        http.get("https://app.asana.com/api/1.0/users/me", () => {
+          return HttpResponse.json(
+            {
+              data: {
+                gid: "1200000000000020",
+                name: "Alex Kim",
+                email: "alex@example.com",
+                resource_type: "user",
+              },
+            },
+            {
+              headers: {
+                [SERVICE_WORKER_CACHE_HEADER]:
+                  SERVICE_WORKER_CACHE_HEADER_VALUE,
+              },
+            },
+          );
+        }),
+      );
+
+      const result = await asanaGet(
+        "/users/me",
+        cachedUserResponseSchema,
+        "token",
+      );
+
+      expect(result.outcome).toBe("network_error");
+      if (result.outcome !== "network_error") return;
+      // The detail names the source and never carries the token.
+      expect(result.message).toMatch(/service-worker cache/i);
+      expect(result.message).not.toContain("token");
+    });
+
+    it("accepts a service-worker-cached response when the caller opts in", async () => {
+      server.use(
+        http.get("https://app.asana.com/api/1.0/users/me", () => {
+          return HttpResponse.json(
+            {
+              data: {
+                gid: "1200000000000020",
+                name: "Alex Kim",
+                email: "alex@example.com",
+                resource_type: "user",
+              },
+            },
+            {
+              headers: {
+                [SERVICE_WORKER_CACHE_HEADER]:
+                  SERVICE_WORKER_CACHE_HEADER_VALUE,
+              },
+            },
+          );
+        }),
+      );
+
+      const result = await asanaGet(
+        "/users/me",
+        cachedUserResponseSchema,
+        "token",
+        undefined,
+        { allowServiceWorkerCache: true },
+      );
+
+      expect(result.outcome).toBe("ok");
+    });
+
+    it("leaves an unmarked (live) response untouched", async () => {
+      server.use(
+        http.get("https://app.asana.com/api/1.0/users/me", () => {
+          return HttpResponse.json({
+            data: {
+              gid: "1200000000000020",
+              name: "Alex Kim",
+              email: "alex@example.com",
+              resource_type: "user",
+            },
+          });
+        }),
+      );
+
+      const result = await asanaGet(
+        "/users/me",
+        cachedUserResponseSchema,
+        "token",
+      );
+
+      expect(result.outcome).toBe("ok");
     });
   });
 });

@@ -178,7 +178,9 @@ describe("Vite PWA configuration", () => {
     expect(typeof hook).toBe("function");
 
     const cached = new Response("{}", { status: 200 });
-    const marked = await hook?.({ cachedResponse: cached });
+    const markedPromise = hook?.({ cachedResponse: cached });
+    expect(markedPromise).toBeInstanceOf(Promise);
+    const marked = await markedPromise;
     // The app's Asana client refuses a response that carries this
     // header (FR-022: a refresh may only ever commit live data), so
     // the header the worker writes and the header the client reads
@@ -187,6 +189,10 @@ describe("Vite PWA configuration", () => {
       SERVICE_WORKER_CACHE_HEADER_VALUE,
     );
     expect(await marked?.text()).toBe("{}");
+
+    const missingResponsePromise = hook?.({});
+    expect(missingResponsePromise).toBeInstanceOf(Promise);
+    expect(await missingResponsePromise).toBeUndefined();
   });
 });
 

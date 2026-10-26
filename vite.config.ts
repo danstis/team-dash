@@ -131,24 +131,26 @@ export default defineConfig({
               },
               plugins: [
                 {
-                  cachedResponseWillBeUsed: async ({
+                  cachedResponseWillBeUsed: ({
                     cachedResponse,
                   }: {
                     cachedResponse?: Response;
                   }): Promise<Response | undefined> => {
                     if (cachedResponse === undefined) {
-                      return cachedResponse;
+                      return Promise.resolve(cachedResponse);
                     }
                     const headers = new Headers(cachedResponse.headers);
                     headers.set(
                       "X-Team-Dash-Served-From",
                       "service-worker-cache",
                     );
-                    return new Response(cachedResponse.body, {
-                      status: cachedResponse.status,
-                      statusText: cachedResponse.statusText,
-                      headers,
-                    });
+                    return Promise.resolve(
+                      new Response(cachedResponse.body, {
+                        status: cachedResponse.status,
+                        statusText: cachedResponse.statusText,
+                        headers,
+                      }),
+                    );
                   },
                 },
               ],

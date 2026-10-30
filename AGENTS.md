@@ -46,3 +46,7 @@ This project is indexed by GitNexus as **team-dash**.
 # UI work
 
 Before building or changing any screen, read `DESIGN.md` (especially **Interaction & Copy**) and `docs/design/ux-findings.md`. Resolve the open findings for the surface you touch in the same change and update their status in the ledger.
+
+# Testing
+
+Test-first (red→green) applies to behaviour, not configuration. Do NOT write unit tests that read config or CI files (`renovate.json`, `tsconfig.json`, `.github/workflows/*`, `nginx.conf`, `.dockerignore`, `vite`/`vitest`/`playwright` configs) and assert their contents. Config is meant to change without touching tests; validate it by running the tool that consumes it. Test logic in scripts (e.g. `scripts/`), not the config around them.

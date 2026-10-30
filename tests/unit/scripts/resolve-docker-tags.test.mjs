@@ -222,9 +222,7 @@ describe("resolveDockerTags", () => {
     // silently push `latest`.
     //
     // The `workflow_run` path leaves the flag empty and lets the
-    // tag's semver decide (BSOD-775) — see the "derives the prerelease
-    // flag from the tag semver" case in
-    // `tests/unit/config/docker-release-workflow.test.ts`.
+    // tag's semver decide (BSOD-775).
 
     it('treats prerelease="true" from the workflow_run path as boolean true (no `latest`)', () => {
       const result = resolveDockerTags({

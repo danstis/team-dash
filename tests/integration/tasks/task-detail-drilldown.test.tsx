@@ -66,7 +66,13 @@
  * (Principle III, NFR-005). The fixtures below are synthetic.
  */
 import { type ReactElement, useEffect, useState } from "react";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -294,11 +300,7 @@ describe("BSOD-316 (T067) — the task-detail drill-down", () => {
     ]);
     expect(
       memberships.map((item) => item.getAttribute("data-project-gid")),
-    ).toEqual([
-      "project-apollo",
-      "project-borealis",
-      "project-cirrus",
-    ]);
+    ).toEqual(["project-apollo", "project-borealis", "project-cirrus"]);
   });
 
   it("lists the task's dependencies, naming the ones it knows", async () => {
@@ -311,17 +313,11 @@ describe("BSOD-316 (T067) — the task-detail drill-down", () => {
     // FR-053 — every dependency is listed.
     expect(dependencies).toHaveLength(2);
     expect(dependencies[0]).toHaveTextContent("Archive the old campaign");
-    expect(dependencies[0]).toHaveAttribute(
-      "data-dependency-gid",
-      "task-2",
-    );
+    expect(dependencies[0]).toHaveAttribute("data-dependency-gid", "task-2");
     // A dependency the caller cannot name is shown by its raw id, not
     // dropped: a missing dependency would read as "no dependencies".
     expect(dependencies[1]).toHaveTextContent("task-3");
-    expect(dependencies[1]).toHaveAttribute(
-      "data-dependency-gid",
-      "task-3",
-    );
+    expect(dependencies[1]).toHaveAttribute("data-dependency-gid", "task-3");
   });
 
   it("shows the source fields the user verifies the task against", async () => {

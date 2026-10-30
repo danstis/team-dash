@@ -7,8 +7,8 @@
   ],
   "pinDigests": true,
   "dependencyDashboard": true,
-  "minimumReleaseAge": "3 days",
-  "internalChecksFilter": "strict",
+  "minimumReleaseAge": "1 days",
+  "internalChecksFilter": "none",
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
     "enabled": true
@@ -22,6 +22,10 @@
       "groupSlug": "react-packages",
       "separateMajorMinor": false,
       "separateMultipleMajor": false
+    },
+    {
+      "matchUpdateTypes": ["digest", "pin", "pinDigest"],
+      "minimumReleaseAge": null
     },
     {
       "matchUpdateTypes": ["minor", "patch"],

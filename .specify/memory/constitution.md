@@ -104,7 +104,12 @@ including empty data, missing values, expired sync state, rate limits,
 offline use, partial retrieval, and corrupted or outdated local storage. A
 change MUST NOT merge while a required quality gate is failing. Flaky tests
 MUST be fixed or explicitly quarantined with a tracked remediation; they
-MUST NOT be casually retried until green.
+MUST NOT be casually retried until green. Test-first applies to behaviour,
+not configuration: tests MUST NOT assert the contents of configuration or
+CI files (`renovate.json`, `tsconfig.json`, workflows, `nginx.conf`,
+`.dockerignore`, tool configs), because those change by design and are
+validated by the tools that consume them (CI, the Docker build, linters,
+workflow/security scanners). Logic extracted into scripts remains testable.
 
 **Rationale**: Test-first discipline and a comprehensive, deterministic CI
 gate are what make the correctness guarantees in Principle II verifiable
@@ -307,4 +312,4 @@ risk, updated documentation, and a reproducible verification step.
 
 Project documentation MUST use Australian English.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-20 | **Last Amended**: 2026-07-20
+**Version**: 1.0.1 | **Ratified**: 2026-07-20 | **Last Amended**: 2026-10-30

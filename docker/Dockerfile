@@ -16,7 +16,7 @@
 # Build:   docker build -f docker/Dockerfile -t team-dash .
 # Run:     docker run --rm -p 8080:8080 team-dash
 
-ARG NODE_IMAGE=node:24@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a
+ARG NODE_IMAGE=node:24@sha256:e7add2a490bb17d97b485b8641bd88455fff7839ade0f5eba493c3508124d413
 ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
 
 # ---------------------------------------------------------------------------

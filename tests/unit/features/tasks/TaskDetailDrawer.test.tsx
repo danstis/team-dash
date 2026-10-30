@@ -104,7 +104,7 @@ describe("BSOD-316 (T067) — the Asana link builder carries no token", () => {
   it("takes exactly one argument, so it cannot be handed a token", () => {
     // The helper's whole privacy guarantee is its shape: one input, a
     // gid, and no parameter a credential could arrive through.
-    expect(buildAsanaTaskUrl.length).toBe(1);
+    expect(buildAsanaTaskUrl).toHaveLength(1);
   });
 
   it("is pure — the same gid always yields the same URL", () => {

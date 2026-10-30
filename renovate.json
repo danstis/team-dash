@@ -7,7 +7,7 @@
   ],
   "pinDigests": true,
   "dependencyDashboard": true,
-  "minimumReleaseAge": "1 days",
+  "minimumReleaseAge": "3 days",
   "internalChecksFilter": "none",
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {

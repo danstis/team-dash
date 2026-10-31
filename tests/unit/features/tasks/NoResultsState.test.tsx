@@ -72,7 +72,8 @@ describe("NoResultsState", () => {
 
     const state = screen.getByTestId("no-results-state");
     expect(state).toHaveAttribute("data-view-state", "no_results");
-    expect(state).toHaveAttribute("role", "status");
+    const liveRegion = within(state).getByRole("status");
+    expect(liveRegion).toHaveAttribute("aria-live", "polite");
     expect(
       within(state).getByRole("heading", { name: /no tasks match/i }),
     ).toBeInTheDocument();
@@ -81,6 +82,11 @@ describe("NoResultsState", () => {
     expect(explanation).toHaveTextContent(/no tasks match/i);
     // FR-085 — the state names the action it offers.
     expect(explanation).toHaveTextContent(/clear all filters/i);
+    expect(explanation).not.toHaveTextContent(/date range/i);
+    expect(within(liveRegion).queryByRole("button")).not.toBeInTheDocument();
+    expect(
+      within(liveRegion).queryByTestId("active-filter-chip"),
+    ).not.toBeInTheDocument();
   });
 
   it("lists the active filters that matched nothing", () => {

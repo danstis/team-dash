@@ -39,19 +39,14 @@
  *    that were never applied is the misleading report Principle VII
  *    forbids.
  *
- * The filtering itself is NOT re-implemented here: the harness applies
- * the `FilterCriteria` contract that T065 (BSOD-314) landed in
- * `src/domain/filtering/filters.ts`, exactly as the dashboard chrome
- * will. This file therefore also pins that the no-results surface is
- * driven by the domain's predicates rather than by a UI-local count.
+ * The filtering and the show/no-results decision are implemented by the
+ * shipped `TaskList`, which uses T065's filter contract. This test only
+ * supplies tasks and interacts with the rendered filter controls.
  *
  * Test-first discipline
  * ----------------------
- * Per Constitution Principle III this file lands with the failing test
- * first: the Red phase fails with "Cannot find module
- * '../../../src/features/tasks/NoResultsState'", and the same file goes
- * green once `NoResultsState` implements the surface below — with no
- * test-side change.
+ * The original red commit failed on the missing `NoResultsState` import;
+ * this review adds assertions against the shipped task-list composition.
  *
  * Determinism
  * ------------
@@ -67,7 +62,6 @@
  * browser, no live Asana workspace, no real personal access token
  * (Principle III, NFR-005). The fixtures below are synthetic.
  */
-import { type ReactElement, StrictMode, useState } from "react";
 import {
   cleanup,
   fireEvent,
@@ -77,15 +71,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { filterTasks } from "../../../src/domain/filtering/filters";
-import type { FilterCriteria, ISODateTime } from "../../../src/domain/types";
-import { ActiveFiltersList } from "../../../src/features/tasks/ActiveFiltersList";
-import { FilterBar } from "../../../src/features/tasks/FilterBar";
+import type { ISODateTime } from "../../../src/domain/types";
 import { NoResultsState } from "../../../src/features/tasks/NoResultsState";
-import {
-  TaskTable,
-  type TaskTableTask,
-} from "../../../src/features/tasks/TaskTable";
+import { TaskList } from "../../../src/features/tasks/TaskList";
+import type { TaskTableTask } from "../../../src/features/tasks/TaskTable";
 
 /* -------------------------------------------------------------------------- */
 /* Fixtures                                                                   */
@@ -180,75 +169,22 @@ const TASKS: readonly TaskTableTask[] = [
 ];
 
 /* -------------------------------------------------------------------------- */
-/* Harness                                                                    */
+/* Shipped task list                                                           */
 /* -------------------------------------------------------------------------- */
 
 /**
- * The task-list chrome the way the dashboard will compose it: the
- * filter bar drives the `FilterCriteria`, and the list shows either the
- * filtered table or the no-results state.
- *
- * The chrome owns the decision (a filter combination that matches
- * nothing, against data that exists); the surfaces own their own
- * rendering. The "there is data at all" half of the decision belongs to
- * the empty-dashboard surface (T062 / BSOD-310) — with no tasks cached
- * and no filter applied, the honest state is "run a refresh", not "your
- * filters matched nothing".
+ * Exercise the shipped composition, including its zero-match decision.
  */
-function TaskListHarness(): ReactElement {
-  const [criteria, setCriteria] = useState<FilterCriteria>({});
-
-  const hasData = TASKS.length > 0;
-  const hasResults =
-    filterTasks(TASKS, criteria, { timezone: "utc" }).length > 0;
-  const showNoResults = hasData && !hasResults;
-
-  const clearAll = (): void => {
-    setCriteria({});
-  };
-
-  return (
-    <StrictMode>
-      <FilterBar
-        criteria={criteria}
-        onChange={setCriteria}
-        users={USERS}
-        projects={PROJECTS}
-        now={NOW}
-        timezone="utc"
-      />
-      {showNoResults ? (
-        <NoResultsState
-          criteria={criteria}
-          users={USERS}
-          projects={PROJECTS}
-          onClearAll={clearAll}
-          timezone="utc"
-        />
-      ) : (
-        <>
-          <ActiveFiltersList
-            criteria={criteria}
-            users={USERS}
-            projects={PROJECTS}
-            onClearAll={clearAll}
-            timezone="utc"
-          />
-          <TaskTable
-            tasks={TASKS}
-            criteria={criteria}
-            users={USERS}
-            projects={PROJECTS}
-            timezone="utc"
-          />
-        </>
-      )}
-    </StrictMode>
-  );
-}
-
 function renderTaskList(): void {
-  render(<TaskListHarness />);
+  render(
+    <TaskList
+      tasks={TASKS}
+      users={USERS}
+      projects={PROJECTS}
+      now={NOW}
+      timezone="utc"
+    />,
+  );
 }
 
 /** Applies the "this month" date-range preset to the rendered filter bar. */
@@ -289,13 +225,18 @@ describe("BSOD-317 (T068) — the no-results state", () => {
     expect(state).toBeInTheDocument();
     // FR-085 — the state is a designed status region, not a blank
     // table: it explains itself and names the next action.
-    expect(state).toHaveAttribute("role", "status");
+    const liveRegion = within(state).getByRole("status");
+    expect(liveRegion).toHaveAttribute("aria-live", "polite");
     expect(
       within(state).getByRole("heading", { name: /no tasks match/i }),
     ).toBeInTheDocument();
     const explanation = within(state).getByTestId("no-results-explanation");
     expect(explanation).toHaveTextContent(/no tasks match/i);
     expect(explanation).toHaveTextContent(/clear all filters/i);
+    expect(within(liveRegion).queryByRole("button")).not.toBeInTheDocument();
+    expect(
+      within(liveRegion).queryByTestId("active-filter-chip"),
+    ).not.toBeInTheDocument();
     // The empty list is not left to speak for itself.
     expect(screen.queryAllByTestId("task-row")).toHaveLength(0);
   });
@@ -352,6 +293,21 @@ describe("BSOD-317 (T068) — the no-results state", () => {
       />,
     );
 
+    expect(screen.queryByTestId("no-results-state")).not.toBeInTheDocument();
+  });
+
+  it("does not claim filtered no-results when the task source is empty", () => {
+    render(
+      <TaskList
+        tasks={[]}
+        users={USERS}
+        projects={PROJECTS}
+        now={NOW}
+        timezone="utc"
+      />,
+    );
+
+    applyBorealis();
     expect(screen.queryByTestId("no-results-state")).not.toBeInTheDocument();
   });
 });

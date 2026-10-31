@@ -21,6 +21,10 @@ When you build or change a surface listed below, resolve its findings in the sam
 | F-13 | P3  | DESIGN.md promises an icon on status banners; none render one.                                                                                                                                                                                                                                                   | Status banners                   | DESIGN.md Status Banners                  | Banners render a severity icon (bundled, not CDN), or DESIGN.md drops the promise.                                                     | Open     |
 | F-14 | P3  | Minor polish: "Exit settings" wraps at 390px; the Theme fieldset in the Settings header competes with the title; the disabled primary button reads as a pale tint rather than disabled; a widow ("shown.") in the Settings masked-token copy.                                                                    | Settings polish pass             | —                                         | Fixed or consciously accepted.                                                                                                         | Open     |
 
+## F-10 application in task list
+
+BSOD-317 applies F-10's live-region rule to the task no-results surface: the shared `NoResultsState` announces only its heading and explanation; the active-filter chips and clear-all button sit outside that region. F-10 remains Open for the first-run wizard and dialogs.
+
 ## Not findings
 
 - The detector flags the 4px left rule on status banners (`global.css` `[data-view-state]` and `outcome-banner`) as `side-tab`. It is DESIGN.md's signature status component and is intentional. Recorded in `.impeccable/critique/ignore.md`.

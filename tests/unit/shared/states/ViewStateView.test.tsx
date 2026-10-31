@@ -356,7 +356,10 @@ describe("T032 shared ViewState-driven UI primitives", () => {
       render(<NoResultsState />);
 
       const status = screen.getByRole("status");
-      expect(status.getAttribute("data-view-state")).toBe("no_results");
+      expect(
+        status.closest('[data-view-state="no_results"]'),
+      ).toBeInTheDocument();
+      expect(status).toHaveAttribute("aria-live", "polite");
       expect(
         screen.getByRole("heading", {
           level: 2,
@@ -366,7 +369,10 @@ describe("T032 shared ViewState-driven UI primitives", () => {
       // The primitive hints at clearing filters so a user who narrowed
       // the dataset down to nothing can recover quickly (FR-048's
       // clear-all affordance).
-      expect(screen.getByText(/clear|reset|filter/i)).toBeInTheDocument();
+      expect(screen.getByTestId("no-results-explanation")).toHaveTextContent(
+        /clear all filters/i,
+      );
+      expect(status).not.toHaveTextContent(/date range/i);
     });
   });
 

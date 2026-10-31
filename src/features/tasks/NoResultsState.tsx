@@ -23,7 +23,7 @@
  * ---------------------
  * The surface shown when a filter combination matches none of the tasks
  * the list holds: a heading, an explanation of what happened, the next
- * action (widen the range, or clear the filters), and the active-filter
+ * action (clear the filters), and the active-filter
  * list with its clear-all action.
  *
  * What this module deliberately does NOT own
@@ -50,27 +50,17 @@
  * filter is in force and the caller is expected to mount the
  * empty-dashboard surface instead.
  *
- * It is also a peer of the shared `'no_results'` `ViewState` primitive
- * (`src/shared/states/NoResultsState.tsx`, T032): that primitive carries
- * the explanation for a generic view, while this surface adds the
- * task-list's own content — the active-filter list and the clear-all
- * action — so it renders its own markup rather than nesting a second
- * status region inside its own.
+ * The shared `'no_results'` primitive owns the message and status region.
+ * This feature adds the active-filter list as content outside that region.
  *
  * Product voice
  * -------------
- * The copy names the situation the way a person would ("No tasks match
- * these filters"); no spec id, task id or implementation word appears in
- * the rendered text (DESIGN.md › The Product Voice Rule).
+ * Copy comes from the shared primitive so both no-results views agree.
  *
  * Accessibility
  * -------------
- * The surface is a polite status region (`role="status"`,
- * `aria-live="polite"`): a zero-match filter combination is a normal
- * outcome of the user's own choices, not a failure, so it must not be
- * announced as an alert. The heading is an `<h2>` because the surface
- * renders inside the dashboard, whose own `<h1>` owns the top level
- * (WCAG 1.3.1).
+ * The shared primitive announces only its changing heading and explanation.
+ * The filter list and button remain outside its live region (F-10).
  *
  * Boundary
  * --------
@@ -83,6 +73,7 @@ import type { ReactElement } from "react";
 
 import { hasActiveFilters } from "../../domain/filtering/filters";
 import type { FilterCriteria, TimezoneSetting } from "../../domain/types";
+import { NoResultsState as SharedNoResultsState } from "../../shared/states/NoResultsState";
 import { ActiveFiltersList } from "./ActiveFiltersList";
 import type { FilterOption } from "./FilterBar";
 
@@ -111,22 +102,6 @@ export interface NoResultsStateProps {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Copy                                                                        */
-/* -------------------------------------------------------------------------- */
-
-/** The heading of the no-results surface. */
-const HEADING = "No tasks match these filters";
-
-/**
- * The explanation, and the next action. It names the action the surface
- * actually offers — the "Clear all filters" button of the active-filter
- * list — so the user is not left guessing (FR-085, DESIGN.md › The Next
- * Step Rule).
- */
-const EXPLANATION =
-  "No tasks match the filters you've applied. Widen the date range, or clear all filters, to see more tasks.";
-
-/* -------------------------------------------------------------------------- */
 /* Component                                                                   */
 /* -------------------------------------------------------------------------- */
 
@@ -150,16 +125,11 @@ export function NoResultsState({
   }
 
   return (
-    <section
+    <SharedNoResultsState
       className="td-no-results"
       data-testid="no-results-state"
-      data-view-state="no_results"
-      role="status"
-      aria-live="polite"
       aria-label="No matching tasks"
     >
-      <h2>{HEADING}</h2>
-      <p data-testid="no-results-explanation">{EXPLANATION}</p>
       <ActiveFiltersList
         criteria={criteria}
         users={users}
@@ -167,6 +137,6 @@ export function NoResultsState({
         onClearAll={onClearAll}
         timezone={timezone}
       />
-    </section>
+    </SharedNoResultsState>
   );
 }

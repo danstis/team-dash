@@ -137,11 +137,7 @@ export interface WorkAddedCompletedTask extends FilterableTask {
  * without saying why.
  */
 export type WorkAddedCompletedGroupBy =
-  | "assignee"
-  | "reportingTeam"
-  | "project"
-  | "portfolio"
-  | "priority";
+  "assignee" | "reportingTeam" | "project" | "portfolio" | "priority";
 
 /**
  * One time bucket of the created / completed series (FR-059). The
@@ -247,12 +243,6 @@ export function calculateWorkAddedVsCompleted(
 
 /**
  * Implementation of both public overloads.
- *
- * RED PHASE (Constitution Principle III — red/green as one deliverable):
- * the body lands in the green commit of this pull request. Until then
- * the metric returns an empty, well-formed result so the unit suite
- * fails on the *figures* (the hand-computed reference values) rather
- * than on an unresolved import.
  */
 export function calculateWorkAddedVsCompleted(
   tasks: readonly WorkAddedCompletedTask[],
@@ -262,14 +252,300 @@ export function calculateWorkAddedVsCompleted(
 ):
   | MetricResult<WorkAddedCompletedSeries>
   | Record<string, MetricResult<WorkAddedCompletedSeries>> {
-  void tasks;
-  void filter;
-  void groupBy;
+  const range = filter.dateRange;
+  if (range === undefined) {
+    throw new Error(
+      "calculateWorkAddedVsCompleted: filter.dateRange is required — the metric reports the selected period (FR-059).",
+    );
+  }
+
+  // FR-059: the bucket width follows from the length of the range, and
+  // the bucket sequence comes from the shared datetime helpers so every
+  // metric buckets a period the same way.
+  const width = selectBucketWidth(diffInDaysInclusive(range.start, range.end));
+  const buckets = generateBuckets(range, width);
+  const indexByStart = new Map<string, number>();
+  buckets.forEach((bucket, index) => {
+    indexByStart.set(bucket.bucketStart, index);
+  });
+
+  // FR-036 / Shared Output Rule 1: deduplicate by gid through the
+  // shared helper BEFORE anything is counted, so a task that belongs to
+  // several projects is counted exactly once.
+  const deduped = dedupeByGid(tasks);
+
+  // The user's own filters apply on top of the in-scope task list. The
+  // date range is deliberately left out of the shared predicate: this
+  // metric applies it per scan, on each scan's own date basis (creation
+  // for the added figures, completion for the completed ones), so a
+  // single blended basis would be wrong (FR-033/FR-056/FR-057).
+  const criteria: FilterCriteria = { ...filter, dateRange: undefined };
+  const predicate = createFilterPredicate(criteria, {
+    timezone: context.timezone,
+    now: context.now,
+  });
+  const scoped = deduped.filter(predicate);
+
+  if (groupBy === undefined) {
+    return buildResult(scoped, buckets, indexByStart, width, range, context);
+  }
+
+  // Shared Output Rule 2: a task that belongs to several groups of the
+  // chosen dimension is attributed to EACH of their per-group figures;
+  // the ungrouped result above stays deduplicated (FR-036).
+  const grouped = new Map<string, WorkAddedCompletedTask[]>();
+  for (const task of scoped) {
+    for (const key of groupKeysFor(task, groupBy)) {
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.push(task);
+      } else {
+        grouped.set(key, [task]);
+      }
+    }
+  }
+
+  const results: Record<string, MetricResult<WorkAddedCompletedSeries>> = {};
+  // Sorted so the group order never depends on iteration order
+  // (Shared Output Rule 6).
+  for (const key of [...grouped.keys()].sort()) {
+    results[key] = buildResult(
+      grouped.get(key) ?? [],
+      buckets,
+      indexByStart,
+      width,
+      range,
+      context,
+    );
+  }
+  return results;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Internals                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The running figures of one bucket. The item counts and the effort
+ * sums are separate fields (FR-061) — the UI toggles which one it
+ * reads, it never blends them into one number.
+ */
+interface BucketAccumulator {
+  createdCount: number;
+  completedCount: number;
+  createdEffortMinutes: number;
+  completedEffortMinutes: number;
+}
+
+function emptyAccumulator(): BucketAccumulator {
   return {
-    population: { total: 0, excluded: [] },
-    series: { buckets: [], createdUnestimatedCount: 0, completedUnestimatedCount: 0 },
-    contributingTaskGids: {},
+    createdCount: 0,
+    completedCount: 0,
+    createdEffortMinutes: 0,
+    completedEffortMinutes: 0,
+  };
+}
+
+/**
+ * Builds the metric result for one set of tasks — the whole task list
+ * for the ungrouped call, or one group's tasks for a grouped call.
+ */
+function buildResult(
+  tasks: readonly WorkAddedCompletedTask[],
+  buckets: readonly DateBucket[],
+  indexByStart: ReadonlyMap<string, number>,
+  width: BucketWidth,
+  range: { readonly start: ISODate; readonly end: ISODate },
+  context: MetricContext,
+): MetricResult<WorkAddedCompletedSeries> {
+  const accumulators = buckets.map(() => emptyAccumulator());
+  const contributing: Record<string, string[]> = {};
+  const contributingGids = new Set<string>();
+  let createdUnestimatedCount = 0;
+  let completedUnestimatedCount = 0;
+
+  for (const task of tasks) {
+    // FR-056: the added population — the task's creation date.
+    const createdIndex = bucketIndexOf(
+      task.createdAt,
+      range,
+      width,
+      indexByStart,
+      context.timezone,
+    );
+    if (createdIndex !== undefined) {
+      const accumulator = accumulators[createdIndex];
+      accumulator.createdCount += 1;
+      if (task.estimatedMinutes === null) {
+        // FR-058: no estimate — the task joins the count but not the
+        // effort sum, and the exclusion is disclosed below.
+        createdUnestimatedCount += 1;
+      } else {
+        accumulator.createdEffortMinutes += task.estimatedMinutes;
+      }
+      addContributor(
+        contributing,
+        `created:${buckets[createdIndex].bucketStart}`,
+        task.gid,
+      );
+      contributingGids.add(task.gid);
+    }
+
+    // FR-057: the completed population — the task's completion date.
+    // The two scans are independent, so a task can appear in both
+    // without either measure affecting the other.
+    if (task.completedAt !== null) {
+      const completedIndex = bucketIndexOf(
+        task.completedAt,
+        range,
+        width,
+        indexByStart,
+        context.timezone,
+      );
+      if (completedIndex !== undefined) {
+        const accumulator = accumulators[completedIndex];
+        accumulator.completedCount += 1;
+        if (task.estimatedMinutes === null) {
+          completedUnestimatedCount += 1;
+        } else {
+          accumulator.completedEffortMinutes += task.estimatedMinutes;
+        }
+        addContributor(
+          contributing,
+          `completed:${buckets[completedIndex].bucketStart}`,
+          task.gid,
+        );
+        contributingGids.add(task.gid);
+      }
+    }
+  }
+
+  const excluded: ExcludedPopulationEntry[] = [];
+  if (createdUnestimatedCount > 0) {
+    excluded.push({
+      reason: NO_ESTIMATE_CREATED_REASON,
+      count: createdUnestimatedCount,
+    });
+  }
+  if (completedUnestimatedCount > 0) {
+    excluded.push({
+      reason: NO_ESTIMATE_COMPLETED_REASON,
+      count: completedUnestimatedCount,
+    });
+  }
+
+  // The drill-down lists are sorted so the order never depends on the
+  // input order (Shared Output Rule 6).
+  for (const key of Object.keys(contributing)) {
+    contributing[key].sort();
+  }
+
+  return {
+    population: { total: contributingGids.size, excluded },
+    series: {
+      buckets: accumulators.map((accumulator, index) => ({
+        bucketStart: buckets[index].bucketStart,
+        bucketEnd: buckets[index].bucketEnd,
+        createdCount: accumulator.createdCount,
+        completedCount: accumulator.completedCount,
+        createdEffortMinutes: accumulator.createdEffortMinutes,
+        completedEffortMinutes: accumulator.completedEffortMinutes,
+      })),
+      createdUnestimatedCount,
+      completedUnestimatedCount,
+    },
+    contributingTaskGids: contributing,
     dedupApplied: true,
     asOf: context.now,
   };
+}
+
+/**
+ * Returns the index of the bucket a dated task belongs to, or
+ * `undefined` when the date falls outside the reporting period.
+ *
+ * The period check comes FIRST: a weekly bucket can start before the
+ * period does (the first bucket snaps back to the Monday on or before
+ * the range start), so a task dated before the range must not land in
+ * it.
+ */
+function bucketIndexOf(
+  value: ISODateTime,
+  range: { readonly start: ISODate; readonly end: ISODate },
+  width: BucketWidth,
+  indexByStart: ReadonlyMap<string, number>,
+  timezone: TimezoneSetting,
+): number | undefined {
+  if (!isDateInRange(value, range, timezone)) {
+    return undefined;
+  }
+  const bucketStart =
+    width === "day"
+      ? toIsoDate(isoDateTimeToDate(value), timezone)
+      : startOfWeekInTimezone(value, timezone);
+  return indexByStart.get(bucketStart);
+}
+
+/**
+ * Records a task as a contributor of one displayed figure (FR-062). The
+ * key names the figure: the date basis and the bucket it belongs to, so
+ * every created and completed figure has its own exact task list.
+ */
+function addContributor(
+  contributing: Record<string, string[]>,
+  key: string,
+  gid: string,
+): void {
+  const existing = contributing[key];
+  if (existing) {
+    existing.push(gid);
+  } else {
+    contributing[key] = [gid];
+  }
+}
+
+/**
+ * The group keys a task belongs to in the chosen dimension (FR-060).
+ *
+ * - `assignee` and `priority` are single-valued, and a task with no
+ *   value lands under the explicit `'unassigned'` / `'no_priority'` key
+ *   so the group is never silently missing.
+ * - `project`, `reportingTeam` and `portfolio` can hold several groups
+ *   for one task; the keys are de-duplicated so a task that sits in two
+ *   projects of the SAME reporting team is counted once there.
+ */
+function groupKeysFor(
+  task: WorkAddedCompletedTask,
+  groupBy: WorkAddedCompletedGroupBy,
+): string[] {
+  switch (groupBy) {
+    case "assignee":
+      return [task.assigneeGid ?? UNASSIGNED_GROUP_KEY];
+    case "priority":
+      return [task.priorityOptionId ?? NO_PRIORITY_GROUP_KEY];
+    case "project":
+      return uniqueOrUnassigned(task.projectGids);
+    case "reportingTeam":
+      return uniqueOrUnassigned(task.reportingTeamGids ?? []);
+    case "portfolio":
+      return uniqueOrUnassigned(task.portfolioGids ?? []);
+    default: {
+      // Exhaustiveness check: a future grouping dimension added to the
+      // union surfaces here at compile time rather than silently
+      // falling through to no group at all.
+      const _exhaustive: never = groupBy;
+      throw new Error(
+        `groupKeysFor: unhandled grouping dimension "${String(groupBy)}" (exhaustive: ${_exhaustive})`,
+      );
+    }
+  }
+}
+
+/**
+ * The distinct group keys of a multi-valued dimension, or the explicit
+ * `'unassigned'` key when the task belongs to none of them.
+ */
+function uniqueOrUnassigned(gids: readonly string[]): string[] {
+  const unique = [...new Set(gids)];
+  return unique.length > 0 ? unique : [UNASSIGNED_GROUP_KEY];
 }

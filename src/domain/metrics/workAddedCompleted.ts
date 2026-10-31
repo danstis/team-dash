@@ -42,7 +42,7 @@
  *    re-aggregating it reproduces the displayed count and sum exactly.
  * 6. **Determinism**: identical `(tasks, filter, context)` inputs
  *    produce byte-identical output — no clock reads, no randomness, and
- *    the group keys are sorted.
+ *    the group keys and drill-down lists are sorted.
  *
  * Date bases
  * ----------
@@ -55,14 +55,23 @@
  *
  * Grouping data
  * -------------
- * The reporting team and portfolio a task belongs to are properties of
- * its *projects*, not of the task row, so the calling layer resolves
- * them (FR-041: a project's reporting team is its Asana team unless a
- * local override says otherwise; FR-040: portfolios contain projects)
- * and carries them on the task row as `reportingTeamGids` /
- * `portfolioGids`. This mirrors how the data layer already resolves a
- * subtask's project memberships from its parent at ingestion time
- * (data-model.md, FR-014) — the domain layer never needs a lookup.
+ * Two grouping dimensions are properties of a task's *projects* rather
+ * than of the task row, and they reach the metric differently:
+ *
+ * - **Reporting team**: resolved through `context.teamMapping`
+ *   (`contracts/metrics-engine.md`: "Reporting-team-grouped calls always
+ *   resolve team membership via `context.teamMapping` (the *current*
+ *   mapping)"). The metric maps each of a task's projects through that
+ *   mapping, so a project the user re-mapped moves to its new team
+ *   without any cached grouping state (FR-042/FR-046). A task whose
+ *   projects resolve to no reporting team falls under the explicit
+ *   `'unassigned'` key.
+ * - **Portfolio**: `MetricContext` carries no portfolio mapping and the
+ *   task row carries no portfolio membership, so the calling layer
+ *   resolves the portfolios a task's projects belong to and passes them
+ *   on the task row as `portfolioGids` (FR-040). This mirrors how the
+ *   data layer already resolves a subtask's project memberships from
+ *   its parent at ingestion time (data-model.md, FR-014).
  *
  * Boundary
  * --------
@@ -101,6 +110,7 @@ import type {
   ISODateTime,
   MetricContext,
   MetricResult,
+  TeamMappingOverride,
   TimezoneSetting,
 } from "../types";
 
@@ -111,17 +121,11 @@ import type {
 /**
  * The task projection this metric reads. It is the shared
  * `FilterableTask` shape (so a cached task row satisfies it without an
- * adapter) plus the two group memberships that live on the task's
- * *projects* rather than on the task itself.
+ * adapter) plus the one group membership the task row can carry:
+ * the portfolios its projects belong to. The reporting team is NOT
+ * carried here — it is resolved through `context.teamMapping`.
  */
 export interface WorkAddedCompletedTask extends FilterableTask {
-  /**
-   * The reporting teams the task's projects are mapped to (FR-040/FR-045).
-   * A task whose projects sit in two reporting teams is attributed to
-   * both of their per-group figures.
-   */
-  readonly reportingTeamGids?: readonly string[];
-
   /**
    * The portfolios the task's projects belong to (FR-040). A task whose
    * projects sit in two portfolios is attributed to both of their
@@ -213,11 +217,17 @@ export const NO_ESTIMATE_COMPLETED_REASON = "no_estimate_completed";
  * @param filter - The user's active filters. `filter.dateRange` is the
  *   reporting period and is REQUIRED: the metric buckets that period.
  *   Every other criterion is applied to the task list before the two
- *   independent scans.
+ *   independent scans, through `domain/filtering`'s shared predicate —
+ *   so a criterion that module does not implement yet raises its
+ *   `UnsupportedFilterDimensionError` rather than being ignored.
  * @param context - The injected clock, the timezone basis and the
- *   current team mapping.
+ *   current team mapping. The mapping resolves the reporting-team
+ *   grouping (FR-042/FR-046).
  *
  * @returns The metric result when no grouping is requested.
+ *
+ * @throws When `filter.dateRange` is missing — the metric reports a
+ *   period and cannot invent one.
  */
 export function calculateWorkAddedVsCompleted(
   tasks: readonly WorkAddedCompletedTask[],
@@ -286,16 +296,25 @@ export function calculateWorkAddedVsCompleted(
   });
   const scoped = deduped.filter(predicate);
 
+  const basis: ScanBasis = {
+    buckets,
+    indexByStart,
+    width,
+    range,
+    context,
+  };
+
   if (groupBy === undefined) {
-    return buildResult(scoped, buckets, indexByStart, width, range, context);
+    return buildResult(scoped, basis);
   }
 
   // Shared Output Rule 2: a task that belongs to several groups of the
   // chosen dimension is attributed to EACH of their per-group figures;
   // the ungrouped result above stays deduplicated (FR-036).
+  const reportingTeamByProject = reportingTeamLookup(context.teamMapping);
   const grouped = new Map<string, WorkAddedCompletedTask[]>();
   for (const task of scoped) {
-    for (const key of groupKeysFor(task, groupBy)) {
+    for (const key of groupKeysFor(task, groupBy, reportingTeamByProject)) {
       const existing = grouped.get(key);
       if (existing) {
         existing.push(task);
@@ -308,15 +327,8 @@ export function calculateWorkAddedVsCompleted(
   const results: Record<string, MetricResult<WorkAddedCompletedSeries>> = {};
   // Sorted so the group order never depends on iteration order
   // (Shared Output Rule 6).
-  for (const key of [...grouped.keys()].sort()) {
-    results[key] = buildResult(
-      grouped.get(key) ?? [],
-      buckets,
-      indexByStart,
-      width,
-      range,
-      context,
-    );
+  for (const key of [...grouped.keys()].sort((a, b) => a.localeCompare(b))) {
+    results[key] = buildResult(grouped.get(key) ?? [], basis);
   }
   return results;
 }
@@ -326,24 +338,100 @@ export function calculateWorkAddedVsCompleted(
 /* -------------------------------------------------------------------------- */
 
 /**
- * The running figures of one bucket. The item counts and the effort
- * sums are separate fields (FR-061) — the UI toggles which one it
- * reads, it never blends them into one number.
+ * Everything a scan needs besides the tasks themselves: the bucket
+ * sequence of the period, the index that resolves a date to its bucket,
+ * and the reporting basis.
  */
-interface BucketAccumulator {
-  createdCount: number;
-  completedCount: number;
-  createdEffortMinutes: number;
-  completedEffortMinutes: number;
+interface ScanBasis {
+  readonly buckets: readonly DateBucket[];
+  readonly indexByStart: ReadonlyMap<string, number>;
+  readonly width: BucketWidth;
+  readonly range: { readonly start: ISODate; readonly end: ISODate };
+  readonly context: MetricContext;
 }
 
-function emptyAccumulator(): BucketAccumulator {
-  return {
-    createdCount: 0,
-    completedCount: 0,
-    createdEffortMinutes: 0,
-    completedEffortMinutes: 0,
-  };
+/**
+ * The figures of one bucket on ONE date basis. The item count and the
+ * effort sum stay separate (FR-061) — the UI toggles which one it
+ * reads, it never blends them into one number.
+ */
+interface BasisFigure {
+  count: number;
+  effortMinutes: number;
+}
+
+/**
+ * The outcome of one independent scan over the task list (FR-056/FR-057).
+ */
+interface BasisScan {
+  /** The figures of every bucket, in bucket order. */
+  readonly figures: BasisFigure[];
+  /** The gids behind each figure, keyed '<basis>:<bucketStart>' (FR-062). */
+  readonly contributing: Record<string, string[]>;
+  /** How many tasks in the population carried no estimate (FR-058). */
+  readonly unestimatedCount: number;
+  /** The tasks that contributed at least one figure. */
+  readonly gids: Set<string>;
+}
+
+/**
+ * Runs one independent scan over the task list: the tasks whose date on
+ * the given basis falls inside the reporting period, bucketed by that
+ * date.
+ *
+ * The two measures share this one function and differ only in the date
+ * they read (`createdAt` / `completedAt`) and the label they key their
+ * drill-down sets with, which is what "each independently" (FR-056/
+ * FR-057) means in practice: neither scan can move the other's figures.
+ */
+function scan(
+  tasks: readonly WorkAddedCompletedTask[],
+  basis: ScanBasis,
+  label: "created" | "completed",
+  dateOf: (task: WorkAddedCompletedTask) => ISODateTime | null,
+): BasisScan {
+  const { buckets, indexByStart, width, range, context } = basis;
+  const figures: BasisFigure[] = buckets.map(() => ({
+    count: 0,
+    effortMinutes: 0,
+  }));
+  const contributing: Record<string, string[]> = {};
+  const gids = new Set<string>();
+  let unestimatedCount = 0;
+
+  for (const task of tasks) {
+    const value = dateOf(task);
+    if (value === null) {
+      continue;
+    }
+    const index = bucketIndexOf(
+      value,
+      range,
+      width,
+      indexByStart,
+      context.timezone,
+    );
+    if (index === undefined) {
+      continue;
+    }
+    const figure = figures[index];
+    figure.count += 1;
+    if (task.estimatedMinutes === null) {
+      // FR-058: no estimate — the task joins the count but not the
+      // effort sum, and the exclusion is disclosed below.
+      unestimatedCount += 1;
+    } else {
+      figure.effortMinutes += task.estimatedMinutes;
+    }
+    addContributor(
+      contributing,
+      `${label}:${buckets[index].bucketStart}`,
+      task.gid,
+    );
+    gids.add(task.gid);
+  }
+
+  return { figures, contributing, unestimatedCount, gids };
 }
 
 /**
@@ -352,109 +440,46 @@ function emptyAccumulator(): BucketAccumulator {
  */
 function buildResult(
   tasks: readonly WorkAddedCompletedTask[],
-  buckets: readonly DateBucket[],
-  indexByStart: ReadonlyMap<string, number>,
-  width: BucketWidth,
-  range: { readonly start: ISODate; readonly end: ISODate },
-  context: MetricContext,
+  basis: ScanBasis,
 ): MetricResult<WorkAddedCompletedSeries> {
-  const accumulators = buckets.map(() => emptyAccumulator());
-  const contributing: Record<string, string[]> = {};
-  const contributingGids = new Set<string>();
-  let createdUnestimatedCount = 0;
-  let completedUnestimatedCount = 0;
+  const { buckets, context } = basis;
+  const created = scan(tasks, basis, "created", (task) => task.createdAt);
+  const completed = scan(tasks, basis, "completed", (task) => task.completedAt);
 
-  for (const task of tasks) {
-    // FR-056: the added population — the task's creation date.
-    const createdIndex = bucketIndexOf(
-      task.createdAt,
-      range,
-      width,
-      indexByStart,
-      context.timezone,
-    );
-    if (createdIndex !== undefined) {
-      const accumulator = accumulators[createdIndex];
-      accumulator.createdCount += 1;
-      if (task.estimatedMinutes === null) {
-        // FR-058: no estimate — the task joins the count but not the
-        // effort sum, and the exclusion is disclosed below.
-        createdUnestimatedCount += 1;
-      } else {
-        accumulator.createdEffortMinutes += task.estimatedMinutes;
-      }
-      addContributor(
-        contributing,
-        `created:${buckets[createdIndex].bucketStart}`,
-        task.gid,
-      );
-      contributingGids.add(task.gid);
-    }
-
-    // FR-057: the completed population — the task's completion date.
-    // The two scans are independent, so a task can appear in both
-    // without either measure affecting the other.
-    if (task.completedAt !== null) {
-      const completedIndex = bucketIndexOf(
-        task.completedAt,
-        range,
-        width,
-        indexByStart,
-        context.timezone,
-      );
-      if (completedIndex !== undefined) {
-        const accumulator = accumulators[completedIndex];
-        accumulator.completedCount += 1;
-        if (task.estimatedMinutes === null) {
-          completedUnestimatedCount += 1;
-        } else {
-          accumulator.completedEffortMinutes += task.estimatedMinutes;
-        }
-        addContributor(
-          contributing,
-          `completed:${buckets[completedIndex].bucketStart}`,
-          task.gid,
-        );
-        contributingGids.add(task.gid);
-      }
-    }
-  }
+  const contributingGids = new Set([...created.gids, ...completed.gids]);
 
   const excluded: ExcludedPopulationEntry[] = [];
-  if (createdUnestimatedCount > 0) {
+  if (created.unestimatedCount > 0) {
     excluded.push({
       reason: NO_ESTIMATE_CREATED_REASON,
-      count: createdUnestimatedCount,
+      count: created.unestimatedCount,
     });
   }
-  if (completedUnestimatedCount > 0) {
+  if (completed.unestimatedCount > 0) {
     excluded.push({
       reason: NO_ESTIMATE_COMPLETED_REASON,
-      count: completedUnestimatedCount,
+      count: completed.unestimatedCount,
     });
-  }
-
-  // The drill-down lists are sorted so the order never depends on the
-  // input order (Shared Output Rule 6).
-  for (const key of Object.keys(contributing)) {
-    contributing[key].sort();
   }
 
   return {
     population: { total: contributingGids.size, excluded },
     series: {
-      buckets: accumulators.map((accumulator, index) => ({
-        bucketStart: buckets[index].bucketStart,
-        bucketEnd: buckets[index].bucketEnd,
-        createdCount: accumulator.createdCount,
-        completedCount: accumulator.completedCount,
-        createdEffortMinutes: accumulator.createdEffortMinutes,
-        completedEffortMinutes: accumulator.completedEffortMinutes,
+      buckets: buckets.map((bucket, index) => ({
+        bucketStart: bucket.bucketStart,
+        bucketEnd: bucket.bucketEnd,
+        createdCount: created.figures[index].count,
+        completedCount: completed.figures[index].count,
+        createdEffortMinutes: created.figures[index].effortMinutes,
+        completedEffortMinutes: completed.figures[index].effortMinutes,
       })),
-      createdUnestimatedCount,
-      completedUnestimatedCount,
+      createdUnestimatedCount: created.unestimatedCount,
+      completedUnestimatedCount: completed.unestimatedCount,
     },
-    contributingTaskGids: contributing,
+    contributingTaskGids: sortContributors({
+      ...created.contributing,
+      ...completed.contributing,
+    }),
     dedupApplied: true,
     asOf: context.now,
   };
@@ -505,6 +530,33 @@ function addContributor(
 }
 
 /**
+ * Sorts the drill-down lists so their order never depends on the input
+ * order (Shared Output Rule 6).
+ */
+function sortContributors(
+  contributing: Record<string, string[]>,
+): Record<string, string[]> {
+  for (const key of Object.keys(contributing)) {
+    contributing[key].sort((a, b) => a.localeCompare(b));
+  }
+  return contributing;
+}
+
+/**
+ * The current project → reporting-team mapping, as `context.teamMapping`
+ * carries it (FR-042/FR-046).
+ */
+function reportingTeamLookup(
+  teamMapping: readonly TeamMappingOverride[],
+): ReadonlyMap<string, string> {
+  const lookup = new Map<string, string>();
+  for (const override of teamMapping) {
+    lookup.set(override.projectGid, override.reportingTeamGid);
+  }
+  return lookup;
+}
+
+/**
  * The group keys a task belongs to in the chosen dimension (FR-060).
  *
  * - `assignee` and `priority` are single-valued, and a task with no
@@ -517,6 +569,7 @@ function addContributor(
 function groupKeysFor(
   task: WorkAddedCompletedTask,
   groupBy: WorkAddedCompletedGroupBy,
+  reportingTeamByProject: ReadonlyMap<string, string>,
 ): string[] {
   switch (groupBy) {
     case "assignee":
@@ -526,7 +579,11 @@ function groupKeysFor(
     case "project":
       return uniqueOrUnassigned(task.projectGids);
     case "reportingTeam":
-      return uniqueOrUnassigned(task.reportingTeamGids ?? []);
+      return uniqueOrUnassigned(
+        task.projectGids
+          .map((projectGid) => reportingTeamByProject.get(projectGid))
+          .filter((gid): gid is string => gid !== undefined),
+      );
     case "portfolio":
       return uniqueOrUnassigned(task.portfolioGids ?? []);
     default: {

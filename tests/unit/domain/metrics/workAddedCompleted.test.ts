@@ -61,6 +61,7 @@ import type {
   ISODateTime,
   MetricContext,
   MetricResult,
+  TeamMappingOverride,
 } from "../../../../src/domain/types";
 import { smallDataset } from "../../../../fixtures/asana/small-dataset/data";
 import expectedMetrics from "../../../../fixtures/asana/small-dataset/expected-metrics.json";
@@ -222,17 +223,31 @@ function buildScopedTasks(): WorkAddedCompletedTask[] {
       dueAt: (raw.due_at ?? null) as ISODateTime | null,
       priorityOptionId: priorityOf(raw),
       estimatedMinutes: estimateOf(raw),
-      reportingTeamGids: [
-        ...new Set(
-          projectGids
-            .map((gid) => projectByGid.get(gid)?.team?.gid)
-            .filter((gid): gid is string => gid !== undefined),
-        ),
-      ],
       portfolioGids: portfoliosOf(projectGids),
     });
   }
   return scoped;
+}
+
+/**
+ * The current project → reporting-team mapping the metric resolves the
+ * `reportingTeam` grouping through (`context.teamMapping`,
+ * FR-042/FR-046). For the fixture that mapping is each in-scope
+ * project's own Asana team — the default reporting team (FR-041) —
+ * which is what the calling layer composes from the override table and
+ * the project rows.
+ */
+function teamMappingFor(
+  overrides: Readonly<Record<string, string>> = {},
+): TeamMappingOverride[] {
+  return rawProjects
+    .filter((project) => project.archived === false && project.team !== null)
+    .map((project) => ({
+      projectGid: project.gid,
+      reportingTeamGid:
+        overrides[project.gid] ?? (project.team as { gid: string }).gid,
+      updatedAt: "2026-07-31T12:00:00.000Z" as ISODateTime,
+    }));
 }
 
 const scopedTasks = buildScopedTasks();
@@ -250,7 +265,7 @@ const context: MetricContext = {
   now: "2026-07-31T12:00:00.000Z" as ISODateTime,
   timezone: "utc",
   weekStart: "monday",
-  teamMapping: [],
+  teamMapping: teamMappingFor(),
 };
 
 function filterFor(start: string, end: string): FilterCriteria {
@@ -495,6 +510,60 @@ describe("calculateWorkAddedVsCompleted", () => {
           dailyCase,
         );
       }
+    });
+
+    it("resolves the reporting team through context.teamMapping", () => {
+      // The user re-mapped 'Web App' to another reporting team: its
+      // tasks must move to that team, and the team they left keeps the
+      // tasks of its other projects only (FR-042, FR-046).
+      const remapped = "9999999999999001";
+      const grouped = calculateWorkAddedVsCompleted(
+        scopedTasks,
+        filterFor(dailyCase.range.start, dailyCase.range.end),
+        {
+          ...context,
+          teamMapping: teamMappingFor({ "1200000000000100": remapped }),
+        },
+        "reportingTeam",
+      );
+
+      const expected = dailyCase.grouped?.reportingTeam ?? {};
+      expect(Object.keys(grouped)).toEqual(
+        [
+          remapped,
+          ...Object.keys(expected).filter((key) => key !== "1200000000000010"),
+        ].sort((a, b) => a.localeCompare(b)),
+      );
+      // The remapped team carries exactly the figures 'Web App' carried.
+      expectFigureMatchesReference(
+        grouped[remapped] as MetricResult<WorkAddedCompletedSeries>,
+        expected["1200000000000010"] as ReferenceFigure,
+        dailyCase,
+      );
+      // 'Mobile App's team keeps the tasks of the other projects only.
+      expectFigureMatchesReference(
+        grouped["1200000000000011"] as MetricResult<WorkAddedCompletedSeries>,
+        expected["1200000000000011"] as ReferenceFigure,
+        dailyCase,
+      );
+    });
+
+    it("groups a task whose project resolves to no reporting team under the 'unassigned' key", () => {
+      const grouped = calculateWorkAddedVsCompleted(
+        scopedTasks,
+        filterFor(dailyCase.range.start, dailyCase.range.end),
+        { ...context, teamMapping: [] },
+        "reportingTeam",
+      );
+
+      expect(Object.keys(grouped)).toEqual([UNASSIGNED_GROUP_KEY]);
+      // Without a mapping every task belongs to the same group, so the
+      // group's figures are the ungrouped ones.
+      expectFigureMatchesReference(
+        grouped[UNASSIGNED_GROUP_KEY] as MetricResult<WorkAddedCompletedSeries>,
+        dailyCase.ungrouped,
+        dailyCase,
+      );
     });
 
     it("splits the series by portfolio and attributes a multi-portfolio task to each portfolio", () => {

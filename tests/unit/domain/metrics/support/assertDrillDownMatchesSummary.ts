@@ -69,7 +69,12 @@ export function assertDrillDownMatchesSummary<T extends DrillDownTask>(
   sourceTasks: readonly T[],
   reaggregate: (tasks: readonly T[]) => ReaggregatedFigure,
 ): void {
-  const byGid = new Map(sourceTasks.map((task) => [task.gid, task]));
+  const byGid = new Map<string, T>();
+  for (const task of sourceTasks) {
+    if (!byGid.has(task.gid)) {
+      byGid.set(task.gid, task);
+    }
+  }
 
   const refetched = figure.contributingGids.map((gid) => {
     const task = byGid.get(gid);

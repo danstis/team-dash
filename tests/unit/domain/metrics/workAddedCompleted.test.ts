@@ -778,6 +778,31 @@ describe("calculateWorkAddedVsCompleted", () => {
       );
     });
 
+    it("reproduces a completed bucket on the completed date basis", () => {
+      const result = calculateWorkAddedVsCompleted(
+        scopedTasks,
+        filterFor(dailyCase.range.start, dailyCase.range.end),
+        context,
+      );
+
+      const bucket = result.series.buckets.find(
+        (b) => b.bucketStart === "2026-07-22",
+      );
+      expect(bucket).toBeDefined();
+
+      assertDrillDownMatchesSummary(
+        {
+          label: "completed:2026-07-22",
+          displayedCount: bucket?.completedCount ?? 0,
+          displayedEffortMinutes: bucket?.completedEffortMinutes ?? 0,
+          contributingGids:
+            contributingMap(result)["completed:2026-07-22"] ?? [],
+        },
+        scopedTasks,
+        reaggregate("completed", "2026-07-22", "2026-07-22"),
+      );
+    });
+
     it("reproduces a grouped figure's displayed figures from its contributing tasks", () => {
       const grouped = calculateWorkAddedVsCompleted(
         scopedTasks,

@@ -1,0 +1,529 @@
+{
+  "workAddedCompleted": {
+    "description": "Hand-computed reference values for the P1 work-added / work-completed metric (T075, SC-005) over the small dataset.",
+    "source": "fixtures/asana/small-dataset/data.ts",
+    "format": {
+      "bucketWidth": "The bucket width the range auto-selects to (FR-059): 'day' for ranges of 45 days or fewer, 'week' beyond.",
+      "bucketCount": "How many buckets the range produces.",
+      "firstBucketStart": "The bucketStart of the first bucket. Weekly buckets snap back to the Monday on or before the range start (FR-031).",
+      "lastBucketStart": "The bucketStart of the last bucket.",
+      "buckets": "ONLY the buckets with a non-zero figure. Every other bucket in the range is all-zero.",
+      "contributingTaskGids": "Drill-down set per figure, keyed '<basis>:<bucketStart>' (FR-062).",
+      "excluded": "The effort-sum exclusions (FR-058), one entry per date basis."
+    },
+    "scope": {
+      "includedTaskGids": [
+        "1200000000000200",
+        "1200000000000201",
+        "1200000000000202",
+        "1200000000000203"
+      ],
+      "excludedTasks": [
+        {
+          "gid": "1200000000000204",
+          "reason": "Milestone in the archived 'Archived Legacy' project — outside the in-scope predicate (data-model.md: default_task, outOfScopeReason null, at least one in-scope project)."
+        }
+      ]
+    },
+    "notes": [
+      "Task 1200000000000203 is a subtask of 1200000000000200: its project memberships are resolved from its parent at ingestion time (data-model.md, FR-014), so it belongs to Web App and Mobile App.",
+      "Task 1200000000000200 belongs to two projects, so it is counted once in every workspace-level figure and appears in each of its project groups (FR-036 / FR-045).",
+      "Task 1200000000000201 carries no estimate and no priority, so it is the unestimated-exclusion case and the 'no_priority' case (FR-058).",
+      "Task 1200000000000202 carries no assignee, so it is the explicit 'unassigned' group case (FR-060).",
+      "The fixture's portfolio row carries no project membership, so portfolio grouping is exercised by a purpose-built task list in the unit test rather than by this fixture."
+    ],
+    "cases": {
+      "daily": {
+        "range": { "start": "2026-07-01", "end": "2026-07-31" },
+        "bucketWidth": "day",
+        "bucketCount": 31,
+        "firstBucketStart": "2026-07-01",
+        "lastBucketStart": "2026-07-31",
+        "ungrouped": {
+          "population": {
+            "total": 4,
+            "excluded": [
+              { "reason": "no_estimate_created", "count": 1 },
+              { "reason": "no_estimate_completed", "count": 1 }
+            ]
+          },
+          "createdCount": 4,
+          "completedCount": 1,
+          "createdEffortMinutes": 660,
+          "completedEffortMinutes": 0,
+          "createdUnestimatedCount": 1,
+          "completedUnestimatedCount": 1,
+          "buckets": [
+            {
+              "bucketStart": "2026-07-01",
+              "bucketEnd": "2026-07-01",
+              "createdCount": 1,
+              "completedCount": 0,
+              "createdEffortMinutes": 480,
+              "completedEffortMinutes": 0
+            },
+            {
+              "bucketStart": "2026-07-05",
+              "bucketEnd": "2026-07-05",
+              "createdCount": 1,
+              "completedCount": 0,
+              "createdEffortMinutes": 0,
+              "completedEffortMinutes": 0
+            },
+            {
+              "bucketStart": "2026-07-10",
+              "bucketEnd": "2026-07-10",
+              "createdCount": 1,
+              "completedCount": 0,
+              "createdEffortMinutes": 120,
+              "completedEffortMinutes": 0
+            },
+            {
+              "bucketStart": "2026-07-12",
+              "bucketEnd": "2026-07-12",
+              "createdCount": 1,
+              "completedCount": 0,
+              "createdEffortMinutes": 60,
+              "completedEffortMinutes": 0
+            },
+            {
+              "bucketStart": "2026-07-22",
+              "bucketEnd": "2026-07-22",
+              "createdCount": 0,
+              "completedCount": 1,
+              "createdEffortMinutes": 0,
+              "completedEffortMinutes": 0
+            }
+          ],
+          "contributingTaskGids": {
+            "created:2026-07-01": ["1200000000000200"],
+            "created:2026-07-05": ["1200000000000201"],
+            "created:2026-07-10": ["1200000000000202"],
+            "created:2026-07-12": ["1200000000000203"],
+            "completed:2026-07-22": ["1200000000000201"]
+          }
+        },
+        "grouped": {
+          "assignee": {
+            "1200000000000020": {
+              "population": { "total": 2, "excluded": [] },
+              "createdCount": 2,
+              "completedCount": 0,
+              "createdEffortMinutes": 540,
+              "completedEffortMinutes": 0,
+              "createdUnestimatedCount": 0,
+              "completedUnestimatedCount": 0,
+              "buckets": [
+                {
+                  "bucketStart": "2026-07-01",
+                  "bucketEnd": "2026-07-01",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 480,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-12",
+                  "bucketEnd": "2026-07-12",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 60,
+                  "completedEffortMinutes": 0
+                }
+              ],
+              "contributingTaskGids": {
+                "created:2026-07-01": ["1200000000000200"],
+                "created:2026-07-12": ["1200000000000203"]
+              }
+            },
+            "1200000000000021": {
+              "population": {
+                "total": 1,
+                "excluded": [
+                  { "reason": "no_estimate_created", "count": 1 },
+                  { "reason": "no_estimate_completed", "count": 1 }
+                ]
+              },
+              "createdCount": 1,
+              "completedCount": 1,
+              "createdEffortMinutes": 0,
+              "completedEffortMinutes": 0,
+              "createdUnestimatedCount": 1,
+              "completedUnestimatedCount": 1,
+              "buckets": [
+                {
+                  "bucketStart": "2026-07-05",
+                  "bucketEnd": "2026-07-05",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 0,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-22",
+                  "bucketEnd": "2026-07-22",
+                  "createdCount": 0,
+                  "completedCount": 1,
+                  "createdEffortMinutes": 0,
+                  "completedEffortMinutes": 0
+                }
+              ],
+              "contributingTaskGids": {
+                "created:2026-07-05": ["1200000000000201"],
+                "completed:2026-07-22": ["1200000000000201"]
+              }
+            },
+            "unassigned": {
+              "population": { "total": 1, "excluded": [] },
+              "createdCount": 1,
+              "completedCount": 0,
+              "createdEffortMinutes": 120,
+              "completedEffortMinutes": 0,
+              "createdUnestimatedCount": 0,
+              "completedUnestimatedCount": 0,
+              "buckets": [
+                {
+                  "bucketStart": "2026-07-10",
+                  "bucketEnd": "2026-07-10",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 120,
+                  "completedEffortMinutes": 0
+                }
+              ],
+              "contributingTaskGids": {
+                "created:2026-07-10": ["1200000000000202"]
+              }
+            }
+          },
+          "priority": {
+            "high": {
+              "population": { "total": 1, "excluded": [] },
+              "createdCount": 1,
+              "completedCount": 0,
+              "createdEffortMinutes": 480,
+              "completedEffortMinutes": 0,
+              "createdUnestimatedCount": 0,
+              "completedUnestimatedCount": 0,
+              "buckets": [
+                {
+                  "bucketStart": "2026-07-01",
+                  "bucketEnd": "2026-07-01",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 480,
+                  "completedEffortMinutes": 0
+                }
+              ],
+              "contributingTaskGids": {
+                "created:2026-07-01": ["1200000000000200"]
+              }
+            },
+            "no_priority": {
+              "population": {
+                "total": 3,
+                "excluded": [
+                  { "reason": "no_estimate_created", "count": 1 },
+                  { "reason": "no_estimate_completed", "count": 1 }
+                ]
+              },
+              "createdCount": 3,
+              "completedCount": 1,
+              "createdEffortMinutes": 180,
+              "completedEffortMinutes": 0,
+              "createdUnestimatedCount": 1,
+              "completedUnestimatedCount": 1,
+              "buckets": [
+                {
+                  "bucketStart": "2026-07-05",
+                  "bucketEnd": "2026-07-05",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 0,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-10",
+                  "bucketEnd": "2026-07-10",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 120,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-12",
+                  "bucketEnd": "2026-07-12",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 60,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-22",
+                  "bucketEnd": "2026-07-22",
+                  "createdCount": 0,
+                  "completedCount": 1,
+                  "createdEffortMinutes": 0,
+                  "completedEffortMinutes": 0
+                }
+              ],
+              "contributingTaskGids": {
+                "created:2026-07-05": ["1200000000000201"],
+                "created:2026-07-10": ["1200000000000202"],
+                "created:2026-07-12": ["1200000000000203"],
+                "completed:2026-07-22": ["1200000000000201"]
+              }
+            }
+          },
+          "project": {
+            "1200000000000100": {
+              "population": {
+                "total": 3,
+                "excluded": [
+                  { "reason": "no_estimate_created", "count": 1 },
+                  { "reason": "no_estimate_completed", "count": 1 }
+                ]
+              },
+              "createdCount": 3,
+              "completedCount": 1,
+              "createdEffortMinutes": 540,
+              "completedEffortMinutes": 0,
+              "createdUnestimatedCount": 1,
+              "completedUnestimatedCount": 1,
+              "buckets": [
+                {
+                  "bucketStart": "2026-07-01",
+                  "bucketEnd": "2026-07-01",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 480,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-05",
+                  "bucketEnd": "2026-07-05",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 0,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-12",
+                  "bucketEnd": "2026-07-12",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 60,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-22",
+                  "bucketEnd": "2026-07-22",
+                  "createdCount": 0,
+                  "completedCount": 1,
+                  "createdEffortMinutes": 0,
+                  "completedEffortMinutes": 0
+                }
+              ],
+              "contributingTaskGids": {
+                "created:2026-07-01": ["1200000000000200"],
+                "created:2026-07-05": ["1200000000000201"],
+                "created:2026-07-12": ["1200000000000203"],
+                "completed:2026-07-22": ["1200000000000201"]
+              }
+            },
+            "1200000000000101": {
+              "population": { "total": 3, "excluded": [] },
+              "createdCount": 3,
+              "completedCount": 0,
+              "createdEffortMinutes": 660,
+              "completedEffortMinutes": 0,
+              "createdUnestimatedCount": 0,
+              "completedUnestimatedCount": 0,
+              "buckets": [
+                {
+                  "bucketStart": "2026-07-01",
+                  "bucketEnd": "2026-07-01",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 480,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-10",
+                  "bucketEnd": "2026-07-10",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 120,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-12",
+                  "bucketEnd": "2026-07-12",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 60,
+                  "completedEffortMinutes": 0
+                }
+              ],
+              "contributingTaskGids": {
+                "created:2026-07-01": ["1200000000000200"],
+                "created:2026-07-10": ["1200000000000202"],
+                "created:2026-07-12": ["1200000000000203"]
+              }
+            }
+          },
+          "reportingTeam": {
+            "1200000000000010": {
+              "population": {
+                "total": 3,
+                "excluded": [
+                  { "reason": "no_estimate_created", "count": 1 },
+                  { "reason": "no_estimate_completed", "count": 1 }
+                ]
+              },
+              "createdCount": 3,
+              "completedCount": 1,
+              "createdEffortMinutes": 540,
+              "completedEffortMinutes": 0,
+              "createdUnestimatedCount": 1,
+              "completedUnestimatedCount": 1,
+              "buckets": [
+                {
+                  "bucketStart": "2026-07-01",
+                  "bucketEnd": "2026-07-01",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 480,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-05",
+                  "bucketEnd": "2026-07-05",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 0,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-12",
+                  "bucketEnd": "2026-07-12",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 60,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-22",
+                  "bucketEnd": "2026-07-22",
+                  "createdCount": 0,
+                  "completedCount": 1,
+                  "createdEffortMinutes": 0,
+                  "completedEffortMinutes": 0
+                }
+              ],
+              "contributingTaskGids": {
+                "created:2026-07-01": ["1200000000000200"],
+                "created:2026-07-05": ["1200000000000201"],
+                "created:2026-07-12": ["1200000000000203"],
+                "completed:2026-07-22": ["1200000000000201"]
+              }
+            },
+            "1200000000000011": {
+              "population": { "total": 3, "excluded": [] },
+              "createdCount": 3,
+              "completedCount": 0,
+              "createdEffortMinutes": 660,
+              "completedEffortMinutes": 0,
+              "createdUnestimatedCount": 0,
+              "completedUnestimatedCount": 0,
+              "buckets": [
+                {
+                  "bucketStart": "2026-07-01",
+                  "bucketEnd": "2026-07-01",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 480,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-10",
+                  "bucketEnd": "2026-07-10",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 120,
+                  "completedEffortMinutes": 0
+                },
+                {
+                  "bucketStart": "2026-07-12",
+                  "bucketEnd": "2026-07-12",
+                  "createdCount": 1,
+                  "completedCount": 0,
+                  "createdEffortMinutes": 60,
+                  "completedEffortMinutes": 0
+                }
+              ],
+              "contributingTaskGids": {
+                "created:2026-07-01": ["1200000000000200"],
+                "created:2026-07-10": ["1200000000000202"],
+                "created:2026-07-12": ["1200000000000203"]
+              }
+            }
+          }
+        }
+      },
+      "weekly": {
+        "range": { "start": "2026-05-15", "end": "2026-07-31" },
+        "bucketWidth": "week",
+        "bucketCount": 12,
+        "firstBucketStart": "2026-05-11",
+        "lastBucketStart": "2026-07-27",
+        "ungrouped": {
+          "population": {
+            "total": 4,
+            "excluded": [
+              { "reason": "no_estimate_created", "count": 1 },
+              { "reason": "no_estimate_completed", "count": 1 }
+            ]
+          },
+          "createdCount": 4,
+          "completedCount": 1,
+          "createdEffortMinutes": 660,
+          "completedEffortMinutes": 0,
+          "createdUnestimatedCount": 1,
+          "completedUnestimatedCount": 1,
+          "buckets": [
+            {
+              "bucketStart": "2026-06-29",
+              "bucketEnd": "2026-07-05",
+              "createdCount": 2,
+              "completedCount": 0,
+              "createdEffortMinutes": 480,
+              "completedEffortMinutes": 0
+            },
+            {
+              "bucketStart": "2026-07-06",
+              "bucketEnd": "2026-07-12",
+              "createdCount": 2,
+              "completedCount": 0,
+              "createdEffortMinutes": 180,
+              "completedEffortMinutes": 0
+            },
+            {
+              "bucketStart": "2026-07-20",
+              "bucketEnd": "2026-07-26",
+              "createdCount": 0,
+              "completedCount": 1,
+              "createdEffortMinutes": 0,
+              "completedEffortMinutes": 0
+            }
+          ],
+          "contributingTaskGids": {
+            "created:2026-06-29": ["1200000000000200", "1200000000000201"],
+            "created:2026-07-06": ["1200000000000202", "1200000000000203"],
+            "completed:2026-07-20": ["1200000000000201"]
+          }
+        }
+      }
+    }
+  }
+}

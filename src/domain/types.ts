@@ -206,6 +206,14 @@ export interface MetricPopulation {
  * Either a flat list of `gid`s for an ungrouped metric, or a
  * `bucketKey → gid[]` map when the metric is grouped so the drill-down
  * preserves the same partitioning the chart shows.
+ *
+ * A metric that reports SEVERAL figures per bucket (the work added /
+ * work completed metric reports a created and a completed figure for
+ * every bucket) uses the map form even when it is ungrouped: FR-062
+ * makes *each* figure drillable, and a flat gid list cannot say which
+ * figure a task belongs to. Its keys name the figure as well as the
+ * bucket — e.g. `created:2026-07-01` — so the drill-down reproduces
+ * exactly the displayed count and sum.
  */
 export type ContributingTaskGids = string[] | Record<string, string[]>;
 

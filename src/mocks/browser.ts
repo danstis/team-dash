@@ -144,7 +144,7 @@ export function shouldStartDevMocks(): boolean {
  * the env-var gate short-circuited) and rejects if the Service Worker
  * registration fails (e.g. the `dev/mockServiceWorker.js` file is
  * missing or the dev-server middleware is not wired). The
- * `{ onUnhandledRequest: "error" }` policy
+ * `{ onUnhandledFrame: "error" }` policy
  * mirrors the canonical Node server so a forgotten handler fails
  * loudly in both runtimes.
  */
@@ -163,7 +163,7 @@ export async function startDevWorker(): Promise<
     return undefined;
   }
   return worker.start({
-    onUnhandledRequest: "error",
+    onUnhandledFrame: "error",
     serviceWorker: {
       url: "/mockServiceWorker.js",
     },

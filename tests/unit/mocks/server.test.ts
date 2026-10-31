@@ -15,7 +15,7 @@
  *   2. It exposes thin `startServer()` / `resetServer()` / `stopServer()`
  *      wrappers that mirror the lifecycle shape of the `setupServer`
  *      instance itself — so a consumer never has to call
- *      `server.listen(...)` with the bespoke `{ onUnhandledRequest:
+ *      `server.listen(...)` with the bespoke `{ onUnhandledFrame:
  *      "error" }` policy inline.
  *   3. The fixture handlers are wired into the initial handler list
  *      exactly once at module-evaluation time — not on every
@@ -55,7 +55,7 @@ describe("T030 src/mocks/server.ts — canonical MSW Node server wiring", () => 
 
   it("intercepts an Asana endpoint using the small-dataset fixture handlers without per-test `server.use(...)`", async () => {
     // The shared test setup already booted the canonical server with
-    // `{ onUnhandledRequest: "error" }`, so this test asserts the
+    // `{ onUnhandledFrame: "error" }`, so this test asserts the
     // module's handler baseline rather than re-listening a second time.
     const response = await fetch("https://app.asana.com/api/1.0/workspaces", {
       headers: { Authorization: "Bearer synthetic-fixture-token" },

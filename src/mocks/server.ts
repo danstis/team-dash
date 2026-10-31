@@ -14,7 +14,7 @@
  *
  * Why a single canonical instance
  * --------------------------------
- * - **`onUnhandledRequest: "error"` is the canonical policy.** The
+ * - **`onUnhandledFrame: "error"` is the canonical policy.** The
  *   fixture's contract is "every Asana call goes through one of these
  *   handlers or the test is wrong"; encoding that policy once at the
  *   wiring boundary prevents per-test drift and means a forgotten
@@ -72,11 +72,11 @@ export const server = setupServer(...asanaHandlers);
 
 /**
  * Start request interception with the canonical policy
- * `{ onUnhandledRequest: "error" }`. Mirrors `tests/setup.ts`'s setup
+ * `{ onUnhandledFrame: "error" }`. Mirrors `tests/setup.ts`'s setup
  * hook so a consumer never has to spell the policy inline.
  */
 export function startServer(): void {
-  server.listen({ onUnhandledRequest: "error" });
+  server.listen({ onUnhandledFrame: "error" });
 }
 
 /**

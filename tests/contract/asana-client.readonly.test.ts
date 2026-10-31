@@ -160,7 +160,7 @@ describe("T026 Asana client read-only guarantee (NFR-004, Principle IV)", () => 
      * methods ever fired. MSW exposes lifecycle events for every
      * request that goes through its server (including unhandled ones
      * that would otherwise throw under `tests/setup.ts`'s
-     * `onUnhandledRequest: "error"`), so this listener is the
+     * `onUnhandledFrame: "error"`), so this listener is the
      * deterministic observability hook the assertion reads.
      */
     const observedRequests: Array<{ method: string; url: string }> = [];

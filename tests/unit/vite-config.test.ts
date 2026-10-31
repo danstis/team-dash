@@ -22,6 +22,12 @@ vi.mock("vite-plugin-pwa", () => ({
 
 await import("../../vite.config");
 
+// vite.config calls VitePWA once while it loads, before any test runs.
+// Vitest 5 clears mock call history before each test (clearMocks now
+// defaults to true), so capture the call here rather than reading
+// vitePwaMock.mock.calls inside the tests.
+const vitePwaCalls = [...vitePwaMock.mock.calls];
+
 /**
  * The options the PWA plugin is configured with, as the shape the
  * assertions below read them. The object is built once so the
@@ -103,12 +109,12 @@ function asanaApiRuntimeCaching(): Record<string, unknown> {
 
 describe("Vite PWA configuration", () => {
   it("defines the Team Dash manifest and the offline caching strategy", () => {
-    expect(vitePwaMock).toHaveBeenCalledOnce();
-    expect(vitePwaMock).toHaveBeenCalledWith(pwaOptions());
+    expect(vitePwaCalls).toHaveLength(1);
+    expect(vitePwaCalls[0]).toEqual([pwaOptions()]);
   });
 
   it("precaches the app shell so the app boots with no network", () => {
-    const options = vitePwaMock.mock.calls[0]?.[0] as {
+    const options = vitePwaCalls[0]?.[0] as {
       workbox: { globPatterns: string[]; navigateFallback: string };
     };
     // The entry document, the hashed build assets, the manifest, the
@@ -122,7 +128,7 @@ describe("Vite PWA configuration", () => {
   });
 
   it("takes control of the open page as soon as the worker activates", () => {
-    const options = vitePwaMock.mock.calls[0]?.[0] as {
+    const options = vitePwaCalls[0]?.[0] as {
       registerType: string;
       workbox: { skipWaiting: boolean; clientsClaim: boolean };
     };
@@ -132,7 +138,7 @@ describe("Vite PWA configuration", () => {
   });
 
   it("keeps the last complete Asana responses for the offline surface", () => {
-    const options = vitePwaMock.mock.calls[0]?.[0] as {
+    const options = vitePwaCalls[0]?.[0] as {
       workbox: {
         runtimeCaching: {
           urlPattern: RegExp;
@@ -159,7 +165,7 @@ describe("Vite PWA configuration", () => {
   });
 
   it("marks a service-worker-cached response with the shared header", async () => {
-    const options = vitePwaMock.mock.calls[0]?.[0] as {
+    const options = vitePwaCalls[0]?.[0] as {
       workbox: {
         runtimeCaching: {
           options: {

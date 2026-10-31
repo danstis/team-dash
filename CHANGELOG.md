@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.9.0](https://github.com/danstis/team-dash/compare/v0.8.0...v0.9.0) (2026-10-31)
+
+
+### Features
+
+* **data:** resolve subtask project membership at ingestion (BSOD-309) ([#323](https://github.com/danstis/team-dash/issues/323)) ([e2282f2](https://github.com/danstis/team-dash/commit/e2282f212a8a36935a42fa1356534e21a9039bb9))
+* **domain:** composable FilterCriteria predicates red→green (BSOD-314) ([#328](https://github.com/danstis/team-dash/issues/328)) ([be6cfac](https://github.com/danstis/team-dash/commit/be6cfac4beba95d3fba2e89bee1fca6e9dba88dd))
+* **refresh:** ship EmptyDashboard first-run / empty surface (BSOD-310) ([#325](https://github.com/danstis/team-dash/issues/325)) ([dc5f86b](https://github.com/danstis/team-dash/commit/dc5f86b05ca23d4e89bb084faa84db748e542e57))
+* **refresh:** surface FR-084 data-quality summary after refresh (BSOD-311) ([#327](https://github.com/danstis/team-dash/issues/327)) ([2d62f6d](https://github.com/danstis/team-dash/commit/2d62f6dbb3ff9059c9162992d18570b4ec96a50e))
+* **tasks:** no-results state red→green (BSOD-317) ([#340](https://github.com/danstis/team-dash/issues/340)) ([51abc0a](https://github.com/danstis/team-dash/commit/51abc0a5652d84b121e17deae819fbde6753dce7))
+* **tasks:** task-detail drawer red→green (BSOD-316) ([#336](https://github.com/danstis/team-dash/issues/336)) ([80ce0dd](https://github.com/danstis/team-dash/commit/80ce0ddfc3f4a846a2d55d4f466bff10b65a78bb))
+* **tasks:** task-list filter UI red→green (BSOD-315) ([#330](https://github.com/danstis/team-dash/issues/330)) ([33d7aee](https://github.com/danstis/team-dash/commit/33d7aee54a18911932827a6995944ccaf1178219))
+
+
+### Bug fixes
+
+* **asana:** accept untitled projects so refresh does not fail ([#326](https://github.com/danstis/team-dash/issues/326)) ([11338c5](https://github.com/danstis/team-dash/commit/11338c5034ba212757d5ad0a8abcc0e83a8261e5))
+
 ## [0.8.0](https://github.com/danstis/team-dash/compare/v0.7.0...v0.8.0) (2026-10-26)
 
 

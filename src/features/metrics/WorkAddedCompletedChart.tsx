@@ -581,7 +581,7 @@ function joinList(items: readonly string[]): string {
   if (items.length <= 1) {
     return items[0] ?? "";
   }
-  const last = items[items.length - 1];
+  const last = items.at(-1) ?? "";
   return `${items.slice(0, -1).join(", ")} and ${last}`;
 }
 
@@ -611,10 +611,11 @@ export function WorkAddedCompletedChart({
     ),
   );
 
+  const lastBucket = buckets.at(-1);
   const period =
-    buckets.length === 0
+    lastBucket === undefined
       ? ""
-      : `${periodLabel(buckets[0])} – ${periodLabel(buckets[buckets.length - 1])}`;
+      : `${periodLabel(buckets[0])} – ${periodLabel(lastBucket)}`;
 
   const split =
     groupBy === undefined || groups.length === 0

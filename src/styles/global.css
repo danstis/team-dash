@@ -724,3 +724,71 @@ a[data-testid="nav-settings"]:hover {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Drill-down panel (BSOD-321)                                                */
+/* -------------------------------------------------------------------------- */
+
+.td-drill-down-panel {
+  margin-bottom: var(--td-space-5);
+}
+
+.td-drill-down-panel__heading {
+  margin-bottom: var(--td-space-2);
+}
+
+.td-drill-down-panel__figure {
+  margin: 0 0 var(--td-space-1);
+}
+
+.td-drill-down-panel__figure-label {
+  font-weight: 600;
+}
+
+.td-drill-down-panel__figure-value {
+  margin-left: var(--td-space-1);
+}
+
+.td-drill-down-panel__parity,
+.td-drill-down-panel__exclusion,
+.td-drill-down-panel__missing,
+.td-drill-down-panel__empty,
+.td-drill-down-panel__task-hint {
+  margin: 0 0 var(--td-space-3);
+  color: var(--td-color-text-secondary);
+  font-size: var(--td-font-size-sm);
+}
+
+.td-drill-down-panel__task-heading {
+  margin-bottom: var(--td-space-1);
+  font-size: var(--td-font-size-sm);
+}
+
+.td-drill-down-panel__task-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--td-space-2) var(--td-space-3);
+  margin: 0 0 var(--td-space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.td-drill-down-panel__task-button {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--td-color-accent);
+  font-size: var(--td-font-size-sm);
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.td-drill-down-panel__task-button:hover {
+  color: var(--td-color-accent-hover);
+}
+
+.td-drill-down-panel__task-button:focus-visible {
+  outline: 2px solid var(--td-color-accent);
+  outline-offset: 2px;
+}

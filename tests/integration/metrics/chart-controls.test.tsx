@@ -266,9 +266,9 @@ function chartGroups(
  */
 function ChartHarness(): ReactElement {
   const [view, setView] = useState<WorkAddedCompletedView>("count");
-  const [groupBy, setGroupBy] = useState<
-    WorkAddedCompletedGroupBy | undefined
-  >(undefined);
+  const [groupBy, setGroupBy] = useState<WorkAddedCompletedGroupBy | undefined>(
+    undefined,
+  );
 
   const groups = useMemo(() => chartGroups(groupBy), [groupBy]);
 
@@ -415,9 +415,7 @@ describe("BSOD-320 (T080) — the shared chart controls", () => {
     expect(
       screen.getByTestId("work-added-completed-summary"),
     ).toHaveTextContent(/number of items/i);
-    expect(screen.getAllByTestId("work-added-completed-table")).toHaveLength(
-      1,
-    );
+    expect(screen.getAllByTestId("work-added-completed-table")).toHaveLength(1);
 
     // FR-061 — the shared toggle swaps the chart's view.
     fireEvent.click(radioFor("effort"));
@@ -428,9 +426,7 @@ describe("BSOD-320 (T080) — the shared chart controls", () => {
     // FR-060 — the shared selector splits the chart by the dimension
     // it reports, with no adapter in between.
     fireEvent.change(groupBySelector(), { target: { value: "assignee" } });
-    expect(screen.getAllByTestId("work-added-completed-table")).toHaveLength(
-      2,
-    );
+    expect(screen.getAllByTestId("work-added-completed-table")).toHaveLength(2);
     expect(
       screen.getByTestId("work-added-completed-summary"),
     ).toHaveTextContent(/split by team member/i);
@@ -495,8 +491,17 @@ describe("BSOD-320 (T080) — the shared chart controls", () => {
       radios.map((radio) => radio.getAttribute("name") ?? ""),
     );
     expect(names.size).toBe(2);
-    expect(radioFor("count")).toBeChecked();
-    expect(radioFor("effort")).toBeChecked();
+
+    // Each toggle shows its own state: the first is on the count view,
+    // the second on the effort view.
+    const toggles = screen.getAllByRole("group", { name: "Show" });
+    expect(toggles).toHaveLength(2);
+    expect(
+      within(toggles[0]).getByRole("radio", { name: "Items" }),
+    ).toBeChecked();
+    expect(
+      within(toggles[1]).getByRole("radio", { name: "Estimated effort" }),
+    ).toBeChecked();
   });
 
   it("names every control and keeps it on the keyboard path (FR-088)", () => {

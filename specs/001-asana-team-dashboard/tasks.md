@@ -319,6 +319,14 @@ The three task-health calculators all live in `src/domain/metrics/taskHealth.ts`
 
 ---
 
+## Phase 15: Reporting Dashboard UI Wiring
+
+**Purpose**: BSOD-781 — the live `/` route still renders the T031 placeholder, so the components Stages 4–6 shipped (the first-run/empty surface, the FR-084 data-quality summary, the filterable task list with its detail drawer, and the work-added / work-completed chart with its drill-down panel) exist only in their own component tests and are invisible in the application. This phase wires them into the live reporting surface over the local cache, so every completed feature is present and operable in the app (Constitution Principle II — user-visible vertical slices) and the dashboard shows workspace, scope, period and freshness in its own masthead (DESIGN.md › The Masthead Rule).
+
+- [x] [BSOD-781] T-UI1 [US2] [US3] [US4] Wire completed Stages 4–6 UI components into the live reporting dashboard route (/) — write the failing integration test in `tests/integration/dashboard/dashboard-shell.test.tsx` covering (a) `EmptyDashboard` rendered when no refresh has committed yet (`lastRefreshedAt === null`) with a working Refresh action, (b) after a committed refresh session with cached in-scope tasks, `DataQualitySummary`, `TaskList` (with `FilterBar`, `ActiveFiltersList`, `TaskTable`, `NoResultsState`, and `TaskDetailDrawer` on task selection), and the Work Added vs Completed section (`CountEffortToggle`, `GroupBySelector`, `WorkAddedCompletedChart`, and `DrillDownPanel` on chart drill-down) are all rendered and interactive on the `/` route while preserving the existing header/nav/`RefreshStatusPanel` shell contracts; confirm it fails for the intended reason; then implement `src/features/dashboard/ReportingDashboard.tsx` (reading the local cache through Dexie live queries, so a committed refresh repopulates the dashboard without a page reload) and mount it at `/` in `src/app/router.tsx` (replacing `PlaceholderRoute`) until the test passes (FR-031–FR-046, FR-070, FR-081–FR-085, US2–US4). **Sequential after T062/T064/T066–T068/T075–T081** — the wiring mounts the components those rows shipped.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

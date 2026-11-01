@@ -364,6 +364,63 @@ a[data-testid="nav-settings"]:hover {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Reporting dashboard (BSOD-781)                                             */
+/* -------------------------------------------------------------------------- */
+
+/* The dashboard masthead: the title and the scope line on the left, the
+   navigation on the right. The scope line is what makes a screenshot
+   of the dashboard stand on its own (DESIGN.md › The Masthead Rule). */
+.td-dashboard__masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--td-space-3);
+  margin-bottom: var(--td-space-4);
+}
+
+.td-dashboard__identity h1 {
+  margin: 0;
+}
+
+.td-dashboard__scope {
+  margin: var(--td-space-1) 0 0;
+  color: var(--td-color-text-secondary);
+  font-size: var(--td-font-size-sm);
+}
+
+.td-dashboard__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--td-space-3);
+}
+
+/* The freshness row of the masthead: the refresh status (the
+   cached-versus-fresh label and the refresh action) sits under the
+   title and the navigation, so a screenshot of the dashboard states
+   what it shows and how fresh it is. */
+.td-dashboard__freshness {
+  flex-basis: 100%;
+  margin-top: var(--td-space-3);
+}
+
+/* The task table's row action. The task name is a real button so the
+   drill-down is reachable from the keyboard (FR-088). */
+.td-task-table__select {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.td-task-table__select:hover {
+  color: var(--td-color-accent);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Settings screen (BSOD-360)                                                 */
 /* -------------------------------------------------------------------------- */
 

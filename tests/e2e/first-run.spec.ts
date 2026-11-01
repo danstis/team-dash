@@ -283,13 +283,21 @@ test.describe("BSOD-350 (T130) first-run page on the live `/` route", () => {
 
     // Phase 4 — the route guard's gate lifts once both providers
     // report `'ready'`. The first-run surface unmounts and the
-    // T031 placeholder reporting surface (the
-    // `<h1>Team Dash</h1>` heading) becomes visible. The
-    // `data-view-state="first_run"` sentinel is what the test
-    // anchors on — its absence is the canonical "gate is open"
-    // signal that every existing contract test (`T035`,
+    // reporting dashboard (the `<h1>Team Dash</h1>` heading)
+    // becomes visible. The first-run *primitive*'s sentinel is what
+    // the test anchors on — its absence is the canonical "gate is
+    // open" signal that every existing contract test (`T035`,
     // `BSOD-347`) already uses.
-    await expect(page.locator('[data-view-state="first_run"]')).toHaveCount(0);
+    //
+    // BSOD-781 (T-UI1): the selector is narrowed to the primitive's
+    // own class because the reporting dashboard's first-run *data*
+    // state (the empty dashboard, published by `EmptyDashboard` as
+    // `data-view-state="first_run"`) legitimately carries the same
+    // ViewState literal once the gate is open. The credential
+    // first-run surface is the one this assertion is about.
+    await expect(
+      page.locator('[data-view-state="first_run"].td-first-run-state'),
+    ).toHaveCount(0);
     await expect(
       page.getByRole("heading", { level: 1, name: PLACEHOLDER_HEADING }),
     ).toBeVisible();

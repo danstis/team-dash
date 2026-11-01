@@ -156,6 +156,8 @@ export interface DrillDownPanelProps {
    * (FR-029/FR-030). Defaults to `"local"`, the app-wide default.
    */
   readonly timezone?: TimezoneSetting;
+  /** Dismiss the panel when its caller supports closing the drill-down. */
+  readonly onClose?: () => void;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -302,6 +304,7 @@ export function DrillDownPanel({
   projects,
   priorityLabels = {},
   timezone = "local",
+  onClose,
 }: Readonly<DrillDownPanelProps>): ReactElement {
   const [selectedGid, setSelectedGid] = useState<string | null>(null);
 
@@ -344,6 +347,16 @@ export function DrillDownPanel({
       >
         {title}
       </h2>
+      {onClose !== undefined ? (
+        <button
+          type="button"
+          className="td-drill-down-panel__task-button"
+          data-testid="drill-down-panel-close"
+          onClick={onClose}
+        >
+          Close details
+        </button>
+      ) : null}
 
       <p
         className="td-drill-down-panel__figure"

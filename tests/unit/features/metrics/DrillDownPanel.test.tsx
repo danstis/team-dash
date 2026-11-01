@@ -26,7 +26,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Task } from "../../../../src/data/db/schema";
 import {
@@ -118,6 +118,7 @@ function renderPanel(
   figure: DrillDownFigure,
   taskGids: readonly string[],
   priorityLabels: Readonly<Record<string, string>> = PRIORITY_LABELS,
+  onClose?: () => void,
 ): void {
   render(
     <DrillDownPanel
@@ -129,6 +130,7 @@ function renderPanel(
       projects={PROJECTS}
       priorityLabels={priorityLabels}
       timezone="utc"
+      onClose={onClose}
     />,
   );
 }
@@ -175,6 +177,18 @@ describe("DrillDownPanel — the figure it states", () => {
     expect(
       screen.getByTestId("drill-down-panel-figure-value"),
     ).toHaveTextContent("2 tasks");
+  });
+
+  it("offers a close action when the caller supplies one", () => {
+    const onClose = vi.fn();
+    renderPanel(
+      { label: "Items added", value: 1, unit: "count" },
+      ["task-1"],
+      PRIORITY_LABELS,
+      onClose,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close details" }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("speaks of a single task in the singular", () => {

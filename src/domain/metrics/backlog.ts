@@ -325,7 +325,7 @@ export function calculateBacklogDirection(
   }
 
   const first = points[0];
-  const last = points[points.length - 1];
+  const last = points.at(-1);
 
   return {
     population: {
@@ -457,6 +457,7 @@ function buildTimelines(
       estimatedMinutes: task.estimatedMinutes,
     });
   }
+  timelines.sort((a, b) => a.gid.localeCompare(b.gid));
   return timelines;
 }
 
@@ -526,8 +527,8 @@ function incompleteOn(
     count: gids.length,
     effortMinutes,
     unestimatedCount: unestimatedGids.length,
-    gids: gids.sort((a, b) => a.localeCompare(b)),
-    unestimatedGids: unestimatedGids.sort((a, b) => a.localeCompare(b)),
+    gids,
+    unestimatedGids,
   };
 }
 

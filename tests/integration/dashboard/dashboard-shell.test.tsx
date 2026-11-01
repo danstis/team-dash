@@ -80,7 +80,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { RouterProvider } from "react-router";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   CredentialsProvider,
@@ -95,6 +95,7 @@ import {
   type WorkspaceContextValue,
 } from "../../../src/app/workspace-context";
 import { db } from "../../../src/data/db/schema";
+import { refreshOrchestrator } from "../../../src/data/refresh/refresh-orchestrator";
 import { smallDatasetWorkspaceGid } from "../../../fixtures/asana/small-dataset/data";
 
 /* -------------------------------------------------------------------------- */
@@ -310,6 +311,7 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
   });
 
   it("keeps the shell contract and shows the first-run empty dashboard before any refresh has committed", async () => {
@@ -463,5 +465,62 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
     expect(await screen.findByTestId("task-table")).toBeInTheDocument();
     expect(screen.queryByTestId("empty-dashboard")).toBeNull();
     expect(screen.getByTestId("data-quality-summary")).toBeInTheDocument();
+
+    const outcome = await screen.findByTestId("outcome-banner");
+    expect(outcome).toHaveAttribute("data-outcome-state", "succeeded");
+    const committedSession = await db.refreshSessions
+      .where("workspaceGid")
+      .equals(smallDatasetWorkspaceGid)
+      .filter((session) => session.status === "succeeded")
+      .first();
+    expect(committedSession?.finishedAt).toBeTruthy();
+    expect(outcome).toHaveAttribute(
+      "data-completed-at",
+      committedSession?.finishedAt,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("freshness-banner")).toHaveAttribute(
+        "data-last-refreshed-at",
+        committedSession?.finishedAt,
+      );
+      expect(screen.getByTestId("freshness-banner")).toHaveAttribute(
+        "data-freshness",
+        "fresh",
+      );
+    });
+  });
+
+  it("shows a failed refresh outcome from the post-refresh empty state", async () => {
+    await db.refreshSessions.put({
+      id: "empty-session",
+      workspaceGid: smallDatasetWorkspaceGid,
+      startedAt: daysAgo(2),
+      finishedAt: daysAgo(2),
+      status: "succeeded",
+      itemsRetrieved: 0,
+      errorDetail: null,
+      syncMode: "full",
+    });
+    vi.spyOn(refreshOrchestrator, "runRefresh").mockResolvedValue({
+      status: "failed",
+      sessionId: "failed-session",
+      itemsRetrieved: 0,
+      reason: "network_error",
+      message: "The refresh did not finish.",
+    });
+
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+    const empty = await screen.findByTestId("empty-dashboard");
+    expect(empty).toHaveAttribute("data-view-state", "empty");
+    fireEvent.click(screen.getByTestId("empty-dashboard-refresh-button"));
+
+    const outcome = await screen.findByTestId("outcome-banner");
+    expect(outcome).toHaveAttribute("data-outcome-state", "failed");
+    expect(outcome).toHaveAttribute("role", "alert");
+    expect(screen.getByTestId("empty-dashboard")).toHaveAttribute(
+      "data-view-state",
+      "empty",
+    );
   });
 });

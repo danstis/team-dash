@@ -45,17 +45,23 @@ function task(gid: string, overrides: Partial<Task> = {}): Task {
 }
 
 describe("dashboard cache derivations", () => {
-  it("derives default reporting teams, applies overrides, and skips unmapped projects", () => {
+  it("derives default teams, lets overrides supply a missing Asana team, and skips unmapped projects", () => {
     const projects = [
       project("p1"),
       project("p2", { asanaTeamGid: "team-two" }),
       project("p3", { asanaTeamGid: null }),
+      project("p4", { asanaTeamGid: null }),
     ];
     const overrides = [
       {
         projectGid: "p2",
         reportingTeamGid: "team-override",
         updatedAt: "2026-10-01T00:00:00.000Z" as ISODateTime,
+      },
+      {
+        projectGid: "p3",
+        reportingTeamGid: "team-manual",
+        updatedAt: "2026-10-02T00:00:00.000Z" as ISODateTime,
       },
     ];
     expect(deriveTeamMapping(projects, overrides, NOW)).toEqual([
@@ -64,6 +70,11 @@ describe("dashboard cache derivations", () => {
         projectGid: "p2",
         reportingTeamGid: "team-override",
         updatedAt: overrides[0]?.updatedAt,
+      },
+      {
+        projectGid: "p3",
+        reportingTeamGid: "team-manual",
+        updatedAt: overrides[1]?.updatedAt,
       },
     ]);
   });

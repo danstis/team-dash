@@ -28,11 +28,12 @@ export function deriveTeamMapping(
   );
   const mapping: TeamMappingOverride[] = [];
   for (const project of projects) {
-    if (project.asanaTeamGid === null) continue;
     const override = overrideByProject.get(project.gid);
+    const reportingTeamGid = override?.reportingTeamGid ?? project.asanaTeamGid;
+    if (reportingTeamGid === null) continue;
     mapping.push({
       projectGid: project.gid,
-      reportingTeamGid: override?.reportingTeamGid ?? project.asanaTeamGid,
+      reportingTeamGid,
       updatedAt: (override?.updatedAt ?? now) as ISODateTime,
     });
   }

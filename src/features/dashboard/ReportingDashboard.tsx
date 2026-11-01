@@ -576,6 +576,7 @@ export function ReportingDashboard(): ReactElement {
       return;
     }
     setIsRefreshing(true);
+    setRefreshOutcome(null);
     void (async (): Promise<void> => {
       try {
         const outcome = await refreshOrchestrator.runRefresh({
@@ -704,18 +705,14 @@ export function ReportingDashboard(): ReactElement {
         </>
       )}
       {!isLoading && !hasRefreshed && (
-        <>
-          <EmptyDashboard
-            state="first_run"
-            onRefresh={runRefresh}
-            disabled={!isOnline}
-            busy={isRefreshing}
-          />
-          {refreshOutcome !== null ? (
-            <OutcomeBanner {...refreshOutcome} />
-          ) : null}
-        </>
+        <EmptyDashboard
+          state="first_run"
+          onRefresh={runRefresh}
+          disabled={!isOnline}
+          busy={isRefreshing}
+        />
       )}
+      {refreshOutcome !== null ? <OutcomeBanner {...refreshOutcome} /> : null}
     </main>
   );
 }

@@ -44,20 +44,16 @@
  *   restate them.
  * - **T049 / T051 (BSOD-303 / BSOD-305)** own the refresh action and
  *   its outcome banner; this surface mounts `<RefreshControls />` and
- *   listens for the completion callback that tells it the data
- *   changed from cached to fresh.
+ *   observes committed refresh sessions through a live cache read.
  * - **T053 (BSOD-307)** owns this composition and the service-worker
  *   layer that makes the offline branch reachable at all
  *   (`vite.config.ts`).
  *
  * Determinism
  * -----------
- * The session read is asynchronous (one IndexedDB query) but the
- * surface renders synchronously on first paint: until the read
- * resolves, the banner is simply absent. The `isCached` decision is
- * derived from the browser's online state (synchronous) and from the
- * resolved timestamp, so it never depends on the order in which two
- * asynchronous reads settle.
+ * The session read is asynchronous and live. Until it resolves, the
+ * banner is absent. Each committed refresh updates the timestamp and
+ * the cached/fresh label without remounting the surface.
  *
  * Boundary
  * --------
@@ -67,30 +63,14 @@
  * sibling components. It performs no network calls of its own and
  * writes nothing to storage.
  */
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useRef, type ReactElement } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 
 import { useWorkspace } from "../../app/workspace-context";
 import { refreshSessionRepository } from "../../data/db/repositories/refresh-session.repository";
 import { useOnlineStatus } from "../../shared/hooks/useOnlineStatus";
 import { FreshnessBanner } from "./FreshnessBanner";
 import { RefreshControls } from "./RefreshControls";
-
-/**
- * The state the surface tracks about the data it is showing.
- */
-interface RefreshStatus {
-  /**
-   * The completion timestamp of the most recent successful refresh,
-   * or `null` when the workspace has never completed one.
-   */
-  readonly lastRefreshedAt: string | null;
-  /**
-   * Whether a refresh completed during THIS page session. The flag
-   * is what separates "the data came from the local cache at boot"
-   * from "the data came from the refresh the user just ran".
-   */
-  readonly refreshedInSession: boolean;
-}
 
 /**
  * The dashboard's refresh-status surface.
@@ -107,32 +87,14 @@ export function RefreshStatusPanel(): ReactElement {
    */
   const mountedAtRef = useRef<number>(Date.now());
 
-  const [status, setStatus] = useState<RefreshStatus>({
-    lastRefreshedAt: null,
-    refreshedInSession: false,
-  });
-
-  useEffect(() => {
-    if (workspaceGid === null) {
-      setStatus({ lastRefreshedAt: null, refreshedInSession: false });
-      return;
-    }
-    let cancelled = false;
-    void (async (): Promise<void> => {
-      const session =
-        await refreshSessionRepository.getLastSuccessful(workspaceGid);
-      if (cancelled) {
-        return;
-      }
-      setStatus((current) => ({
-        lastRefreshedAt: session?.finishedAt ?? null,
-        refreshedInSession: current.refreshedInSession,
-      }));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [workspaceGid]);
+  const session = useLiveQuery(
+    async () =>
+      workspaceGid === null
+        ? null
+        : await refreshSessionRepository.getLastSuccessful(workspaceGid),
+    [workspaceGid],
+  );
+  const lastRefreshedAt = session?.finishedAt ?? null;
 
   /**
    * The cached-or-fresh decision (FR-021).
@@ -149,13 +111,10 @@ export function RefreshStatusPanel(): ReactElement {
    * the browser is still online.
    */
   const refreshedBeforeThisSession =
-    status.lastRefreshedAt !== null &&
-    Date.parse(status.lastRefreshedAt) < mountedAtRef.current;
+    lastRefreshedAt !== null &&
+    Date.parse(lastRefreshedAt) < mountedAtRef.current;
   const isCached =
-    !isOnline ||
-    status.lastRefreshedAt === null ||
-    !status.refreshedInSession ||
-    refreshedBeforeThisSession;
+    !isOnline || lastRefreshedAt === null || refreshedBeforeThisSession;
 
   return (
     <section
@@ -164,20 +123,13 @@ export function RefreshStatusPanel(): ReactElement {
       data-online={isOnline ? "true" : "false"}
       aria-label="Refresh status"
     >
-      {status.lastRefreshedAt !== null ? (
+      {lastRefreshedAt !== null ? (
         <FreshnessBanner
-          lastRefreshedAt={status.lastRefreshedAt}
+          lastRefreshedAt={lastRefreshedAt}
           isCached={isCached}
         />
       ) : null}
-      <RefreshControls
-        onRefreshCompleted={(completedAt: string): void => {
-          setStatus({
-            lastRefreshedAt: completedAt,
-            refreshedInSession: true,
-          });
-        }}
-      />
+      <RefreshControls />
     </section>
   );
 }

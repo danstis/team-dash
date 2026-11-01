@@ -577,3 +577,150 @@ a[data-testid="nav-settings"]:hover {
   border-radius: var(--td-radius-sm);
   color: var(--td-color-text-secondary);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Work added vs completed chart (BSOD-319)                                    */
+/* -------------------------------------------------------------------------- */
+
+.td-work-added-completed {
+  margin-bottom: var(--td-space-5);
+}
+
+.td-work-added-completed__heading {
+  margin-bottom: var(--td-space-2);
+}
+
+.td-work-added-completed__summary,
+.td-work-added-completed__exclusion,
+.td-work-added-completed__empty {
+  margin: 0 0 var(--td-space-3);
+  color: var(--td-color-text-secondary);
+  font-size: var(--td-font-size-sm);
+}
+
+.td-work-added-completed__figure {
+  padding: var(--td-space-3);
+  background: var(--td-chart-surface);
+  border: 1px solid var(--td-color-border);
+  border-radius: var(--td-radius-md);
+}
+
+/* The categorical chart palette, used in its fixed order. Each slot
+   sets the colour its series — and the legend swatch that names it —
+   is filled with, so the bar and its key can never drift apart. */
+.td-work-added-completed__series--slot-1 {
+  --td-chart-series-color: var(--td-chart-series-1);
+}
+.td-work-added-completed__series--slot-2 {
+  --td-chart-series-color: var(--td-chart-series-2);
+}
+.td-work-added-completed__series--slot-3 {
+  --td-chart-series-color: var(--td-chart-series-3);
+}
+.td-work-added-completed__series--slot-4 {
+  --td-chart-series-color: var(--td-chart-series-4);
+}
+.td-work-added-completed__series--slot-5 {
+  --td-chart-series-color: var(--td-chart-series-5);
+}
+.td-work-added-completed__series--slot-6 {
+  --td-chart-series-color: var(--td-chart-series-6);
+}
+.td-work-added-completed__series--slot-7 {
+  --td-chart-series-color: var(--td-chart-series-7);
+}
+.td-work-added-completed__series--slot-8 {
+  --td-chart-series-color: var(--td-chart-series-8);
+}
+
+.td-work-added-completed__series .recharts-rectangle {
+  fill: var(--td-chart-series-color);
+}
+
+/* The two measures are told apart by their outline as well as by their
+   colour, so the chart is readable without colour (FR-088). */
+.td-work-added-completed__measure--completed .recharts-rectangle {
+  stroke: var(--td-chart-ink-secondary);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 2;
+}
+
+.td-work-added-completed__grid line {
+  stroke: var(--td-chart-grid);
+}
+
+.td-work-added-completed__axis line,
+.td-work-added-completed__axis path {
+  stroke: var(--td-chart-axis);
+}
+
+.td-work-added-completed__axis text {
+  fill: var(--td-chart-ink-secondary);
+  font-size: var(--td-font-size-sm);
+}
+
+.td-work-added-completed__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--td-space-2) var(--td-space-4);
+  margin: var(--td-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--td-font-size-sm);
+}
+
+.td-work-added-completed__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--td-space-2);
+}
+
+.td-work-added-completed__swatch {
+  width: 16px;
+  height: 12px;
+  flex: none;
+}
+
+.td-work-added-completed__swatch-fill {
+  fill: var(--td-chart-series-color);
+}
+
+.td-work-added-completed__swatch--completed {
+  stroke: var(--td-chart-ink-secondary);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 2;
+}
+
+.td-work-added-completed__table {
+  width: 100%;
+  margin-bottom: var(--td-space-4);
+  border-collapse: collapse;
+  font-size: var(--td-font-size-sm);
+}
+
+.td-work-added-completed__table caption {
+  margin-bottom: var(--td-space-2);
+  color: var(--td-color-text-secondary);
+  text-align: left;
+}
+
+.td-work-added-completed__table th,
+.td-work-added-completed__table td {
+  padding: var(--td-space-2);
+  border-bottom: 1px solid var(--td-color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.td-work-added-completed__drill-down {
+  display: block;
+  margin-top: var(--td-space-1);
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--td-color-accent);
+  font-size: var(--td-font-size-sm);
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}

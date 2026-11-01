@@ -185,6 +185,12 @@ describe("ChartControls — the grouping selector", () => {
   it("offers the caller's own dimensions", () => {
     type DeliveryGroupBy = "workspace" | "milestone" | "assignee";
 
+    const missingOptions = (
+      // @ts-expect-error Custom dimensions require their own option list.
+      <GroupBySelector<DeliveryGroupBy> value="workspace" onChange={vi.fn()} />
+    );
+    void missingOptions;
+
     const options: readonly ChartGroupByOption<DeliveryGroupBy>[] = [
       { value: "workspace", label: "Workspace" },
       { value: "milestone", label: "Milestone" },

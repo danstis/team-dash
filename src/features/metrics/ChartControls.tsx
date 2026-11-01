@@ -152,7 +152,7 @@ export interface CountEffortToggleProps {
  * The props `<GroupBySelector />` consumes. Every field is `readonly`
  * and consumed via `Readonly<Props>` per the project-wide convention.
  */
-export interface GroupBySelectorProps<
+interface GroupBySelectorBaseProps<
   T extends string | undefined = ChartGroupBy,
 > {
   /**
@@ -165,12 +165,6 @@ export interface GroupBySelectorProps<
    */
   readonly onChange: (groupBy: T | undefined) => void;
   /**
-   * The dimensions offered. Defaults to the standard set — team
-   * member, team, project, portfolio, priority — with the explicit
-   * "no grouping" choice in front of them.
-   */
-  readonly options?: readonly ChartGroupByOption<T>[];
-  /**
    * The words shown above the control. Defaults to "Group by".
    */
   readonly label?: string;
@@ -182,6 +176,16 @@ export interface GroupBySelectorProps<
   /** Greys the control out and takes it out of the keyboard path. */
   readonly disabled?: boolean;
 }
+
+/**
+ * The standard dimensions can use the built-in choices. A caller with
+ * any other dimension union must provide choices in that vocabulary.
+ */
+export type GroupBySelectorProps<T extends string | undefined = ChartGroupBy> =
+  GroupBySelectorBaseProps<T> &
+    ([T, ChartGroupBy] extends [ChartGroupBy, T]
+      ? { readonly options?: readonly ChartGroupByOption<T>[] }
+      : { readonly options: readonly ChartGroupByOption<T>[] });
 
 /* -------------------------------------------------------------------------- */
 /* Copy                                                                        */
@@ -298,9 +302,7 @@ export function GroupBySelector<T extends string | undefined = ChartGroupBy>({
 
   const resolvedOptions: readonly ChartGroupByOption<T>[] =
     options ??
-    // The default list is written in the standard vocabulary; the cast
-    // widens it to the caller's dimension union, which holds the same
-    // dimensions for every view that does not name its own.
+    // Only the exact standard union may omit options (see the props type).
     (DEFAULT_GROUP_BY_OPTIONS as readonly ChartGroupByOption<T>[]);
 
   const handleChange = (event: ChangeEvent<HTMLSelectElement>): void => {

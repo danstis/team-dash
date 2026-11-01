@@ -7,6 +7,7 @@ import type {
   Project,
   Section,
   Task,
+  TeamMappingOverride,
   User,
   Workspace,
 } from "../schema";
@@ -48,6 +49,11 @@ export interface CacheRepository {
     reason: NonNullable<Task["outOfScopeReason"]>,
   ): Promise<void>;
   getInScopeTasks(workspaceGid: string): Promise<Task[]>;
+  listUsers(workspaceGid: string): Promise<User[]>;
+  listProjects(workspaceGid: string): Promise<Project[]>;
+  listPortfolios(workspaceGid: string): Promise<Portfolio[]>;
+  listAsanaTeams(workspaceGid: string): Promise<AsanaTeam[]>;
+  listTeamMappingOverrides(): Promise<TeamMappingOverride[]>;
 }
 
 export function createCacheRepository(): CacheRepository {
@@ -147,6 +153,47 @@ export function createCacheRepository(): CacheRepository {
           .distinct()
           .toArray();
       });
+    },
+
+    /**
+     * The people of the workspace — the lookup rows the dashboard's
+     * assignee filter and the task table's assignee column resolve a
+     * `gid` against.
+     */
+    async listUsers(workspaceGid): Promise<User[]> {
+      return db.users.where("workspaceGid").equals(workspaceGid).toArray();
+    },
+
+    /**
+     * The workspace's ACTIVE projects — the same scope
+     * `getInScopeTasks` uses, so the dashboard's project filter and its
+     * scope summary can never offer a project the cached tasks exclude.
+     */
+    async listProjects(workspaceGid): Promise<Project[]> {
+      return db.projects
+        .where("workspaceGid")
+        .equals(workspaceGid)
+        .and((project) => !project.archived)
+        .toArray();
+    },
+
+    /** The portfolios of the workspace, for the portfolio grouping. */
+    async listPortfolios(workspaceGid): Promise<Portfolio[]> {
+      return db.portfolios.where("workspaceGid").equals(workspaceGid).toArray();
+    },
+
+    /** The Asana teams of the workspace, for the reporting-team grouping. */
+    async listAsanaTeams(workspaceGid): Promise<AsanaTeam[]> {
+      return db.asanaTeams.where("workspaceGid").equals(workspaceGid).toArray();
+    },
+
+    /**
+     * The locally overridden project → reporting-team mappings. The
+     * schema keys the store by project, and the rows are workspace-
+     * independent, so the whole store is the current mapping.
+     */
+    async listTeamMappingOverrides(): Promise<TeamMappingOverride[]> {
+      return db.teamMappingOverrides.toArray();
     },
   };
 }

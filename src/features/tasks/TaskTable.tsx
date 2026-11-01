@@ -127,6 +127,17 @@ export interface TaskTableProps {
    * the wall clock, so the state is reproducible from its inputs.
    */
   readonly now?: ISODateTime;
+  /**
+   * Called with the `gid` of the task whose name the reader activated.
+   *
+   * The table is a *presentational* surface: it owns no open/closed
+   * state of its own, so the drill-down drawer that shows the task is
+   * mounted by the caller (the dashboard, or the drill-down panel).
+   * When the callback is absent the task name renders as plain text and
+   * the table offers no drill-down — a drill-down that leads nowhere is
+   * a dead end.
+   */
+  readonly onSelectTask?: (taskGid: string) => void;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -262,6 +273,7 @@ export function TaskTable({
   priorityLabels = {},
   timezone = "local",
   now,
+  onSelectTask,
 }: Readonly<TaskTableProps>): ReactElement {
   const visibleTasks = filterTasks(tasks, criteria, { timezone, now });
 
@@ -295,7 +307,21 @@ export function TaskTable({
           {visibleTasks.map((task) => (
             <tr key={task.gid} data-testid="task-row" data-task-gid={task.gid}>
               <th scope="row" className="td-task-table__name">
-                {task.name}
+                {onSelectTask === undefined ? (
+                  task.name
+                ) : (
+                  <button
+                    type="button"
+                    className="td-task-table__select"
+                    data-testid="task-row-select"
+                    data-task-gid={task.gid}
+                    onClick={() => {
+                      onSelectTask(task.gid);
+                    }}
+                  >
+                    {task.name}
+                  </button>
+                )}
               </th>
               <td>{assigneeName(task, users)}</td>
               <td>{projectNames(task, projects)}</td>

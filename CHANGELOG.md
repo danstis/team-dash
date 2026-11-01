@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.0](https://github.com/danstis/team-dash/compare/v0.9.0...v0.10.0) (2026-11-01)
+
+
+### Features
+
+* **domain:** work added vs completed metric red→green (BSOD-318) ([#342](https://github.com/danstis/team-dash/issues/342)) ([019d947](https://github.com/danstis/team-dash/commit/019d94745bddc955e36f37ebb1cf77d93cfa627f))
+* **metrics:** drill-down panel red→green (BSOD-321) ([#346](https://github.com/danstis/team-dash/issues/346)) ([cff364a](https://github.com/danstis/team-dash/commit/cff364a2234d1ecf417738cfbe47665f6dd263dd))
+* **metrics:** shared chart controls red→green (BSOD-320) ([#345](https://github.com/danstis/team-dash/issues/345)) ([c98834a](https://github.com/danstis/team-dash/commit/c98834a8eaf04ea05478e90a62cd741f2559d00e))
+* **metrics:** work added vs completed chart red→green (BSOD-319) ([#344](https://github.com/danstis/team-dash/issues/344)) ([6c65b35](https://github.com/danstis/team-dash/commit/6c65b350f916faa042bef12b542974228196507d))
+
 ## [0.9.0](https://github.com/danstis/team-dash/compare/v0.8.0...v0.9.0) (2026-10-31)
 
 

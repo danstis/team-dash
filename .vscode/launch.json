@@ -8,6 +8,7 @@
       "url": "http://localhost:5173",
       "webRoot": "${workspaceFolder}",
       "preLaunchTask": "npm: dev",
+      "postDebugTask": "npm: stop dev",
       "presentation": {
         "order": 1
       }

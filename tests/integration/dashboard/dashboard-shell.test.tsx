@@ -406,6 +406,8 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
     expect(
       screen.getByTestId("drill-down-panel-title"),
     ).not.toBeEmptyDOMElement();
+    fireEvent.click(screen.getByRole("button", { name: "Close details" }));
+    expect(screen.queryByTestId("drill-down-panel")).not.toBeInTheDocument();
   });
 
   it("opens the data-quality drill-down when a flag is selected", async () => {

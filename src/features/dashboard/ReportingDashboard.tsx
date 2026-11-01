@@ -700,6 +700,9 @@ export function ReportingDashboard(): ReactElement {
               users={userOptions}
               projects={projectOptions}
               timezone={TIMEZONE}
+              onClose={() => {
+                setPanelSelection(null);
+              }}
             />
           ) : null}
         </>

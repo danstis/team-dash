@@ -624,6 +624,51 @@ describe("calculateBacklogDirection", () => {
     expect(local.series.points[0]?.incompleteEffortMinutes).toBe(15);
   });
 
+  it("resolves the reporting-team scope through the current team mapping", () => {
+    // FR-065 / FR-046: the reporting team is a property of the
+    // PROJECT's mapping, resolved through `context.teamMapping` — the
+    // CURRENT mapping, for a historical point exactly as for today.
+    const twoTeams = [
+      makeTask({
+        gid: "task-in-team-a",
+        createdAt: "2026-07-01T09:00:00.000Z",
+        projectGids: ["project-1"],
+        estimatedMinutes: 60,
+      }),
+      makeTask({
+        gid: "task-in-team-b",
+        createdAt: "2026-07-01T09:00:00.000Z",
+        projectGids: ["project-2"],
+        estimatedMinutes: 30,
+      }),
+    ];
+    const withMapping: MetricContext = {
+      ...context,
+      teamMapping: [
+        {
+          projectGid: "project-1",
+          reportingTeamGid: "team-a",
+          updatedAt: "2026-07-31T12:00:00.000Z" as ISODateTime,
+        },
+        {
+          projectGid: "project-2",
+          reportingTeamGid: "team-b",
+          updatedAt: "2026-07-31T12:00:00.000Z" as ISODateTime,
+        },
+      ],
+    };
+
+    const result = calculateBacklogDirection(
+      twoTeams,
+      { reportingTeamIds: ["team-a"] },
+      withMapping,
+      range("2026-07-01", "2026-07-01"),
+    );
+
+    expect(result.series.points[0]?.incompleteCount).toBe(1);
+    expect(result.series.points[0]?.incompleteEffortMinutes).toBe(60);
+  });
+
   it("drills every point down to its exact contributing task list", () => {
     const result = calculateBacklogDirection(
       tasks,

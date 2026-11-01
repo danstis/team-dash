@@ -142,7 +142,7 @@ export interface BacklogTask extends FilterableTask {}
  * how much estimated work they carry, and the unestimated count says how
  * many of them carry no estimate at all (FR-066).
  */
-export interface BacklogCurrentFigures {
+export interface BacklogCurrentValue {
   /** How many tasks are incomplete as of today (FR-063). */
   readonly incompleteCount: number;
   /** The summed estimate of the incomplete tasks, in minutes (FR-063). */
@@ -180,7 +180,7 @@ export type BacklogTrend = "up" | "down" | "flat";
  */
 export interface BacklogPointSeries {
   /** One point per calendar day of the requested range, in order. */
-  readonly points: readonly BacklogPoint[];
+  points: BacklogPoint[];
   /** The count trend across the points. */
   readonly trend: BacklogTrend;
   /** The effort trend across the points, reported separately. */
@@ -244,7 +244,7 @@ export function calculateBacklogCurrent(
   tasks: readonly BacklogTask[],
   filter: FilterCriteria,
   context: MetricContext,
-): MetricResult<BacklogCurrentFigures> {
+): MetricResult<BacklogCurrentValue> {
   const timelines = buildTimelines(tasks, filter, context);
   const today = toIsoDate(isoDateTimeToDate(context.now), context.timezone);
   const incomplete = incompleteOn(timelines, today);

@@ -48,13 +48,14 @@
  */
 process.env.TZ = "Australia/Sydney";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   BACKLOG_RETROACTIVE_ESTIMATE_DISCLOSURE,
   NO_ESTIMATE_REASON,
   calculateBacklogCurrent,
   calculateBacklogDirection,
+  type BacklogCurrentValue,
   type BacklogPoint,
   type BacklogPointSeries,
   type BacklogTask,
@@ -70,6 +71,23 @@ import {
   assertDrillDownMatchesSummary,
   type ReaggregatedFigure,
 } from "./support/assertDrillDownMatchesSummary";
+
+type ContractBacklogCurrentValue = {
+  incompleteCount: number;
+  incompleteEffortMinutes: number;
+  unestimatedIncompleteCount: number;
+};
+
+type ContractBacklogPointSeries = {
+  points: Array<{
+    date: ISODate;
+    incompleteCount: number;
+    incompleteEffortMinutes: number;
+    unestimatedIncompleteCount: number;
+  }>;
+  trend: "up" | "down" | "flat";
+  effortTrend: "up" | "down" | "flat";
+};
 
 /* -------------------------------------------------------------------------- */
 /* The fixture                                                                 */
@@ -275,6 +293,16 @@ function reaggregateIncomplete(
 /* -------------------------------------------------------------------------- */
 /* Tests                                                                       */
 /* -------------------------------------------------------------------------- */
+
+it("exports backlog results assignable to the P1 contract", () => {
+  expectTypeOf<BacklogCurrentValue>().toExtend<ContractBacklogCurrentValue>();
+  expectTypeOf<ReturnType<typeof calculateBacklogCurrent>>().toExtend<
+    MetricResult<ContractBacklogCurrentValue>
+  >();
+  expectTypeOf<ReturnType<typeof calculateBacklogDirection>>().toExtend<
+    MetricResult<ContractBacklogPointSeries>
+  >();
+});
 
 describe("calculateBacklogCurrent", () => {
   it("reports the current incomplete count, effort and unestimated count", () => {

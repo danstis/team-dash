@@ -160,7 +160,7 @@ export function createCacheRepository(): CacheRepository {
      * assignee filter and the task table's assignee column resolve a
      * `gid` against.
      */
-    async listUsers(workspaceGid): Promise<User[]> {
+    listUsers(workspaceGid): Promise<User[]> {
       return db.users.where("workspaceGid").equals(workspaceGid).toArray();
     },
 
@@ -169,7 +169,7 @@ export function createCacheRepository(): CacheRepository {
      * `getInScopeTasks` uses, so the dashboard's project filter and its
      * scope summary can never offer a project the cached tasks exclude.
      */
-    async listProjects(workspaceGid): Promise<Project[]> {
+    listProjects(workspaceGid): Promise<Project[]> {
       return db.projects
         .where("workspaceGid")
         .equals(workspaceGid)
@@ -178,12 +178,12 @@ export function createCacheRepository(): CacheRepository {
     },
 
     /** The portfolios of the workspace, for the portfolio grouping. */
-    async listPortfolios(workspaceGid): Promise<Portfolio[]> {
+    listPortfolios(workspaceGid): Promise<Portfolio[]> {
       return db.portfolios.where("workspaceGid").equals(workspaceGid).toArray();
     },
 
     /** The Asana teams of the workspace, for the reporting-team grouping. */
-    async listAsanaTeams(workspaceGid): Promise<AsanaTeam[]> {
+    listAsanaTeams(workspaceGid): Promise<AsanaTeam[]> {
       return db.asanaTeams.where("workspaceGid").equals(workspaceGid).toArray();
     },
 
@@ -192,7 +192,7 @@ export function createCacheRepository(): CacheRepository {
      * schema keys the store by project, and the rows are workspace-
      * independent, so the whole store is the current mapping.
      */
-    async listTeamMappingOverrides(): Promise<TeamMappingOverride[]> {
+    listTeamMappingOverrides(): Promise<TeamMappingOverride[]> {
       return db.teamMappingOverrides.toArray();
     },
   };

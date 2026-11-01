@@ -406,6 +406,22 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
     ).not.toBeEmptyDOMElement();
   });
 
+  it("opens the data-quality drill-down when a flag is selected", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    const flag = await screen.findByRole("button", {
+      name: /Missing assignee: 1 task/i,
+    });
+    fireEvent.click(flag);
+
+    expect(await screen.findByTestId("drill-down-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("drill-down-panel-title")).toHaveTextContent(
+      "Data completeness — 1 task",
+    );
+  });
+
   it("re-renders the metric when the count/effort switch and the group selector change", async () => {
     await seedCommittedRefresh();
     const handlesRef = renderDashboard();

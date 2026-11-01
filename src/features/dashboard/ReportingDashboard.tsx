@@ -123,10 +123,8 @@ import type {
   DateRange,
   DateRangePreset,
   FilterCriteria,
-  ISODateTime,
   MetricContext,
   MetricResult,
-  TeamMappingOverride,
   TimezoneSetting,
 } from "../../domain/types";
 import { formatDate } from "../../shared/format";
@@ -154,7 +152,12 @@ import { RefreshStatusPanel } from "../refresh/RefreshStatusPanel";
 import type { FilterOption } from "../tasks/FilterBar";
 import { TaskDetailDrawer } from "../tasks/TaskDetailDrawer";
 import { TaskList } from "../tasks/TaskList";
-import type { TaskTableTask } from "../tasks/TaskTable";
+import {
+  buildGroupLabels,
+  deriveDataQualityFlags,
+  deriveTeamMapping,
+  toMetricTasks,
+} from "./dashboard-derivations";
 
 /* -------------------------------------------------------------------------- */
 /* Constants                                                                   */
@@ -181,17 +184,6 @@ const TIMEZONE: TimezoneSetting = "local";
 /* -------------------------------------------------------------------------- */
 /* Types                                                                       */
 /* -------------------------------------------------------------------------- */
-
-/**
- * A cached task as the dashboard hands it to the surfaces it composes:
- * the task table's row shape, plus the portfolio memberships the metric
- * groups by (FR-040). The portfolio memberships are resolved from the
- * task's projects here — the metric's own contract says the calling
- * layer resolves them and passes them on the task row.
- */
-interface DashboardTaskRow extends TaskTableTask {
-  readonly portfolioGids: readonly string[];
-}
 
 /**
  * What the drill-down panel is showing: either a figure of the
@@ -347,9 +339,7 @@ export function ReportingDashboard(): ReactElement {
 
   /** The locally overridden project → reporting-team mappings. */
   const overrideResult = useLiveQuery(
-    async (): Promise<
-      { projectGid: string; reportingTeamGid: string; updatedAt: string }[]
-    > => await cacheRepository.listTeamMappingOverrides(),
+    () => cacheRepository.listTeamMappingOverrides(),
     [],
   );
 
@@ -408,27 +398,10 @@ export function ReportingDashboard(): ReactElement {
    * locally. The metric resolves the reporting-team grouping through
    * this mapping, so the whole current mapping travels in the context.
    */
-  const teamMapping = useMemo<TeamMappingOverride[]>(() => {
-    const overrideByProject = new Map(
-      teamMappingOverrides.map((override) => [override.projectGid, override]),
-    );
-    const mapping: TeamMappingOverride[] = [];
-    for (const project of projects) {
-      if (project.asanaTeamGid === null) {
-        continue;
-      }
-      const override = overrideByProject.get(project.gid);
-      mapping.push({
-        projectGid: project.gid,
-        reportingTeamGid: override?.reportingTeamGid ?? project.asanaTeamGid,
-        // The default mapping is derived rather than stored, so it
-        // carries the moment it was read; an override carries the
-        // moment the user set it.
-        updatedAt: (override?.updatedAt ?? nowIso) as ISODateTime,
-      });
-    }
-    return mapping;
-  }, [projects, teamMappingOverrides, nowIso]);
+  const teamMapping = useMemo(
+    () => deriveTeamMapping(projects, teamMappingOverrides, nowIso),
+    [projects, teamMappingOverrides, nowIso],
+  );
 
   /** The metric's shared context. */
   const metricContext = useMemo<MetricContext>(
@@ -445,32 +418,10 @@ export function ReportingDashboard(): ReactElement {
    * The cached tasks as the metric reads them: the cached row's own
    * fields, plus the portfolios its projects belong to (FR-040).
    */
-  const metricTasks = useMemo<DashboardTaskRow[]>(() => {
-    const portfoliosByProject = new Map<string, string[]>();
-    for (const project of projects) {
-      portfoliosByProject.set(project.gid, project.portfolioGids);
-    }
-    return tasks.map((task) => ({
-      gid: task.gid,
-      name: task.name,
-      assigneeGid: task.assigneeGid,
-      projectGids: task.projectGids,
-      createdAt: task.createdAt as ISODateTime,
-      dueAt: task.dueAt === null ? null : (task.dueAt as ISODateTime),
-      completedAt:
-        task.completedAt === null ? null : (task.completedAt as ISODateTime),
-      priorityOptionId: task.priorityOptionId,
-      estimatedMinutes: task.estimatedMinutes,
-      actualMinutes: task.actualMinutes,
-      portfolioGids: [
-        ...new Set(
-          task.projectGids.flatMap(
-            (projectGid) => portfoliosByProject.get(projectGid) ?? [],
-          ),
-        ),
-      ],
-    }));
-  }, [tasks, projects]);
+  const metricTasks = useMemo(
+    () => toMetricTasks(tasks, projects),
+    [tasks, projects],
+  );
 
   /* ---------------------------------------------------------------- */
   /* The metric                                                       */
@@ -522,28 +473,10 @@ export function ReportingDashboard(): ReactElement {
   }, [metricTasks, dateRange, metricContext, groupBy]);
 
   /** The human names of the groups the chart is split by. */
-  const groupLabels = useMemo<Record<string, string>>(() => {
-    switch (groupBy) {
-      case "assignee":
-        return Object.fromEntries(users.map((user) => [user.gid, user.name]));
-      case "project":
-        return Object.fromEntries(
-          projects.map((project) => [project.gid, project.name]),
-        );
-      case "portfolio":
-        return Object.fromEntries(
-          portfolios.map((portfolio) => [portfolio.gid, portfolio.name]),
-        );
-      case "reportingTeam":
-        return Object.fromEntries(teams.map((team) => [team.gid, team.name]));
-      case "priority":
-      default:
-        // The cache stores the priority option ids, not their names, so
-        // the chart shows the raw ids — a raw value shown as a raw
-        // value (DESIGN.md › The Raw Means Raw Rule).
-        return {};
-    }
-  }, [groupBy, users, projects, portfolios, teams]);
+  const groupLabels = useMemo(
+    () => buildGroupLabels(groupBy, users, projects, portfolios, teams),
+    [groupBy, users, projects, portfolios, teams],
+  );
 
   /* ---------------------------------------------------------------- */
   /* The drill-downs                                                  */
@@ -616,34 +549,10 @@ export function ReportingDashboard(): ReactElement {
    * (`calculateDataQuality`, a later row) replaces this; until then the
    * dashboard discloses the three gaps a cached task row can support.
    */
-  const dataQualityFlags = useMemo<DataQualityFlag[]>(() => {
-    const missingAssignee = tasks
-      .filter((task) => task.assigneeGid === null)
-      .map((task) => task.gid);
-    const missingEstimate = tasks
-      .filter((task) => task.estimatedMinutes === null)
-      .map((task) => task.gid);
-    const missingPriority = tasks
-      .filter((task) => task.priorityOptionId === null)
-      .map((task) => task.gid);
-    return [
-      {
-        kind: "missing_assignee",
-        taskGids: missingAssignee,
-        count: missingAssignee.length,
-      },
-      {
-        kind: "missing_estimate",
-        taskGids: missingEstimate,
-        count: missingEstimate.length,
-      },
-      {
-        kind: "missing_priority",
-        taskGids: missingPriority,
-        count: missingPriority.length,
-      },
-    ];
-  }, [tasks]);
+  const dataQualityFlags = useMemo(
+    () => deriveDataQualityFlags(tasks),
+    [tasks],
+  );
 
   /* ---------------------------------------------------------------- */
   /* The refresh                                                      */
@@ -725,11 +634,15 @@ export function ReportingDashboard(): ReactElement {
         </div>
       </header>
 
-      {isLoading ? (
-        <LoadingState data-testid="dashboard-loading" />
-      ) : hasRefreshed ? (
+      {isLoading && <LoadingState data-testid="dashboard-loading" />}
+      {!isLoading && hasRefreshed && (
         <>
-          <DataQualitySummary flags={dataQualityFlags} />
+          <DataQualitySummary
+            flags={dataQualityFlags}
+            onSelectFlag={(flag): void => {
+              setPanelSelection({ kind: "data_quality", flag });
+            }}
+          />
 
           <CountEffortToggle value={view} onChange={setView} />
           <GroupBySelector value={groupBy} onChange={setGroupBy} />
@@ -789,7 +702,8 @@ export function ReportingDashboard(): ReactElement {
             />
           ) : null}
         </>
-      ) : (
+      )}
+      {!isLoading && !hasRefreshed && (
         <>
           <EmptyDashboard
             state="first_run"

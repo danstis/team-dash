@@ -31,6 +31,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -157,6 +158,40 @@ const RISING_RESULT: MetricResult<WorkAddedCompletedSeries> = {
     ],
     createdUnestimatedCount: 0,
     completedUnestimatedCount: 0,
+  },
+  contributingTaskGids: {},
+};
+
+/** Four days of completions make the fitted net reach −8, beyond any bucket. */
+const FALLING_RESULT: MetricResult<WorkAddedCompletedSeries> = {
+  ...RESULT,
+  series: {
+    ...RESULT.series,
+    buckets: [2, 3, 4, 5].map((date) => ({
+      bucketStart: day(`2026-03-${String(date).padStart(2, "0")}`),
+      bucketEnd: day(`2026-03-${String(date).padStart(2, "0")}`),
+      createdCount: 0,
+      completedCount: 2,
+      createdEffortMinutes: 0,
+      completedEffortMinutes: 2,
+    })),
+  },
+  contributingTaskGids: {},
+};
+
+/** A one-item net change in the final bucket gives a flat displayed rate. */
+const NEAR_FLAT_RESULT: MetricResult<WorkAddedCompletedSeries> = {
+  ...RESULT,
+  series: {
+    ...RESULT.series,
+    buckets: Array.from({ length: 12 }, (_, index) => ({
+      bucketStart: day(`2026-03-${String(index + 2).padStart(2, "0")}`),
+      bucketEnd: day(`2026-03-${String(index + 2).padStart(2, "0")}`),
+      createdCount: index === 11 ? 1 : 0,
+      completedCount: 0,
+      createdEffortMinutes: index === 11 ? 0.04 : 0,
+      completedEffortMinutes: 0,
+    })),
   },
   contributingTaskGids: {},
 };
@@ -387,6 +422,13 @@ describe("WorkAddedCompletedChart", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows the empty state when no workspace group is available", () => {
+    renderChart({ groups: [] });
+    expect(
+      screen.getByTestId("work-added-completed-empty"),
+    ).toBeInTheDocument();
+  });
+
   it("discloses a single excluded task in the singular", () => {
     const single: MetricResult<WorkAddedCompletedSeries> = {
       ...RESULT,
@@ -488,6 +530,48 @@ describe("WorkAddedCompletedChart", () => {
     expect(request.measure).toBe("completed");
     expect(request.bucketStart).toBe(day("2026-03-03"));
     expect(request.taskGids).toEqual(["task-2"]);
+  });
+
+  it("lets a hovered point receive a drill-down click", async () => {
+    const { container, onDrillDown } = renderChart();
+    const point = screen.getAllByTestId("work-added-completed-point-added")[0];
+    const chart = container.querySelector(".recharts-surface");
+    expect(chart).not.toBeNull();
+    fireEvent.mouseMove(chart as Element, { clientX: 100, clientY: 91 });
+
+    const activeDot = await waitFor(() => {
+      const active = container.querySelector(
+        ".recharts-active-dot .td-work-added-completed__point",
+      );
+      expect(active).not.toBeNull();
+      return active;
+    });
+    expect(activeDot).toHaveStyle({ pointerEvents: "none" });
+    fireEvent.click(point);
+    expect(onDrillDown).toHaveBeenCalledOnce();
+  });
+
+  it("uses the clicked group's result for grouped drill-down", () => {
+    const other = {
+      ...RESULT,
+      contributingTaskGids: { "created:2026-03-02": ["task-bob"] },
+    };
+    const { container, onDrillDown } = renderChart({
+      groups: [
+        { groupKey: "alice", result: RESULT },
+        { groupKey: "bob", result: other },
+      ],
+      groupBy: "assignee",
+    });
+    const bars = container.querySelectorAll(".recharts-bar");
+    expect(bars).toHaveLength(4);
+    fireEvent.click(bars[2].querySelector(".recharts-rectangle") as Element);
+    expect(onDrillDown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        groupKey: "bob",
+        taskGids: ["task-bob"],
+      }),
+    );
   });
 
   it("emits an empty task list for a figure with no contributors", () => {
@@ -594,6 +678,38 @@ describe("the mirrored line diagram", () => {
     expect(summary).toHaveTextContent(
       /net work change at the end of the period: \+5 items\./i,
     );
+  });
+
+  it("includes a falling trend beyond the bucket values in the value axis", () => {
+    const { container } = renderChart({
+      groups: [{ groupKey: undefined, result: FALLING_RESULT }],
+    });
+    const axis = container.querySelector(
+      ".recharts-yAxis .recharts-cartesian-axis-line",
+    );
+    expect(axis).not.toBeNull();
+    const top = Number(axis?.getAttribute("y1"));
+    const bottom = Number(axis?.getAttribute("y2"));
+    expect(zeroLineY()).toBeCloseTo((top + bottom) / 2);
+  });
+
+  it("shows unsigned zero for a count rate that displays as flat", () => {
+    renderChart({
+      groups: [{ groupKey: undefined, result: NEAR_FLAT_RESULT }],
+    });
+    const summary = screen.getByTestId("work-added-completed-summary");
+    expect(summary).toHaveTextContent(/the net is flat/i);
+    expect(summary).toHaveTextContent(/net trend: 0 items per day/i);
+  });
+
+  it("shows unsigned zero for a rounded effort rate", () => {
+    renderChart({
+      groups: [{ groupKey: undefined, result: NEAR_FLAT_RESULT }],
+      view: "effort",
+    });
+    const summary = screen.getByTestId("work-added-completed-summary");
+    expect(summary).toHaveTextContent(/the net is flat/i);
+    expect(summary).toHaveTextContent(/net trend: 0 min per day/i);
   });
 
   it("states the direction and the rate of the trend in the legend", () => {

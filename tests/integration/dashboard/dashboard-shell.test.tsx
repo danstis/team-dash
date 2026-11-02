@@ -458,6 +458,40 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
     });
   });
 
+  it("keeps the count/effort choice across an interaction", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    await screen.findByTestId("work-added-completed-chart");
+
+    // FR-061 — the reader moves to the effort view …
+    fireEvent.click(screen.getByRole("radio", { name: /estimated effort/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("work-added-completed-summary"),
+      ).toHaveTextContent(/estimated effort added and completed/i);
+    });
+
+    // … and the choice survives the next interaction: the grouping
+    // dimension changes, the dashboard re-renders, and the chart is
+    // still showing the effort view the reader picked.
+    fireEvent.change(screen.getByTestId("group-by-selector"), {
+      target: { value: "project" },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("work-added-completed-summary"),
+      ).toHaveTextContent(/split by project/i);
+    });
+    expect(
+      screen.getByTestId("work-added-completed-summary"),
+    ).toHaveTextContent(/estimated effort added and completed/i);
+    expect(
+      screen.getByRole("radio", { name: /estimated effort/i }),
+    ).toBeChecked();
+  });
+
   it("runs a refresh from the empty dashboard and moves on to the populated views", async () => {
     const handlesRef = renderDashboard();
     await openTheGate(handlesRef);

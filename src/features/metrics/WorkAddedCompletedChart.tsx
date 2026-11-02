@@ -366,11 +366,11 @@ interface GroupName {
  */
 interface SeriesPointProps {
   /** The horizontal position of the point, in pixels. */
-  readonly cx: number | undefined;
+  readonly cx?: number;
   /** The vertical position of the point, in pixels. */
-  readonly cy: number | undefined;
+  readonly cy?: number;
   /** The row the point stands for. */
-  readonly payload: MirroredRow | undefined;
+  readonly payload?: MirroredRow;
   /** The shape the point is drawn with. */
   readonly shape: "circle" | "square";
   /** The test id the point carries. */
@@ -963,6 +963,94 @@ function joinList(items: readonly string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${last}`;
 }
 
+/** Whether any group contributes a created or completed item. */
+function hasChartActivity(
+  groups: readonly WorkAddedCompletedChartGroup[],
+): boolean {
+  return groups.some((group) =>
+    group.result.series.buckets.some(
+      (bucket) => bucket.createdCount > 0 || bucket.completedCount > 0,
+    ),
+  );
+}
+
+/** The programmatic description of the current chart form and unit. */
+function chartLabel(
+  view: WorkAddedCompletedView,
+  isGrouped: boolean,
+  step: string,
+): string {
+  const figure = view === "count" ? "number of items" : "estimated effort";
+  if (isGrouped) {
+    return `Bar chart of the ${figure} added and completed per period.`;
+  }
+  return `Line chart of the ${figure} added (above the zero line) and completed (below the zero line) per ${step}, with the net work change trend.`;
+}
+
+/** The strings shared by the chart, legend, summary, and table. */
+function chartCopy({
+  buckets,
+  groups,
+  groupBy,
+  groupLabels,
+  isGrouped,
+  trend,
+  view,
+}: {
+  readonly buckets: readonly ChartBucket[];
+  readonly groups: readonly WorkAddedCompletedChartGroup[];
+  readonly groupBy: WorkAddedCompletedGroupBy | undefined;
+  readonly groupLabels: Readonly<Record<string, string>>;
+  readonly isGrouped: boolean;
+  readonly trend: NetTrend | null;
+  readonly view: WorkAddedCompletedView;
+}): {
+  readonly summary: string;
+  readonly chartLabel: string;
+  readonly tableCaption: string;
+  readonly step: string;
+} {
+  const lastBucket = buckets.at(-1);
+  const period =
+    lastBucket === undefined
+      ? ""
+      : `${periodLabel(buckets[0])} – ${periodLabel(lastBucket)}`;
+  const split =
+    groupBy === undefined || groups.length === 0
+      ? ""
+      : ` Split by ${GROUP_BY_NAMES[groupBy]}: ${groups
+          .map((group) =>
+            group.groupKey === undefined
+              ? ""
+              : groupName(group.groupKey, groupLabels).text,
+          )
+          .filter((name) => name !== "")
+          .join(", ")}.`;
+  const during = period === "" ? "" : ` for ${period}`;
+  const baseSummary = `${
+    view === "count"
+      ? "Showing the number of items added and completed"
+      : "Showing the estimated effort added and completed"
+  }${during}.`;
+  const step = bucketStepName(buckets);
+  const trendReading =
+    trend === null
+      ? ""
+      : ` Net work change over the period: ${TREND_READINGS[trend.direction]}.` +
+        ` Net trend: ${formatTrendFigure(view, trend.slope)} per ${step}.` +
+        ` Net work change at the end of the period: ${formatTrendFigure(view, trend.endValue)}.`;
+
+  return {
+    summary: `${baseSummary}${trendReading}${split}`,
+    chartLabel: chartLabel(view, isGrouped, step),
+    tableCaption:
+      view === "count"
+        ? "Items added and completed"
+        : "Estimated effort added and completed",
+    step,
+  };
+}
+
 /* -------------------------------------------------------------------------- */
 /* Components                                                                  */
 /* -------------------------------------------------------------------------- */
@@ -1026,6 +1114,22 @@ function SeriesPoint({
   );
 }
 
+/** The mirrored value axis names its unit and the meaning of each half. */
+function ValueAxisLabel({
+  view,
+}: Readonly<{ view: WorkAddedCompletedView }>): ReactElement {
+  return (
+    <text
+      className="td-work-added-completed__axis-label"
+      x={LINE_CHART_MARGIN.left}
+      y={LINE_CHART_MARGIN.top - 8}
+      textAnchor="start"
+    >
+      {UNIT_NAMES[view]} — added above, completed below
+    </text>
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* Component                                                                   */
 /* -------------------------------------------------------------------------- */
@@ -1062,64 +1166,21 @@ export function WorkAddedCompletedChart({
   const mirroredRows = mirrored?.rows ?? [];
   const trend = mirrored?.trend ?? null;
 
-  const hasActivity = groups.some((group) =>
-    group.result.series.buckets.some(
-      (bucket) => bucket.createdCount > 0 || bucket.completedCount > 0,
-    ),
-  );
-
-  const lastBucket = buckets.at(-1);
-  const period =
-    lastBucket === undefined
-      ? ""
-      : `${periodLabel(buckets[0])} – ${periodLabel(lastBucket)}`;
-
-  const split =
-    groupBy === undefined || groups.length === 0
-      ? ""
-      : ` Split by ${GROUP_BY_NAMES[groupBy]}: ${groups
-          .map((group) =>
-            group.groupKey === undefined
-              ? ""
-              : groupName(group.groupKey, groupLabels).text,
-          )
-          .filter((name) => name !== "")
-          .join(", ")}.`;
-
-  const during = period === "" ? "" : ` for ${period}`;
-  const baseSummary = `${
-    view === "count"
-      ? "Showing the number of items added and completed"
-      : "Showing the estimated effort added and completed"
-  }${during}.`;
-
-  /**
-   * The reading of the period, in plain words: the capacity answer
-   * must not depend on the reader interpreting the geometry.
-   */
-  const step = bucketStepName(buckets);
-  const trendReading =
-    trend === null
-      ? ""
-      : ` Net work change over the period: ${TREND_READINGS[trend.direction]}.` +
-        ` Net trend: ${formatTrendFigure(view, trend.slope)} per ${step}.` +
-        ` Net work change at the end of the period: ${formatTrendFigure(view, trend.endValue)}.`;
-
-  const summary = `${baseSummary}${trendReading}${split}`;
-
-  const chartLabel =
-    isGrouped === false
-      ? view === "count"
-        ? `Line chart of the number of items added (above the zero line) and completed (below the zero line) per ${step}, with the net work change trend.`
-        : `Line chart of the estimated effort added (above the zero line) and completed (below the zero line) per ${step}, with the net work change trend.`
-      : view === "count"
-        ? "Bar chart of the number of items added and completed per period."
-        : "Bar chart of the estimated effort added and completed per period.";
-
-  const tableCaption =
-    view === "count"
-      ? "Items added and completed"
-      : "Estimated effort added and completed";
+  const hasActivity = hasChartActivity(groups);
+  const {
+    summary,
+    chartLabel: label,
+    tableCaption,
+    step,
+  } = chartCopy({
+    buckets,
+    groups,
+    groupBy,
+    groupLabels,
+    isGrouped,
+    trend,
+    view,
+  });
 
   /**
    * The drill-down request for one figure — the group, the bucket, the
@@ -1164,8 +1225,6 @@ export function WorkAddedCompletedChart({
       );
     };
 
-  const valueAxisLabel = `${UNIT_NAMES[view]} — added above, completed below`;
-
   return (
     <section
       className="td-work-added-completed"
@@ -1194,7 +1253,7 @@ export function WorkAddedCompletedChart({
                   margin={CHART_MARGIN}
                   accessibilityLayer={false}
                   role="img"
-                  aria-label={chartLabel}
+                  aria-label={label}
                 >
                   <CartesianGrid
                     className="td-work-added-completed__grid"
@@ -1256,7 +1315,7 @@ export function WorkAddedCompletedChart({
                   margin={LINE_CHART_MARGIN}
                   accessibilityLayer={false}
                   role="img"
-                  aria-label={chartLabel}
+                  aria-label={label}
                 >
                   <CartesianGrid
                     className="td-work-added-completed__grid"
@@ -1275,18 +1334,7 @@ export function WorkAddedCompletedChart({
                     tickFormatter={(value: number) =>
                       formatFigure(view, Math.abs(value))
                     }
-                    label={{
-                      content: () => (
-                        <text
-                          className="td-work-added-completed__axis-label"
-                          x={LINE_CHART_MARGIN.left}
-                          y={LINE_CHART_MARGIN.top - 8}
-                          textAnchor="start"
-                        >
-                          {valueAxisLabel}
-                        </text>
-                      ),
-                    }}
+                    label={{ content: <ValueAxisLabel view={view} /> }}
                   />
                   <ReferenceLine
                     y={0}
@@ -1305,28 +1353,22 @@ export function WorkAddedCompletedChart({
                     className="td-work-added-completed__line td-work-added-completed__line--added"
                     strokeWidth={2}
                     isAnimationActive={false}
-                    dot={(dotProps) => (
+                    dot={
                       <SeriesPoint
-                        cx={dotProps.cx}
-                        cy={dotProps.cy}
-                        payload={dotProps.payload as MirroredRow | undefined}
                         shape="circle"
                         testId="work-added-completed-point-added"
                         drillable={onDrillDown !== undefined}
                         onSelect={drillDownPoint("created")}
                       />
-                    )}
-                    activeDot={(activeProps) => (
+                    }
+                    activeDot={
                       <SeriesPoint
-                        cx={activeProps.cx}
-                        cy={activeProps.cy}
-                        payload={undefined}
                         shape="circle"
                         drillable={false}
                         radius={5}
                         style={{ pointerEvents: "none" }}
                       />
-                    )}
+                    }
                   />
                   <Line
                     type="linear"
@@ -1335,28 +1377,22 @@ export function WorkAddedCompletedChart({
                     className="td-work-added-completed__line td-work-added-completed__line--completed"
                     strokeWidth={2}
                     isAnimationActive={false}
-                    dot={(dotProps) => (
+                    dot={
                       <SeriesPoint
-                        cx={dotProps.cx}
-                        cy={dotProps.cy}
-                        payload={dotProps.payload as MirroredRow | undefined}
                         shape="square"
                         testId="work-added-completed-point-completed"
                         drillable={onDrillDown !== undefined}
                         onSelect={drillDownPoint("completed")}
                       />
-                    )}
-                    activeDot={(activeProps) => (
+                    }
+                    activeDot={
                       <SeriesPoint
-                        cx={activeProps.cx}
-                        cy={activeProps.cy}
-                        payload={undefined}
                         shape="square"
                         drillable={false}
                         radius={5}
                         style={{ pointerEvents: "none" }}
                       />
-                    )}
+                    }
                   />
                   <Line
                     type="linear"

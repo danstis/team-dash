@@ -17,6 +17,12 @@ export interface TaskListProps {
   readonly priorityLabels?: Readonly<Record<string, string>>;
   readonly now: Date;
   readonly timezone?: TimezoneSetting;
+  /**
+   * Called with the `gid` of the task the reader activated in the
+   * table. The list owns no drill-down state of its own — the caller
+   * decides which task is open and mounts the detail surface for it.
+   */
+  readonly onSelectTask?: (taskGid: string) => void;
 }
 
 export function TaskList({
@@ -26,6 +32,7 @@ export function TaskList({
   priorityLabels,
   now,
   timezone = "local",
+  onSelectTask,
 }: Readonly<TaskListProps>): ReactElement {
   const [criteria, setCriteria] = useState<FilterCriteria>({});
   const clearAll = (): void => setCriteria({});
@@ -74,6 +81,7 @@ export function TaskList({
             priorityLabels={priorityLabels}
             timezone={timezone}
             now={instant}
+            onSelectTask={onSelectTask}
           />
         </>
       )}

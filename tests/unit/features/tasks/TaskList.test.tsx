@@ -5,7 +5,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ISODateTime } from "../../../../src/domain/types";
 import { TaskList } from "../../../../src/features/tasks/TaskList";
@@ -66,5 +66,25 @@ describe("TaskList", () => {
     fireEvent.click(screen.getByTestId("filter-project-borealis"));
 
     expect(screen.queryByTestId("no-results-state")).not.toBeInTheDocument();
+  });
+
+  it("renders an accessible task selection button and reports its gid", () => {
+    const onSelectTask = vi.fn();
+    render(
+      <TaskList
+        tasks={TASKS}
+        users={[]}
+        projects={PROJECTS}
+        now={new Date("2026-03-15T00:00:00.000Z")}
+        onSelectTask={onSelectTask}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "Draft brief" });
+    expect(button).toHaveAttribute("data-testid", "task-row-select");
+    expect(
+      within(screen.getByTestId("task-row")).getByRole("rowheader"),
+    ).toContainElement(button);
+    fireEvent.click(button);
+    expect(onSelectTask).toHaveBeenCalledExactlyOnceWith("task-1");
   });
 });

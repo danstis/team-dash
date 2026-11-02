@@ -135,6 +135,7 @@ async function clearCacheStores(): Promise<void> {
   await db.dependencies.clear();
   await db.sections.clear();
   await db.tasks.clear();
+  await db.teamMappingOverrides.clear();
 }
 
 async function seedInScopeProjects(): Promise<void> {
@@ -157,6 +158,72 @@ describe("T055 CacheRepository (contracts/storage-repository.md)", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await clearCacheStores();
+  });
+
+  describe("dashboard lookup reads", () => {
+    it("lists only users in the requested workspace", async () => {
+      const current = makeUser({ gid: "user-current" });
+      await db.users.bulkPut([
+        current,
+        makeUser({ gid: "user-other", workspaceGid: OTHER_WORKSPACE_GID }),
+      ]);
+      expect(await cacheRepository.listUsers(WORKSPACE_GID)).toEqual([current]);
+    });
+
+    it("lists active projects only in the requested workspace", async () => {
+      await seedInScopeProjects();
+      expect(
+        (await cacheRepository.listProjects(WORKSPACE_GID))
+          .map((p) => p.gid)
+          .sort(),
+      ).toEqual([ACTIVE_PROJECT_GID, SECOND_ACTIVE_PROJECT_GID]);
+    });
+
+    it("lists only portfolios in the requested workspace", async () => {
+      const current = makePortfolio({ gid: "portfolio-current" });
+      await db.portfolios.bulkPut([
+        current,
+        makePortfolio({
+          gid: "portfolio-other",
+          workspaceGid: OTHER_WORKSPACE_GID,
+        }),
+      ]);
+      expect(await cacheRepository.listPortfolios(WORKSPACE_GID)).toEqual([
+        current,
+      ]);
+    });
+
+    it("lists only Asana teams in the requested workspace", async () => {
+      const current = makeAsanaTeam({ gid: "team-current" });
+      await db.asanaTeams.bulkPut([
+        current,
+        makeAsanaTeam({ gid: "team-other", workspaceGid: OTHER_WORKSPACE_GID }),
+      ]);
+      expect(await cacheRepository.listAsanaTeams(WORKSPACE_GID)).toEqual([
+        current,
+      ]);
+    });
+
+    it("lists all locally stored team mapping overrides", async () => {
+      const overrides = [
+        {
+          projectGid: ACTIVE_PROJECT_GID,
+          reportingTeamGid: "team-a",
+          updatedAt: "2026-07-31T00:00:00.000Z",
+        },
+        {
+          projectGid: OTHER_WORKSPACE_PROJECT_GID,
+          reportingTeamGid: "team-b",
+          updatedAt: "2026-07-31T00:00:00.000Z",
+        },
+      ];
+      await db.teamMappingOverrides.bulkPut(overrides);
+      expect(
+        (await cacheRepository.listTeamMappingOverrides()).sort((a, b) =>
+          a.projectGid.localeCompare(b.projectGid),
+        ),
+      ).toEqual(overrides);
+    });
   });
 
   describe("upsert cache entities by key without clearing unrelated rows", () => {

@@ -287,10 +287,18 @@ async function walkFirstRunFlowToGateOpen(page: Page): Promise<void> {
   await workspaceField.selectOption(PRIMARY_WORKSPACE_GID);
   await page.getByRole("button", { name: /select workspace/i }).click();
 
-  // Gate lifts — the first-run surface unmounts and the T031
-  // placeholder reporting surface (the `<h1>Team Dash</h1>`
-  // heading) becomes visible.
-  await expect(page.locator('[data-view-state="first_run"]')).toHaveCount(0);
+  // Gate lifts — the first-run surface unmounts and the reporting
+  // dashboard (the `<h1>Team Dash</h1>` heading) becomes visible.
+  //
+  // BSOD-781 (T-UI1): the selector is narrowed to the first-run
+  // primitive's own class. The dashboard's first-run *data* state —
+  // the empty dashboard, which `EmptyDashboard` publishes as
+  // `data-view-state="first_run"` — legitimately carries the same
+  // ViewState literal once the gate is open; the credential first-run
+  // surface is what this assertion is about.
+  await expect(
+    page.locator('[data-view-state="first_run"].td-first-run-state'),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("heading", { level: 1, name: PLACEHOLDER_HEADING }),
   ).toBeVisible();

@@ -101,7 +101,7 @@ describe("T010 index.html (Vite entry document)", () => {
   });
 });
 
-describe("T031 <App /> (T031 mounts the T010 placeholder content)", () => {
+describe("T031 <App /> (the shell mounts the reporting surface)", () => {
   afterEach(() => {
     cleanup();
   });
@@ -125,9 +125,15 @@ describe("T031 <App /> (T031 mounts the T010 placeholder content)", () => {
     expect(container.querySelector("main")).not.toBeNull();
   });
 
-  it("explains that the reporting dashboard is upcoming (T010 placeholder copy)", async () => {
+  it("mounts the reporting dashboard instead of the T010 placeholder copy (BSOD-781)", async () => {
     render(<App />);
-    expect(await screen.findByText(/reporting dashboard/i)).toBeInTheDocument();
+    // The placeholder prose is gone: `/` now mounts the live reporting
+    // dashboard, whose own first-run state explains that there is no
+    // data yet and offers the refresh action.
+    expect(
+      await screen.findByText(/no dashboard data to show/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/reporting dashboard will be/i)).toBeNull();
   });
 });
 

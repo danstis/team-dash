@@ -34,7 +34,8 @@
  *   Principle VI's lint-enforced half of the boundary); the "shell
  *   does not compose features" rule is enforced by convention and
  *   code review, not by lint. Future stories extend the `routes`
- *   array; this module never grows beyond the placeholder route.
+ *   array; this module maps paths to surfaces and owns no business
+ *   logic of its own.
  *
  * - The first-run surface itself is composed by the
  *   `<FirstRunSetup />` feature component (`BSOD-347`,
@@ -97,7 +98,6 @@
  */
 import {
   createMemoryRouter,
-  Link,
   Outlet,
   RouterProvider,
   type RouteObject,
@@ -107,58 +107,29 @@ import { useCredentials } from "./credentials-context";
 import { useWorkspace } from "./workspace-context";
 import { FirstRunSetup } from "../features/credentials/FirstRunSetup";
 import { SettingsCredentialsPanel } from "../features/credentials/SettingsCredentialsPanel";
-import { RefreshStatusPanel } from "../features/refresh/RefreshStatusPanel";
+import { ReportingDashboard } from "../features/dashboard/ReportingDashboard";
 import { SettingsScreen } from "../features/settings/SettingsScreen";
 import { ThemeToggle } from "../features/settings/ThemeToggle";
 
 /**
- * The T031 placeholder. Renders the existing T010 shell markup so
- * the app boots with a recognisable "Team Dash" heading and an
- * honest notice that the rest of the routes are coming in subsequent
- * tasks.
+ * The reporting surface at `/` — BSOD-781 (T-UI1).
  *
- * The placeholder is registered as the index route so it covers
- * `/` once the gate lifts. While the gate is closed, the gate
- * component above it renders `<FirstRunRoute />` instead, so the
- * placeholder is never reachable — and therefore never appears in the
- * rendered DOM — until both providers report `'ready'`.
+ * The T031 placeholder used to stand here: a heading, a Settings link
+ * and the refresh-status panel, with two paragraphs of developer prose
+ * where the report should be. The dashboard now mounts the components
+ * Stages 4–6 shipped — the first-run/empty surface, the data-quality
+ * summary, the filterable task list with its detail drawer, and the
+ * work-added / work-completed chart with its drill-down panel — over
+ * the local cache, so every completed feature is present and operable
+ * in the live application (Constitution Principle II).
  *
- * Once the gate is open, the placeholder also surfaces a stable
- * "Settings" link (BSOD-351 / T131) so the user can navigate to the
- * credentials panel. The link is the canonical in-app entry point
- * for the `/settings` route; the `data-testid="nav-settings"`
- * attribute is the stable anchor the Playwright e2e spec uses.
- *
- * BSOD-307 (T053) — the route now also mounts the
- * `<RefreshStatusPanel />`, the refresh-status surface that reports
- * whether the data on screen is cached or fresh and disables the
- * refresh action while the browser is offline (FR-021 / FR-087).
- * Before T053 the panel had no home, so the offline branch of the
- * refresh action existed only as a component: the service-worker
- * layer that makes the branch reachable (a reload with no network)
- * landed in the same row.
+ * The shell contract the placeholder established is preserved by the
+ * dashboard itself: the "Team Dash" heading, the `nav-settings` link
+ * and the `<RefreshStatusPanel />` are all still on `/`, which is what
+ * the landing e2e spec and the first-run integration tests assert.
  */
-function PlaceholderRoute(): React.ReactElement {
-  return (
-    <main className="team-dash-shell" lang="en-AU">
-      <h1>Team Dash</h1>
-      <p>
-        The application shell is bootstrapping. The reporting dashboard will be
-        implemented in a subsequent user story.
-      </p>
-      <hr />
-      <p>
-        The router and provider tree are wired. Subsequent user stories register
-        their routes against this router.
-      </p>
-      <p>
-        <Link to="/settings" data-testid="nav-settings">
-          Settings
-        </Link>
-      </p>
-      <RefreshStatusPanel />
-    </main>
-  );
+function ReportingRoute(): React.ReactElement {
+  return <ReportingDashboard />;
 }
 
 /**
@@ -258,16 +229,16 @@ function RouteGuard(): React.ReactElement {
  * (`Component: RouteGuard`) rather than as a separate wrapper
  * component, so the gate's "render `<Outlet />`" decision happens
  * exactly once per URL match rather than once per child route.
- * Once the dashboard chrome exists (US2), the placeholder will
- * move into a nested route and the chrome becomes the layout's
- * body.
+ * BSOD-781 (T-UI1) replaced the T031 placeholder at `/` with the
+ * live `<ReportingDashboard />`, so the reporting chrome now exists
+ * and the layout's body is the reporting surface itself.
  */
 const routes: RouteObject[] = [
   {
     path: "/",
     Component: RouteGuard,
     children: [
-      { index: true, Component: PlaceholderRoute },
+      { index: true, Component: ReportingRoute },
       { path: "settings", Component: SettingsRoute },
     ],
   },
@@ -279,9 +250,9 @@ const routes: RouteObject[] = [
  * The production browser build (a future task) will swap this for
  * `createBrowserRouter`; the route table is shared.
  *
- * The default `initialEntries` is `["/"]` so the placeholder is
- * rendered on first mount when the gate is open. While the gate is
- * closed the placeholder is replaced by `<FirstRunRoute />`, so the
+ * The default `initialEntries` is `["/"]` so the reporting dashboard
+ * is rendered on first mount when the gate is open. While the gate is
+ * closed the dashboard is replaced by `<FirstRunRoute />`, so the
  * initial entry matters only for the gate-open branch.
  *
  * The factory exists so a test can build a router that starts on a

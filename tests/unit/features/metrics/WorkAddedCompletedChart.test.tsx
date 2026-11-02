@@ -532,24 +532,35 @@ describe("WorkAddedCompletedChart", () => {
     expect(request.taskGids).toEqual(["task-2"]);
   });
 
-  it("lets a hovered point receive a drill-down click", async () => {
-    const { container, onDrillDown } = renderChart();
-    const point = screen.getAllByTestId("work-added-completed-point-added")[0];
-    const chart = container.querySelector(".recharts-surface");
-    expect(chart).not.toBeNull();
-    fireEvent.mouseMove(chart as Element, { clientX: 100, clientY: 91 });
+  it.each([
+    ["added", "created"],
+    ["completed", "completed"],
+  ] as const)(
+    "lets a hovered %s point receive a drill-down click",
+    async (series, measure) => {
+      const { container, onDrillDown } = renderChart();
+      const point = screen.getAllByTestId(
+        `work-added-completed-point-${series}`,
+      )[0];
+      const chart = container.querySelector(".recharts-surface");
+      expect(chart).not.toBeNull();
+      fireEvent.mouseMove(chart as Element, { clientX: 100, clientY: 91 });
 
-    const activeDot = await waitFor(() => {
-      const active = container.querySelector(
-        ".recharts-active-dot .td-work-added-completed__point",
+      const activeDot = await waitFor(() => {
+        const active = container.querySelector(
+          `.recharts-active-dot .td-work-added-completed__point--${series}`,
+        );
+        expect(active).not.toBeNull();
+        return active;
+      });
+      expect(activeDot).toHaveStyle({ pointerEvents: "none" });
+      fireEvent.click(point);
+      expect(onDrillDown).toHaveBeenCalledOnce();
+      expect(onDrillDown).toHaveBeenCalledWith(
+        expect.objectContaining({ measure }),
       );
-      expect(active).not.toBeNull();
-      return active;
-    });
-    expect(activeDot).toHaveStyle({ pointerEvents: "none" });
-    fireEvent.click(point);
-    expect(onDrillDown).toHaveBeenCalledOnce();
-  });
+    },
+  );
 
   it("uses the clicked group's result for grouped drill-down", () => {
     const other = {

@@ -118,7 +118,7 @@
  * shared formatters and Recharts. It performs no I/O and makes no
  * network call.
  */
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import {
   Bar,
   BarChart,
@@ -146,6 +146,7 @@ import {
 import type { ISODate, MetricResult } from "../../domain/types";
 import { formatDate, formatDuration } from "../../shared/format";
 import {
+  FLAT_RATE_EPSILON,
   computeNetTrend,
   type NetTrend,
   type NetTrendDirection,
@@ -378,6 +379,8 @@ interface SeriesPointProps {
   readonly drillable: boolean;
   /** The radius of a round point, in pixels. */
   readonly radius?: number;
+  /** The hover marker lets pointer clicks reach the point beneath it. */
+  readonly style?: CSSProperties;
   /** Called when the point is clicked. */
   readonly onSelect?: (row: MirroredRow) => void;
 }
@@ -528,7 +531,7 @@ function formatSignedNumber(value: number): string {
   const magnitude = Math.abs(value).toLocaleString("en-AU", {
     maximumFractionDigits: 1,
   });
-  if (value === 0) {
+  if (Math.abs(value) < FLAT_RATE_EPSILON) {
     return magnitude;
   }
   return `${value < 0 ? "−" : "+"}${magnitude}`;
@@ -542,7 +545,7 @@ function formatSignedNumber(value: number): string {
 function formatSignedDuration(minutes: number): string {
   const text = formatDuration(minutes, { maximumFractionDigits: 1 });
   const body = text.startsWith("-") ? `−${text.slice(1)}` : text;
-  if (minutes === 0) {
+  if (Math.abs(minutes) < FLAT_RATE_EPSILON) {
     return body;
   }
   return minutes > 0 ? `+${body}` : body;
@@ -774,7 +777,12 @@ function mirroredDomain(
 ): [number, number] {
   const reach = rows.reduce(
     (widest, row) =>
-      Math.max(widest, Math.abs(row.added), Math.abs(row.completed), row.trend),
+      Math.max(
+        widest,
+        Math.abs(row.added),
+        Math.abs(row.completed),
+        Math.abs(row.trend),
+      ),
     0,
   );
   const step = axisStep(view, Math.max(1, reach / 2));
@@ -975,6 +983,7 @@ function SeriesPoint({
   testId,
   drillable,
   radius = 4,
+  style,
   onSelect,
 }: Readonly<SeriesPointProps>): ReactElement | null {
   if (cx === undefined || cy === undefined) {
@@ -997,6 +1006,7 @@ function SeriesPoint({
         cx={cx}
         cy={cy}
         r={radius}
+        style={style}
         onClick={handleClick}
       />
     );
@@ -1010,6 +1020,7 @@ function SeriesPoint({
       y={cy - half}
       width={half * 2}
       height={half * 2}
+      style={style}
       onClick={handleClick}
     />
   );
@@ -1044,9 +1055,10 @@ export function WorkAddedCompletedChart({
   const rows = isGrouped ? buildRows(buckets, groups, series, view) : [];
 
   const workspace = groups[0];
-  const mirrored = isGrouped
-    ? null
-    : buildMirroredRows(buckets, workspace?.result ?? groups[0].result, view);
+  const mirrored =
+    isGrouped || workspace === undefined
+      ? null
+      : buildMirroredRows(buckets, workspace.result, view);
   const mirroredRows = mirrored?.rows ?? [];
   const trend = mirrored?.trend ?? null;
 
@@ -1220,6 +1232,9 @@ export function WorkAddedCompletedChart({
                           return;
                         }
                         const group = groups[item.groupIndex];
+                        if (group === undefined) {
+                          return;
+                        }
                         onDrillDown(
                           drillDownRequest(
                             item.groupKey,
@@ -1228,7 +1243,7 @@ export function WorkAddedCompletedChart({
                               bucketStart,
                               bucketEnd: payload?.bucketEnd ?? bucketStart,
                             },
-                            group?.result ?? groups[0].result,
+                            group.result,
                           ),
                         );
                       }}
@@ -1309,6 +1324,7 @@ export function WorkAddedCompletedChart({
                         shape="circle"
                         drillable={false}
                         radius={5}
+                        style={{ pointerEvents: "none" }}
                       />
                     )}
                   />
@@ -1338,6 +1354,7 @@ export function WorkAddedCompletedChart({
                         shape="square"
                         drillable={false}
                         radius={5}
+                        style={{ pointerEvents: "none" }}
                       />
                     )}
                   />

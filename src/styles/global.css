@@ -748,6 +748,98 @@ a[data-testid="nav-settings"]:hover {
   stroke-dasharray: 4 2;
 }
 
+/* ---- The mirrored line diagram (BSOD-783) ---------------------------- */
+
+/* The three series are told apart without colour: the added measure is
+   a solid line with round markers above the zero line, the completed
+   measure a dashed line with square markers below it, and the net work
+   change trend a dotted line of its own. The colours come from the
+   chart-specific tokens, which clear the 3:1 graphical-object floor
+   against the chart surface. */
+.td-work-added-completed__line--added .recharts-line-curve {
+  stroke: var(--td-chart-series-added);
+  fill: none;
+}
+
+.td-work-added-completed__line--completed .recharts-line-curve {
+  stroke: var(--td-chart-series-completed);
+  stroke-dasharray: 6 3;
+  fill: none;
+}
+
+.td-work-added-completed__line--trend .recharts-line-curve {
+  stroke: var(--td-chart-series-trend);
+  stroke-dasharray: 2 3;
+  fill: none;
+}
+
+.td-work-added-completed__line--added .recharts-active-dot {
+  fill: var(--td-chart-series-added);
+}
+
+.td-work-added-completed__line--completed .recharts-active-dot {
+  fill: var(--td-chart-series-completed);
+}
+
+.td-work-added-completed__point {
+  stroke: var(--td-chart-surface);
+  stroke-width: 1;
+}
+
+.td-work-added-completed__point--added {
+  fill: var(--td-chart-series-added);
+}
+
+.td-work-added-completed__point--completed {
+  fill: var(--td-chart-series-completed);
+}
+
+.td-work-added-completed__point--drillable {
+  cursor: pointer;
+}
+
+/* The zero baseline: the line that separates the two halves. */
+.td-work-added-completed__zero .recharts-reference-line-line {
+  stroke: var(--td-chart-ink-secondary);
+  stroke-width: 1.5;
+}
+
+.td-work-added-completed__axis-label {
+  fill: var(--td-chart-ink-secondary);
+  font-size: var(--td-font-size-xs);
+}
+
+.td-work-added-completed__swatch--line {
+  width: 24px;
+}
+
+.td-work-added-completed__swatch-line {
+  fill: none;
+  stroke-width: 2;
+}
+
+.td-work-added-completed__swatch-line--added {
+  stroke: var(--td-chart-series-added);
+}
+
+.td-work-added-completed__swatch-line--completed {
+  stroke: var(--td-chart-series-completed);
+  stroke-dasharray: 6 3;
+}
+
+.td-work-added-completed__swatch-line--trend {
+  stroke: var(--td-chart-series-trend);
+  stroke-dasharray: 2 3;
+}
+
+.td-work-added-completed__swatch-marker--added {
+  fill: var(--td-chart-series-added);
+}
+
+.td-work-added-completed__swatch-marker--completed {
+  fill: var(--td-chart-series-completed);
+}
+
 .td-work-added-completed__table {
   width: 100%;
   margin-bottom: var(--td-space-4);

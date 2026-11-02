@@ -327,6 +327,14 @@ The three task-health calculators all live in `src/domain/metrics/taskHealth.ts`
 
 ---
 
+## Phase 16: The Work-Added / Work-Completed Chart, Redrawn
+
+**Purpose**: BSOD-783 — the reporting dashboard's headline metric is drawn as grouped bars, which answer "how many" but not "are we getting through more work than we are adding?". This phase redraws the workspace-level figure as a mirrored line diagram — the added measure above the zero line, the completed measure below it, and a fitted trend of the net work change across the period — so the capacity reading is available at a glance (FR-056–FR-062, FR-088).
+
+- [x] [BSOD-783] T-UI2 [US4] Redesign the work-added-vs-completed metric chart as a mirrored line diagram — write the failing tests first, then reimplement the chart surface
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

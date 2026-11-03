@@ -521,6 +521,12 @@ function formatFigure(view: WorkAddedCompletedView, value: number): string {
   return view === "count" ? String(value) : formatDuration(value);
 }
 
+/** Preserve the sign of values below the mirrored chart's zero line. */
+function formatAxisTick(view: WorkAddedCompletedView, value: number): string {
+  const magnitude = formatFigure(view, Math.abs(value));
+  return value < 0 ? `−${magnitude}` : magnitude;
+}
+
 /**
  * A number with its sign, to one decimal place: `+2` / `−0.5`.
  *
@@ -1332,7 +1338,7 @@ export function WorkAddedCompletedChart({
                     width={VALUE_AXIS_WIDTH}
                     domain={mirroredDomain(mirroredRows, view)}
                     tickFormatter={(value: number) =>
-                      formatFigure(view, Math.abs(value))
+                      formatAxisTick(view, value)
                     }
                     label={{ content: <ValueAxisLabel view={view} /> }}
                   />

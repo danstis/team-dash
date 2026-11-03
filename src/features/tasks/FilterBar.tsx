@@ -135,7 +135,7 @@ export interface FilterBarProps {
 const PRESET_LABELS = DATE_RANGE_PRESET_LABELS;
 
 /** The label of the option that clears the date-range filter. */
-const ANY_TIME_LABEL = "Any time";
+const ANY_TIME_LABEL = "Any time (including undated and future tasks)";
 
 /** The label of the custom start/end range option. */
 const CUSTOM_RANGE_LABEL = "Custom range";
@@ -327,6 +327,7 @@ export function FilterBar({
           {DATE_RANGE_PRESETS.map((preset) => (
             <option key={preset} value={preset}>
               {PRESET_LABELS[preset]}
+              {preset === "all_time" ? " (due through today)" : ""}
             </option>
           ))}
           <option value="custom">{CUSTOM_RANGE_LABEL}</option>

@@ -350,9 +350,12 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
       await screen.findByTestId("data-quality-summary"),
     ).toBeInTheDocument();
 
-    // US3 — the filterable task list and its table.
-    expect(await screen.findByTestId("filter-bar")).toBeInTheDocument();
-    expect(screen.getByTestId("active-filters-list")).toBeInTheDocument();
+    // US3 — one pill bar holds every filter; the reporting window is
+    // always a pill. The task list and its table follow.
+    expect(await screen.findByTestId("filter-pill-bar")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Date range:/ }),
+    ).toBeInTheDocument();
     const table = await screen.findByTestId("task-table");
     expect(table).toBeInTheDocument();
     expect(screen.getAllByTestId("task-row")).toHaveLength(2);

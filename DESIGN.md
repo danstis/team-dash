@@ -326,6 +326,10 @@ Confirmation dialogs: raised surface, Hairline Strong border, 16px radius, 24px 
 
 A compact pill (999px radius, 4px × 12px, 0.875rem medium) on Surface with a Hairline border. Hover switches the border and text to Kiln Orange. It is a stand-in until full dashboard navigation lands.
 
+### Filter Bar
+
+One strip above the charts holds every report filter. "Add filter" opens a menu of the kinds not yet in use; choosing one opens its value editor, and the result becomes a pill beside the others. A pill is a 6px-radius chip (Paper fill, Hairline Strong border) with a click-to-edit label and a separate X to remove it. Each kind appears once. The date range is the reporting window: always present, editable, never removable. The menu and editors are bordered panels, not shadowed; only dialogs that interrupt carry a shadow. Single-choice editors commit on selection; multi-value editors (person, project) and the custom date range stage a draft and commit on Apply, so Escape and Cancel change nothing. The Count/Effort switch and Group by sit on a second row of the same bar, since they change how the chart is drawn rather than which tasks are in scope.
+
 ## Interaction & Copy
 
 The visual system only holds up if behaviour matches it. These rules apply to every feature as it is wired up. Open findings against them are tracked in `docs/design/ux-findings.md`.

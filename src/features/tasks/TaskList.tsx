@@ -23,6 +23,15 @@ export interface TaskListProps {
    * decides which task is open and mounts the detail surface for it.
    */
   readonly onSelectTask?: (taskGid: string) => void;
+  /**
+   * The caller's filters. When given, the list is controlled: it renders
+   * no filter surface of its own, and `tasks` is expected to be already
+   * narrowed to the caller's date window, so the date range is not
+   * applied again here (it would match on due date, not the window's
+   * created/completed basis). `onClearAll` clears the caller's filters.
+   */
+  readonly criteria?: FilterCriteria;
+  readonly onClearAll?: () => void;
 }
 
 export function TaskList({
@@ -33,32 +42,44 @@ export function TaskList({
   now,
   timezone = "local",
   onSelectTask,
+  criteria: controlledCriteria,
+  onClearAll,
 }: Readonly<TaskListProps>): ReactElement {
-  const [criteria, setCriteria] = useState<FilterCriteria>({});
-  const clearAll = (): void => setCriteria({});
+  const [ownCriteria, setCriteria] = useState<FilterCriteria>({});
+  const controlled = controlledCriteria !== undefined;
+  const criteria = controlledCriteria ?? ownCriteria;
+  const clearAll = controlled
+    ? (onClearAll ?? ((): void => undefined))
+    : () => setCriteria({});
+  // A controlled list's date window is applied by the caller.
+  const tableCriteria: FilterCriteria = controlled
+    ? { ...criteria, dateRange: undefined }
+    : criteria;
   const instant = dateToIsoDateTime(now);
-  const filteredTasks = filterTasks(tasks, criteria, {
+  const filteredTasks = filterTasks(tasks, tableCriteria, {
     timezone,
     now: instant,
   });
   const showNoResults =
     tasks.length > 0 &&
     filteredTasks.length === 0 &&
-    hasActiveFilters(criteria);
+    hasActiveFilters(tableCriteria);
 
   return (
     <>
-      <FilterBar
-        criteria={criteria}
-        onChange={setCriteria}
-        users={users}
-        projects={projects}
-        now={now}
-        timezone={timezone}
-      />
+      {controlled ? null : (
+        <FilterBar
+          criteria={criteria}
+          onChange={setCriteria}
+          users={users}
+          projects={projects}
+          now={now}
+          timezone={timezone}
+        />
+      )}
       {showNoResults ? (
         <NoResultsState
-          criteria={criteria}
+          criteria={tableCriteria}
           users={users}
           projects={projects}
           onClearAll={clearAll}
@@ -66,16 +87,18 @@ export function TaskList({
         />
       ) : (
         <>
-          <ActiveFiltersList
-            criteria={criteria}
-            users={users}
-            projects={projects}
-            onClearAll={clearAll}
-            timezone={timezone}
-          />
+          {controlled ? null : (
+            <ActiveFiltersList
+              criteria={criteria}
+              users={users}
+              projects={projects}
+              onClearAll={clearAll}
+              timezone={timezone}
+            />
+          )}
           <TaskTable
             tasks={tasks}
-            criteria={criteria}
+            criteria={tableCriteria}
             users={users}
             projects={projects}
             priorityLabels={priorityLabels}

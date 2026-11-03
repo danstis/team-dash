@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { useState, type ReactElement } from "react";
@@ -143,6 +144,75 @@ describe("FilterPillBar", () => {
     expect(
       screen.queryByRole("button", { name: /Person:/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the editor a native non-modal dialog and returns focus after Escape", async () => {
+    render(<Harness />);
+    const pill = screen.getByRole("button", { name: /Date range:/ });
+    fireEvent.click(pill);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.tagName).toBe("DIALOG");
+    expect(dialog).toHaveAttribute("open");
+    expect(screen.getByLabelText("Last 30 days")).toHaveFocus();
+
+    fireEvent.keyDown(screen.getByLabelText("Last 30 days"), {
+      key: "Escape",
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(pill).toHaveFocus());
+    expect(latest.dateRange?.preset).toBe("last_30_days");
+  });
+
+  it("outside press cancels a draft and returns focus to its pill", async () => {
+    render(<Harness />);
+    fireEvent.click(
+      within(openMenu()).getByRole("menuitem", { name: "Person" }),
+    );
+    fireEvent.click(screen.getByLabelText("Ana"));
+    fireEvent.pointerDown(document.body);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(latest.assigneeGids).toBeUndefined();
+    const add = screen.getByRole("button", { name: /Add filter/ });
+    await waitFor(() => expect(add).toHaveFocus());
+  });
+
+  it("announces filter outcomes with a native status output", () => {
+    render(<Harness />);
+    fireEvent.click(
+      within(openMenu()).getByRole("menuitem", { name: "Overdue" }),
+    );
+    fireEvent.click(screen.getByLabelText("Overdue"));
+    const outcome = screen.getByRole("status");
+    expect(outcome.tagName).toBe("OUTPUT");
+    expect(outcome).toHaveTextContent("Overdue filter set.");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Overdue filter" }),
+    );
+    expect(outcome).toHaveTextContent("Overdue filter removed.");
+  });
+
+  it("announces invalid dates and empty searches with native status outputs", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: /Date range:/ }));
+    fireEvent.click(screen.getByLabelText("Custom range"));
+    fireEvent.change(screen.getByLabelText("From"), {
+      target: { value: "2026-04-01" },
+    });
+    const hint = screen.getByText(/Choose a start date/);
+    expect(hint.tagName).toBe("OUTPUT");
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+
+    fireEvent.click(
+      within(openMenu()).getByRole("menuitem", { name: "Person" }),
+    );
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "Nobody" },
+    });
+    const empty = screen.getByText(/No people match/);
+    expect(empty.tagName).toBe("OUTPUT");
   });
 
   it("points the opener at the panel it opens", () => {

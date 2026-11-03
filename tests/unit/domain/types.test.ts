@@ -30,6 +30,7 @@ import {
   type ViewState,
   type WeekStart,
   DATE_RANGE_PRESETS,
+  OPEN_DATE_RANGE_START,
   isDataQualityFlagKind,
   isViewState,
 } from "../../../src/domain/types";
@@ -47,19 +48,45 @@ describe("T016 cross-cutting domain types", () => {
   });
 
   describe("DateRangePreset", () => {
-    it("exposes every preset mandated by FR-032", () => {
+    it("exposes every preset mandated by FR-032 and FR-091", () => {
       expect(DATE_RANGE_PRESETS).toEqual([
         "this_week",
         "last_week",
         "last_30_days",
+        "last_90_days",
         "this_month",
         "last_month",
         "this_quarter",
+        "last_quarter",
+        "last_6_months",
+        "last_12_months",
+        "last_calendar_year",
+        "this_year",
+        "all_time",
       ]);
     });
 
-    it("narrows to the documented literal union for FR-032 presets", () => {
+    it("narrows to the documented literal union for FR-032 / FR-091 presets", () => {
       const presets: DateRangePreset[] = [
+        "this_week",
+        "last_week",
+        "last_30_days",
+        "last_90_days",
+        "this_month",
+        "last_month",
+        "this_quarter",
+        "last_quarter",
+        "last_6_months",
+        "last_12_months",
+        "last_calendar_year",
+        "this_year",
+        "all_time",
+      ];
+      expect(presets).toHaveLength(13);
+    });
+
+    it("keeps FR-032's six original presets in the extended vocabulary", () => {
+      const original: DateRangePreset[] = [
         "this_week",
         "last_week",
         "last_30_days",
@@ -67,7 +94,20 @@ describe("T016 cross-cutting domain types", () => {
         "last_month",
         "this_quarter",
       ];
-      expect(presets).toHaveLength(6);
+      for (const preset of original) {
+        expect(DATE_RANGE_PRESETS).toContain(preset);
+      }
+    });
+  });
+
+  describe("OPEN_DATE_RANGE_START", () => {
+    it("is the open lower bound of an unbounded (all time) range", () => {
+      // The bound is a comparison value, not an arithmetic input: every
+      // calendar date the app can hold compares after it, so an open
+      // range needs no special case in a membership test.
+      expect(OPEN_DATE_RANGE_START).toBe("1000-01-01");
+      expect(("1999-12-31" as ISODate) > OPEN_DATE_RANGE_START).toBe(true);
+      expect(("2026-03-18" as ISODate) > OPEN_DATE_RANGE_START).toBe(true);
     });
   });
 

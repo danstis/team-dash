@@ -40,6 +40,7 @@ import type {
   ISODateTime,
   TimezoneSetting,
 } from "../../../../src/domain/types";
+import { OPEN_DATE_RANGE_START } from "../../../../src/domain/types";
 import {
   DAILY_BUCKET_THRESHOLD_DAYS,
   addDays,
@@ -556,9 +557,16 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
       "this_week",
       "last_week",
       "last_30_days",
+      "last_90_days",
       "this_month",
       "last_month",
       "this_quarter",
+      "last_quarter",
+      "last_6_months",
+      "last_12_months",
+      "last_calendar_year",
+      "this_year",
+      "all_time",
     ];
 
     for (const preset of presets) {
@@ -595,6 +603,127 @@ describe("T020 date-range preset resolution (FR-032, FR-031)", () => {
       expect(diffInDaysInclusive(localRange.start, localRange.end)).toBe(30);
       expect(diffInDaysInclusive(utcRange.start, utcRange.end)).toBe(30);
     });
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Extended preset vocabulary (FR-091)                                         */
+/* -------------------------------------------------------------------------- */
+
+describe("T020 extended date-range preset vocabulary (FR-091)", () => {
+  const timezone: TimezoneSetting = "local";
+
+  it("last_90_days spans exactly the 90 calendar days ending on the anchor's local date", () => {
+    const range = resolveDateRangePreset("last_90_days", FIXED_NOW, timezone);
+    expect(range).toEqual({
+      start: isoDate("2025-12-19"),
+      end: isoDate("2026-03-18"),
+    });
+    expect(diffInDaysInclusive(range.start, range.end)).toBe(90);
+  });
+
+  it("last_quarter spans the previous complete calendar quarter (Q4 2025)", () => {
+    const range = resolveDateRangePreset("last_quarter", FIXED_NOW, timezone);
+    expect(range).toEqual({
+      start: isoDate("2025-10-01"),
+      end: isoDate("2025-12-31"),
+    });
+  });
+
+  it("last_6_months spans the six complete calendar months ending with the previous month", () => {
+    const range = resolveDateRangePreset("last_6_months", FIXED_NOW, timezone);
+    expect(range).toEqual({
+      start: isoDate("2025-09-01"),
+      end: isoDate("2026-02-28"),
+    });
+  });
+
+  it("last_12_months spans the twelve complete calendar months ending with the previous month", () => {
+    const range = resolveDateRangePreset("last_12_months", FIXED_NOW, timezone);
+    expect(range).toEqual({
+      start: isoDate("2025-03-01"),
+      end: isoDate("2026-02-28"),
+    });
+  });
+
+  it("last_calendar_year spans the previous calendar year in full", () => {
+    const range = resolveDateRangePreset(
+      "last_calendar_year",
+      FIXED_NOW,
+      timezone,
+    );
+    expect(range).toEqual({
+      start: isoDate("2025-01-01"),
+      end: isoDate("2025-12-31"),
+    });
+  });
+
+  it("this_year spans the current calendar year in full", () => {
+    const range = resolveDateRangePreset("this_year", FIXED_NOW, timezone);
+    expect(range).toEqual({
+      start: isoDate("2026-01-01"),
+      end: isoDate("2026-12-31"),
+    });
+  });
+
+  it("all_time ends on the anchor's date and opens at the injected lower bound", () => {
+    const range = resolveDateRangePreset("all_time", FIXED_NOW, timezone, {
+      earliest: isoDate("2024-05-06"),
+    });
+    expect(range).toEqual({
+      start: isoDate("2024-05-06"),
+      end: isoDate("2026-03-18"),
+    });
+  });
+
+  it("all_time without a lower bound opens at the open range start", () => {
+    const range = resolveDateRangePreset("all_time", FIXED_NOW, timezone);
+    expect(range.start).toBe(OPEN_DATE_RANGE_START);
+    expect(range.end).toBe(isoDate("2026-03-18"));
+  });
+
+  it("a lower bound dated after the anchor cannot invert the range", () => {
+    // The injected bound can only OPEN the range; a bound dated after the
+    // anchor would make the range run backwards, which no metric can read.
+    const range = resolveDateRangePreset("all_time", FIXED_NOW, timezone, {
+      earliest: isoDate("2027-01-01"),
+    });
+    expect(range.start).toBe(isoDate("2026-03-18"));
+    expect(range.end).toBe(isoDate("2026-03-18"));
+  });
+
+  it("an open-ended range holds every calendar date, whatever the basis", () => {
+    const range = resolveDateRangePreset("all_time", FIXED_NOW, timezone);
+    expect(isDateInRange(isoDate("1999-12-31"), range)).toBe(true);
+    expect(isDateInRange(isoDate("2026-03-18"), range)).toBe(true);
+    expect(isDateInRange(isoDate("2026-03-19"), range)).toBe(false);
+  });
+
+  it("resolves the same calendar periods under the UTC basis", () => {
+    expect(resolveDateRangePreset("last_quarter", FIXED_NOW, "utc")).toEqual({
+      start: isoDate("2025-10-01"),
+      end: isoDate("2025-12-31"),
+    });
+    expect(resolveDateRangePreset("last_90_days", FIXED_NOW, "utc")).toEqual({
+      start: isoDate("2025-12-19"),
+      end: isoDate("2026-03-18"),
+    });
+    expect(resolveDateRangePreset("this_year", FIXED_NOW, "utc")).toEqual({
+      start: isoDate("2026-01-01"),
+      end: isoDate("2026-12-31"),
+    });
+  });
+
+  it("recalculates under a new basis rather than blending (FR-034)", () => {
+    // 2026-03-18T13:30:00Z is the 19th in Sydney and the 18th in UTC, so
+    // the trailing 90-day window ends on a different calendar day.
+    const instant = new Date("2026-03-18T13:30:00.000Z");
+    expect(resolveDateRangePreset("last_90_days", instant, "local").end).toBe(
+      isoDate("2026-03-19"),
+    );
+    expect(resolveDateRangePreset("last_90_days", instant, "utc").end).toBe(
+      isoDate("2026-03-18"),
+    );
   });
 });
 
@@ -723,5 +852,28 @@ describe("T020 generateBuckets (FR-059)", () => {
         "day",
       ),
     ).toThrow();
+  });
+
+  it("refuses to bucket an open-ended (all time) range", () => {
+    // An open range has no lower bound, so bucketing it would walk
+    // ~375,000 years of weekly buckets. The range must be bounded by the
+    // data in hand before it reaches a metric (FR-091).
+    expect(() =>
+      generateBuckets(
+        { start: OPEN_DATE_RANGE_START, end: isoDate("2026-03-18") },
+        "week",
+      ),
+    ).toThrow(/open-ended/i);
+  });
+
+  it("keeps the bucket count sane over years of history (FR-059, FR-018)", () => {
+    // Five years of history is weekly-bucketed (the FR-059 rule: daily up
+    // to 45 days, weekly beyond) — a few hundred buckets, not thousands.
+    const range = { start: isoDate("2021-01-04"), end: isoDate("2026-01-03") };
+    const width = selectBucketWidth(
+      diffInDaysInclusive(range.start, range.end),
+    );
+    expect(width).toBe("week");
+    expect(generateBuckets(range, width).length).toBeLessThan(300);
   });
 });

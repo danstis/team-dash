@@ -96,6 +96,8 @@ import {
 } from "../../../src/app/workspace-context";
 import { db } from "../../../src/data/db/schema";
 import { refreshOrchestrator } from "../../../src/data/refresh/refresh-orchestrator";
+import { addDays, toIsoDate } from "../../../src/domain/datetime";
+import type { ISODate } from "../../../src/domain/types";
 import { smallDatasetWorkspaceGid } from "../../../fixtures/asana/small-dataset/data";
 
 /* -------------------------------------------------------------------------- */
@@ -527,5 +529,112 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
       "data-view-state",
       "empty",
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The reporting period (BSOD-787)                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The reporting period is the dashboard's own: the metric reports the
+ * window the reader picks, and the masthead states which window that
+ * is (FR-092). The period control sits in the masthead, so a
+ * screenshot of the dashboard stands on its own (DESIGN.md › The
+ * Masthead Rule).
+ */
+describe("BSOD-787 — the dashboard's reporting period", () => {
+  beforeEach(async () => {
+    await db.credentials.clear();
+    await db.workspaces.clear();
+    await db.refreshSessions.clear();
+    await db.projects.clear();
+    await db.portfolios.clear();
+    await db.users.clear();
+    await db.tasks.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  /** The first bucket of the chart's tabular alternative. */
+  async function firstBucketStart(): Promise<string> {
+    const rows = await screen.findAllByTestId("work-added-completed-row");
+    const row = rows.at(0) as HTMLElement;
+    return row.getAttribute("data-bucket-start") ?? "";
+  }
+
+  it("defaults the reporting period to the last 90 days and states it in the masthead", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    const period = await screen.findByTestId("reporting-period");
+    expect(period).toHaveValue("last_90_days");
+    // The Masthead Rule: the period the report covers is in the header.
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent(
+      "Last 90 days",
+    );
+  });
+
+  it("re-reads the metric over the window the reader picks", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    const period = await screen.findByTestId("reporting-period");
+    const ninetyDayStart = await firstBucketStart();
+
+    fireEvent.change(period, { target: { value: "last_30_days" } });
+
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent(
+      "Last 30 days",
+    );
+    // The metric now buckets the 30-day window, so its first bucket is
+    // later than the 90-day window's.
+    expect((await firstBucketStart()) > ninetyDayStart).toBe(true);
+  });
+
+  it("bounds the all-time period by the data in hand", async () => {
+    await seedCommittedRefresh();
+    // A task from well beyond the 90-day window: the all-time period
+    // has to reach it, and reach it no further back than the data.
+    const oldestCreatedAt = daysAgo(400);
+    await db.tasks.put({
+      gid: "task-oldest",
+      name: "Plan last year's roadmap",
+      assigneeGid: null,
+      projectGids: [PROJECT_GID],
+      parentTaskGid: null,
+      resourceSubtype: "default_task",
+      createdAt: oldestCreatedAt,
+      modifiedAt: oldestCreatedAt,
+      completedAt: null,
+      dueAt: null,
+      priorityOptionId: null,
+      estimatedMinutes: null,
+      actualMinutes: "unavailable",
+      dependsOnTaskGids: [],
+      lastSeenInScopeAt: daysAgo(2),
+      outOfScopeReason: null,
+    });
+
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    const period = await screen.findByTestId("reporting-period");
+    fireEvent.change(period, { target: { value: "all_time" } });
+
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent("All time");
+
+    // The period opens at the oldest activity the cache holds — not at
+    // the open bound of the vocabulary, which would mean walking a
+    // thousand years of buckets.
+    const oldestDate = toIsoDate(new Date(oldestCreatedAt), "local");
+    const bucketStart = (await firstBucketStart()) as ISODate;
+    expect(bucketStart <= oldestDate).toBe(true);
+    expect(oldestDate <= addDays(bucketStart, 6)).toBe(true);
   });
 });

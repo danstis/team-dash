@@ -704,6 +704,29 @@ describe("the mirrored line diagram", () => {
     expect(zeroLineY()).toBeCloseTo((top + bottom) / 2);
   });
 
+  it.each(["count", "effort"] as const)(
+    "shows typographic minus signs on %s ticks below zero",
+    (view) => {
+      const { container } = renderChart({
+        groups: [{ groupKey: undefined, result: FALLING_RESULT }],
+        view,
+      });
+      const lowerTicks = Array.from(
+        container.querySelectorAll(
+          ".recharts-yAxis-tick-labels .recharts-cartesian-axis-tick-value",
+        ),
+      )
+        .filter((tick) => Number(tick.getAttribute("y")) > zeroLineY())
+        .map((tick) => tick.textContent ?? "");
+
+      expect(lowerTicks.length).toBeGreaterThan(0);
+      expect(lowerTicks.every((tick) => tick.startsWith("−"))).toBe(true);
+      if (view === "effort") {
+        expect(lowerTicks.some((tick) => tick.endsWith(" min"))).toBe(true);
+      }
+    },
+  );
+
   it("shows unsigned zero for a count rate that displays as flat", () => {
     renderChart({
       groups: [{ groupKey: undefined, result: NEAR_FLAT_RESULT }],

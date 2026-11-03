@@ -36,7 +36,7 @@ BSOD-317 applies F-10's live-region rule to the task no-results surface: the sha
 
 ## Filter bar application
 
-The reporting filters now live in one pill bar above the charts (`src/features/filters`). It drives the chart, the task table and the drill-downs from one criteria object, so a screenshot's scope is exactly what the pills say. The date range matches on created and completed times only, never due date, so the table reconciles with the chart. None of F-01 to F-14 land on this surface; no finding changes status.
+The reporting filters now live in one pill bar above the charts (`src/features/filters`). It drives the chart, the task table and the drill-downs from one criteria object, so a screenshot's scope is exactly what the pills say. The date range matches on created and completed times only, never due date, so the task table lists exactly the tasks the chart's two series count — a set reconciliation, not an arithmetic one: a task added and completed inside the window is one row in the table and one figure in each series, and the dashboard says so under the chart so the two numbers are not read as disagreeing. The editors are non-modal by choice (DESIGN.md › Filter Bar): a report is a surface the reader comes and goes from. None of F-01 to F-14 land on this surface; no finding changes status.
 
 ## Not findings
 

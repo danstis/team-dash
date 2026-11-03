@@ -457,17 +457,23 @@ export function ReportingDashboard(): ReactElement {
   const reportingRange = criteria.dateRange ?? dateRange;
 
   /**
-   * The tasks the window and the other filters keep — created or
-   * completed inside the window, never matched on due date — so the task
-   * table reconciles with the chart's figures.
+   * The tasks the reporting window keeps — created or completed inside
+   * it, never matched on due date. The table narrows them by the other
+   * filters itself, so a filter that matches nothing reaches the
+   * table's no-results surface (with its explanation and its way out)
+   * instead of an empty table.
    */
-  const scopedTasks = useMemo(
+  const windowTasks = useMemo(
     () =>
-      filterTasksForReport(metricTasks, criteria, {
-        timezone: TIMEZONE,
-        now: nowIso,
-      }),
-    [metricTasks, criteria, nowIso],
+      filterTasksForReport(
+        metricTasks,
+        { dateRange: reportingRange },
+        {
+          timezone: TIMEZONE,
+          now: nowIso,
+        },
+      ),
+    [metricTasks, reportingRange, nowIso],
   );
 
   /**
@@ -717,20 +723,32 @@ export function ReportingDashboard(): ReactElement {
               busy={isRefreshing}
             />
           ) : (
-            <TaskList
-              tasks={scopedTasks}
-              criteria={criteria}
-              onClearAll={() => {
-                setCriteria(clearRemovable(criteria));
-              }}
-              users={userOptions}
-              projects={projectOptions}
-              now={now}
-              timezone={TIMEZONE}
-              onSelectTask={(taskGid): void => {
-                setSelectedTaskGid(taskGid);
-              }}
-            />
+            <>
+              {windowTasks.length > 0 ? (
+                <p
+                  className="td-dashboard__reconciliation"
+                  data-testid="dashboard-reconciliation-note"
+                >
+                  A task added and completed in this period is counted in both
+                  series of the chart above and is listed once in the table
+                  below.
+                </p>
+              ) : null}
+              <TaskList
+                tasks={windowTasks}
+                criteria={criteria}
+                onClearAll={() => {
+                  setCriteria(clearRemovable(criteria));
+                }}
+                users={userOptions}
+                projects={projectOptions}
+                now={now}
+                timezone={TIMEZONE}
+                onSelectTask={(taskGid): void => {
+                  setSelectedTaskGid(taskGid);
+                }}
+              />
+            </>
           )}
 
           {selectedTask !== null ? (

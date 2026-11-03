@@ -145,6 +145,26 @@ describe("FilterPillBar", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("points the opener at the panel it opens", () => {
+    render(<Harness />);
+
+    // The add button owns the menu it opens …
+    const add = screen.getByRole("button", { name: /Add filter/ });
+    fireEvent.click(add);
+    const menu = screen.getByRole("menu");
+    expect(add).toHaveAttribute("aria-controls", menu.id);
+    expect(add).toHaveAttribute("aria-expanded", "true");
+
+    // … and the pill owns the editor it opens.
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Overdue" }));
+    fireEvent.click(screen.getByLabelText("Overdue"));
+    const pill = screen.getByRole("button", { name: /Overdue:/ });
+    fireEvent.click(pill);
+    const dialog = screen.getByRole("dialog");
+    expect(pill).toHaveAttribute("aria-controls", dialog.id);
+    expect(pill).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("changing the date range preset updates the window", () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: /Date range:/ }));

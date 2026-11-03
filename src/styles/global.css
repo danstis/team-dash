@@ -389,6 +389,15 @@ a[data-testid="nav-settings"]:hover {
   font-size: var(--td-font-size-sm);
 }
 
+/* The reconciliation note under the chart: it says why the task table
+   and the chart's two figures do not add up to the same number, so the
+   reader is not left to conclude that one of them is wrong. */
+.td-dashboard__reconciliation {
+  margin: var(--td-space-3) 0 var(--td-space-2);
+  color: var(--td-color-text-secondary);
+  font-size: var(--td-font-size-sm);
+}
+
 .td-dashboard__actions {
   display: flex;
   align-items: center;

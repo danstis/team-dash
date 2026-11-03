@@ -110,6 +110,7 @@ export function FilterPillBar({
   const addRef = useRef<HTMLButtonElement>(null);
   const pillRefs = useRef(new Map<FilterKind, HTMLButtonElement>());
   const panelId = useId();
+  const menuId = useId();
 
   const kinds = activeKinds(criteria);
   const available = availableKinds(criteria);
@@ -243,6 +244,11 @@ export function FilterPillBar({
                   className="td-pill__edit"
                   aria-haspopup="dialog"
                   aria-expanded={open?.type === "editor" && open.kind === kind}
+                  aria-controls={
+                    open?.type === "editor" && open.kind === kind
+                      ? panelId
+                      : undefined
+                  }
                   ref={(node) => {
                     if (node === null) {
                       pillRefs.current.delete(kind);
@@ -288,6 +294,13 @@ export function FilterPillBar({
                 className="td-filterbar__add"
                 aria-haspopup="menu"
                 aria-expanded={open !== null && open.type === "menu"}
+                aria-controls={
+                  open === null
+                    ? undefined
+                    : open.type === "menu"
+                      ? menuId
+                      : panelId
+                }
                 ref={addRef}
                 onClick={() => {
                   setOpen(open?.type === "menu" ? null : { type: "menu" });
@@ -303,6 +316,7 @@ export function FilterPillBar({
             {open?.type === "menu" ? (
               <ul
                 className="td-filterbar__menu"
+                id={menuId}
                 role="menu"
                 aria-label="Add a filter"
                 onKeyDown={onMenuKeyDown}

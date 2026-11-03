@@ -67,11 +67,17 @@
  *
  * ## The reporting period
  * ----------------------
- * The metric reports a period, so the dashboard owns one: the "last
- * 30 days" preset, resolved against the injected clock under the
- * app-wide timezone basis. The period is shown in the masthead, so a
- * screenshot of the dashboard states what it covers (DESIGN.md ›
- * Interaction & Copy › The Masthead Rule).
+ * The metric reports a period, so the dashboard owns one: the reader
+ * picks it from the shared preset vocabulary (FR-091) — it opens on the
+ * "last 90 days" preset — and the period is resolved against the
+ * injected clock under the app-wide timezone basis. The selected period
+ * is shown in the masthead, so a screenshot of the dashboard states
+ * what it covers (DESIGN.md › Interaction & Copy › The Masthead Rule).
+ *
+ * The all-time period has no lower bound of its own, so the dashboard
+ * bounds it against the data in hand: the period opens at the oldest
+ * activity the cache holds, never at the vocabulary's open bound (which
+ * would mean walking a thousand years of buckets).
  *
  * The task list's own filters are separate: `TaskList` owns its
  * criteria, so the table can be narrowed independently of the metric.
@@ -113,6 +119,7 @@ import { refreshOrchestrator } from "../../data/refresh/refresh-orchestrator";
 import {
   dateToIsoDateTime,
   resolveDateRangePreset,
+  toIsoDate,
 } from "../../domain/datetime";
 import {
   calculateWorkAddedVsCompleted,
@@ -127,6 +134,7 @@ import type {
   MetricResult,
   TimezoneSetting,
 } from "../../domain/types";
+import { dateRangePresetLabel } from "../../shared/dateRangePresetLabels";
 import { formatDate } from "../../shared/format";
 import { useOnlineStatus } from "../../shared/hooks/useOnlineStatus";
 import { LoadingState } from "../../shared/states/LoadingState";
@@ -156,23 +164,23 @@ import {
   buildGroupLabels,
   deriveDataQualityFlags,
   deriveTeamMapping,
+  earliestActivityDate,
   toMetricTasks,
 } from "./dashboard-derivations";
+import { ReportingPeriodControl } from "./ReportingPeriodControl";
 
 /* -------------------------------------------------------------------------- */
 /* Constants                                                                   */
 /* -------------------------------------------------------------------------- */
 
 /**
- * The reporting period the metric covers. FR-059 requires the metric to
- * report a period, and the dashboard owns the one its users see first;
- * the label is the same phrase the filter bar offers for the preset, so
- * the two surfaces name the same window the same way.
+ * The reporting period the dashboard opens on (FR-092): the last 90
+ * days — the window the reporting is normally read over. The reader can
+ * pick another preset from the shared vocabulary (FR-091), and the
+ * label is the shared copy module's, so this surface and the task
+ * list's date-range filter name the same window the same way.
  */
-const REPORTING_PRESET: DateRangePreset = "last_30_days";
-
-/** The label of the reporting period, in the reader's words. */
-const REPORTING_PERIOD_LABEL = "Last 30 days";
+const DEFAULT_REPORTING_PERIOD: DateRangePreset = "last_90_days";
 
 /**
  * The timezone basis every date the dashboard shows is evaluated under
@@ -382,15 +390,14 @@ export function ReportingDashboard(): ReactElement {
   /** The clock as the domain's instant. */
   const nowIso = useMemo(() => dateToIsoDateTime(now), [now]);
 
-  /** The reporting period the metric buckets. */
-  const dateRange = useMemo<DateRange>(() => {
-    const { start, end } = resolveDateRangePreset(
-      REPORTING_PRESET,
-      now,
-      TIMEZONE,
-    );
-    return { start, end, preset: REPORTING_PRESET };
-  }, [now]);
+  /**
+   * The reporting period the reader picked (FR-092). The dashboard owns
+   * it: the metric reports the window, and the masthead states which
+   * window that is.
+   */
+  const [period, setPeriod] = useState<DateRangePreset>(
+    DEFAULT_REPORTING_PERIOD,
+  );
 
   /**
    * The current project → reporting-team mapping (FR-044): the Asana
@@ -422,6 +429,27 @@ export function ReportingDashboard(): ReactElement {
     () => toMetricTasks(tasks, projects),
     [tasks, projects],
   );
+
+  /**
+   * The earliest activity the cache holds. The all-time period opens
+   * here rather than at the open bound of the vocabulary, so the metric
+   * never walks a range it has no data for (FR-091).
+   */
+  const earliestActivity = useMemo(
+    () => earliestActivityDate(metricTasks, TIMEZONE),
+    [metricTasks],
+  );
+
+  /** The reporting period the metric buckets. */
+  const dateRange = useMemo<DateRange>(() => {
+    const { start, end } = resolveDateRangePreset(period, now, TIMEZONE, {
+      // With no dated task in the cache there is no period to report,
+      // so the range collapses to the anchor day instead of opening at
+      // the vocabulary's unbounded bound.
+      earliest: earliestActivity ?? toIsoDate(now, TIMEZONE),
+    });
+    return { start, end, preset: period };
+  }, [period, now, earliestActivity]);
 
   /* ---------------------------------------------------------------- */
   /* The metric                                                       */
@@ -610,7 +638,7 @@ export function ReportingDashboard(): ReactElement {
   const scopeLabel = `${projects.length} ${
     projects.length === 1 ? "project" : "projects"
   }`;
-  const scopeSummary = `${workspace.workspace?.name ?? "No workspace"} · ${scopeLabel} · ${REPORTING_PERIOD_LABEL}`;
+  const scopeSummary = `${workspace.workspace?.name ?? "No workspace"} · ${scopeLabel} · ${dateRangePresetLabel(period)}`;
 
   /* ---------------------------------------------------------------- */
   /* The surface                                                      */
@@ -625,6 +653,7 @@ export function ReportingDashboard(): ReactElement {
             {scopeSummary}
           </p>
         </div>
+        <ReportingPeriodControl value={period} onChange={setPeriod} />
         <nav className="td-dashboard__actions" aria-label="Dashboard">
           <Link to="/settings" data-testid="nav-settings">
             Settings

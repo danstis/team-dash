@@ -6,10 +6,13 @@ import type {
   AsanaTeam,
   TeamMappingOverride as StoredTeamMappingOverride,
 } from "../../data/db/schema";
+import { isoDateTimeToDate, toIsoDate } from "../../domain/datetime";
 import type {
   DataQualityFlag,
+  ISODate,
   ISODateTime,
   TeamMappingOverride,
+  TimezoneSetting,
 } from "../../domain/types";
 import type { ChartGroupBy } from "../metrics/ChartControls";
 import type { TaskTableTask } from "../tasks/TaskTable";
@@ -87,6 +90,34 @@ export function buildGroupLabels(
     default:
       return {};
   }
+}
+
+/**
+ * The earliest calendar date any activity in the cache falls on — the
+ * oldest task creation or the oldest completion, whichever is earlier.
+ *
+ * The all-time reporting period opens here (FR-091): an open-ended
+ * range would otherwise mean walking a thousand years of weekly
+ * buckets, while the data only reaches back as far as its oldest
+ * activity. `undefined` when the cache holds no dated task at all.
+ */
+export function earliestActivityDate(
+  tasks: readonly DashboardTaskRow[],
+  timezone: TimezoneSetting,
+): ISODate | undefined {
+  let earliest: ISODate | undefined;
+  for (const task of tasks) {
+    for (const instant of [task.createdAt, task.completedAt]) {
+      if (instant === null) {
+        continue;
+      }
+      const date = toIsoDate(isoDateTimeToDate(instant), timezone);
+      if (earliest === undefined || date < earliest) {
+        earliest = date;
+      }
+    }
+  }
+  return earliest;
 }
 
 export function deriveDataQualityFlags(

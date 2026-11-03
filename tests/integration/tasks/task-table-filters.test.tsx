@@ -302,7 +302,9 @@ describe("BSOD-315 (T066) — the task list filters, combines and clears", () =>
     renderTaskList();
 
     const options = within(screen.getByTestId("filter-date-range-preset"));
-    expect(options.getByRole("option", { name: /Any time.*undated.*future/i })).toHaveValue("");
+    expect(
+      options.getByRole("option", { name: /Any time.*undated.*future/i }),
+    ).toHaveValue("");
     expect(
       options.getByRole("option", {
         name: `${dateRangePresetLabel("all_time")} (due through today)`,

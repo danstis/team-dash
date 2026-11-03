@@ -19,6 +19,10 @@
  *   this/last month, this quarter (custom ranges are user-entered and
  *   flow through `FilterCriteria.dateRange` directly, so no preset
  *   resolution is required for them).
+ * - FR-091: the same vocabulary extended — last 90 days, last/last 6
+ *   months, last/last 12 months, last calendar year, this year and
+ *   all time — resolved against the same injected clock and the same
+ *   timezone basis, so there is ONE preset vocabulary in the app.
  * - FR-033: the date basis (creation / completion / due / etc.) is a
  *   caller concern; these helpers only resolve the calendar arithmetic
  *   under the active basis.
@@ -60,6 +64,7 @@ import type {
   DateRangePreset,
   TimezoneSetting,
 } from "../types";
+import { OPEN_DATE_RANGE_START } from "../types";
 
 export type { DateRange, DateRangePreset, WeekStart } from "../types";
 
@@ -430,7 +435,14 @@ export function isDateInRange(
   timezone: TimezoneSetting = "local",
 ): boolean {
   const candidate = toIsoDate(toComparableDate(value), timezone);
-  return candidate >= range.start && candidate <= range.end;
+  // An open-ended range (the `all_time` preset, FR-091) has no lower
+  // bound: `OPEN_DATE_RANGE_START` is a comparison value rather than a
+  // date the candidate has to fall after, so it is honoured as "no
+  // lower bound" here.
+  if (range.start !== OPEN_DATE_RANGE_START && candidate < range.start) {
+    return false;
+  }
+  return candidate <= range.end;
 }
 
 function toComparableDate(value: ComparableDate): Date {
@@ -568,28 +580,96 @@ function daysInQuarter(date: ISODate): number {
   );
 }
 
+/**
+ * The first day of the calendar month `months` away from the anchor's
+ * calendar month (negative is earlier), evaluated under `timezone`.
+ *
+ * The arithmetic runs on the `(year, month)` pair rather than on a date
+ * value, so the anchor's day of the month never leaks into the result
+ * and a short month never overflows (FR-091's `last_6_months` /
+ * `last_12_months`).
+ */
+function startOfMonthOffset(
+  now: Date,
+  timezone: TimezoneSetting,
+  months: number,
+): ISODate {
+  const { year, month } = getCalendarDateInTimezone(now, timezone);
+  const monthIndex = year * 12 + (month - 1) + months;
+  const targetYear = Math.floor(monthIndex / 12);
+  const targetMonth = monthIndex - targetYear * 12 + 1;
+  return formatIsoDate(targetYear, targetMonth, 1);
+}
+
+/**
+ * The first day of the calendar quarter before the one the anchor falls
+ * in. Quarters are calendar-aligned (Q1 = Jan-Mar), so the previous
+ * quarter starts exactly three months before the current one (FR-091's
+ * `last_quarter`).
+ */
+function startOfPreviousQuarter(now: Date, timezone: TimezoneSetting): ISODate {
+  const { year, month } = getCalendarDateInTimezone(now, timezone);
+  const monthIndex = year * 12 + (month - 1);
+  const currentQuarterStart = monthIndex - (monthIndex % 3);
+  const previousQuarterStart = currentQuarterStart - 3;
+  const targetYear = Math.floor(previousQuarterStart / 12);
+  const targetMonth = previousQuarterStart - targetYear * 12 + 1;
+  return formatIsoDate(targetYear, targetMonth, 1);
+}
+
 /* -------------------------------------------------------------------------- */
-/* Date-range preset resolution (FR-032)                                       */
+/* Date-range preset resolution (FR-032, FR-091)                              */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * The extra inputs a preset resolution may need beyond the anchor and
+ * the timezone basis.
+ */
+export interface DateRangeResolutionOptions {
+  /**
+   * The earliest calendar date the reporting data covers.
+   *
+   * The `all_time` preset has no lower bound of its own, so the caller
+   * injects the bound the data in hand provides: the reporting period
+   * then starts at the oldest activity the cache holds instead of at the
+   * open bound of the vocabulary. Without it the range opens at
+   * `OPEN_DATE_RANGE_START`, which is a comparison bound only — a
+   * metric must never be handed it (see `generateBuckets`).
+   */
+  readonly earliest?: ISODate;
+}
 
 /**
  * Resolves a `DateRangePreset` to a concrete `{ start, end }` pair of
  * `ISODate` values evaluated under `timezone` (FR-029, FR-030, FR-031,
- * FR-032). The anchor is the supplied `now` instant — production
+ * FR-032, FR-091). The anchor is the supplied `now` instant — production
  * callers pass `MetricContext.now` (data-model.md) so the resolution is
  * reproducible from the metric's inputs.
  *
  * Each branch is expressed in terms of the boundary helpers above
- * (Monday week-start, month/quarter boundaries) plus a fixed 30-day
- * offset for `last_30_days`, so the same `now` instant under a
- * different `timezone` produces a *different* answer where the
- * underlying calendar date differs (FR-034: recalculation under the
- * newly selected basis, not blending).
+ * (Monday week-start, month/quarter boundaries) plus a fixed day offset
+ * for the trailing day-count windows (`last_30_days`, `last_90_days`),
+ * so the same `now` instant under a different `timezone` produces a
+ * *different* answer where the underlying calendar date differs
+ * (FR-034: recalculation under the newly selected basis, not blending).
+ *
+ * The periods the vocabulary names (FR-091):
+ *
+ * - `last_30_days` / `last_90_days`: the trailing 30 / 90 calendar days
+ *   ending on the anchor's date.
+ * - `last_quarter`: the previous complete calendar quarter.
+ * - `last_6_months` / `last_12_months`: the six / twelve complete
+ *   calendar months ending with the previous month.
+ * - `last_calendar_year`: the previous calendar year, in full.
+ * - `this_year`: the current calendar year, in full.
+ * - `all_time`: everything, from the injected lower bound (or the open
+ *   bound) to the anchor's date.
  */
 export function resolveDateRangePreset(
   preset: DateRangePreset,
   now: Date,
   timezone: TimezoneSetting,
+  options: DateRangeResolutionOptions = {},
 ): { start: ISODate; end: ISODate } {
   switch (preset) {
     case "this_week":
@@ -610,6 +690,11 @@ export function resolveDateRangePreset(
       const start = addDays(end, -29);
       return { start, end };
     }
+    case "last_90_days": {
+      const end = toIsoDate(now, timezone);
+      const start = addDays(end, -89);
+      return { start, end };
+    }
     case "this_month":
       return {
         start: startOfMonthInTimezone(now, timezone),
@@ -628,6 +713,52 @@ export function resolveDateRangePreset(
         start: startOfQuarterInTimezone(now, timezone),
         end: endOfQuarterInTimezone(now, timezone),
       };
+    case "last_quarter": {
+      const thisQuarterStart = startOfQuarterInTimezone(now, timezone);
+      return {
+        start: startOfPreviousQuarter(now, timezone),
+        end: addDays(thisQuarterStart, -1),
+      };
+    }
+    case "last_6_months": {
+      const thisMonthStart = startOfMonthInTimezone(now, timezone);
+      return {
+        start: startOfMonthOffset(now, timezone, -6),
+        end: addDays(thisMonthStart, -1),
+      };
+    }
+    case "last_12_months": {
+      const thisMonthStart = startOfMonthInTimezone(now, timezone);
+      return {
+        start: startOfMonthOffset(now, timezone, -12),
+        end: addDays(thisMonthStart, -1),
+      };
+    }
+    case "last_calendar_year": {
+      const { year } = getCalendarDateInTimezone(now, timezone);
+      return {
+        start: formatIsoDate(year - 1, 1, 1),
+        end: formatIsoDate(year - 1, 12, 31),
+      };
+    }
+    case "this_year": {
+      const { year } = getCalendarDateInTimezone(now, timezone);
+      return {
+        start: formatIsoDate(year, 1, 1),
+        end: formatIsoDate(year, 12, 31),
+      };
+    }
+    case "all_time": {
+      const end = toIsoDate(now, timezone);
+      const bound = options.earliest;
+      if (bound === undefined) {
+        return { start: OPEN_DATE_RANGE_START, end };
+      }
+      // The injected bound can only OPEN the range: a bound dated after
+      // the anchor would invert it, which no metric can read, so it is
+      // clamped to the end (an empty period) rather than accepted.
+      return { start: bound > end ? end : bound, end };
+    }
     default: {
       // Exhaustiveness check: a future preset added to the union will
       // surface here at compile time, never at runtime. The `never`
@@ -677,6 +808,14 @@ export function generateBuckets(
   range: { start: ISODate; end: ISODate },
   width: BucketWidth,
 ): DateBucket[] {
+  if (range.start === OPEN_DATE_RANGE_START) {
+    // An open-ended range ("all time") has no lower bound, so bucketing
+    // it would walk a thousand years of weekly buckets. The caller must
+    // bound the range against the data in hand first (FR-091).
+    throw new Error(
+      "generateBuckets: the range is open-ended (all time) — bound it to the data in hand before bucketing it (FR-091).",
+    );
+  }
   if (range.start > range.end) {
     throw new Error(
       `generateBuckets: start (${range.start}) must be <= end (${range.end})`,

@@ -374,6 +374,12 @@ The team leader reviews the average age of incomplete tasks, the cycle time of c
 - **FR-089**: The system MUST remain usable on desktop as the primary target while remaining operable on tablet and narrow-screen viewports.
 - **FR-090**: The system MUST label every dashboard view with the currently selected timezone basis, active filters, and last successful refresh time, updating consistently as those change.
 
+### Functional Requirements — Reporting Period
+
+- **FR-091**: The system MUST offer ONE date-range preset vocabulary, shared by every surface that offers a date range, covering at least this week, last week, last 30 days, last 90 days, this month, last month, this quarter, last quarter, last 6 months, last 12 months, last calendar year, this year and all time (extending FR-032), with every preset resolved against the injected clock under the active timezone basis (FR-029/FR-030/FR-031) and each period's meaning documented in one place. A range with no lower bound (the all-time preset) MUST be represented explicitly in the domain and MUST be bounded by the data in hand before it reaches a metric, so that neither the bucket count nor the figures exceed the agreed scale (FR-018) — an open-ended range MUST NOT silently become an unbounded scan.
+- **FR-092**: The reporting dashboard MUST default its reporting period to the last 90 days.
+- **FR-093**: The reporting dashboard MUST let the user select any preset of the FR-091 vocabulary and MUST state the selected period in its masthead alongside the workspace, scope and freshness (DESIGN.md › The Masthead Rule); changing the period MUST re-read the metric over the new window. The period selects what the report covers and does not change what the system collects: the cached dataset stays the whole workspace (FR-025, FR-026).
+
 ### Non-Functional Requirements
 
 - **NFR-001 (Performance)**: The system MUST remain responsive when filtering, grouping, and rendering cached reporting across a workspace of up to 25,000 in-scope tasks.

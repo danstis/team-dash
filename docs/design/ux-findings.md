@@ -26,7 +26,7 @@ When you build or change a surface listed below, resolve its findings in the sam
 BSOD-781 (T-UI1) applies F-06 to the home route. `/` now mounts `<ReportingDashboard />` instead of the T031 placeholder, so:
 
 - the developer placeholder prose is gone — the home route's copy is product copy (the Product Voice Rule), and the first-run state speaks through the `EmptyDashboard` surface;
-- the masthead names the workspace, the scope (the workspace's active project count) and the reporting period ("Last 30 days"), and the refresh status — the `FreshnessBanner`'s cached-versus-fresh label plus the `RefreshControls` refresh action — sits in the same header, so a screenshot of the dashboard stands on its own (The Masthead Rule).
+- the masthead names the workspace, the scope (the workspace's active project count) and the reporting period, and the refresh status — the `FreshnessBanner`'s cached-versus-fresh label plus the `RefreshControls` refresh action — sits in the same header, so a screenshot of the dashboard stands on its own (The Masthead Rule). BSOD-787 makes the period the reader's choice: the masthead carries the period control (opening on "Last 90 days") and states the selected period beside the scope.
 
 The first-run state carries one extra "Refresh" control: the `EmptyDashboard`'s own next action (FR-020, FR-085). It is the empty state's action rather than a second action in the masthead, and it drives the same refresh orchestrator the masthead's refresh action drives.
 

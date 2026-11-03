@@ -12,11 +12,8 @@
  * Ana, Ben", "Completion: Incomplete"); raw criteria literals such as
  * `"no_priority"` never reach the text.
  */
-import type {
-  DateRangePreset,
-  FilterCriteria,
-  TimezoneSetting,
-} from "../../domain/types";
+import type { FilterCriteria, TimezoneSetting } from "../../domain/types";
+import { DATE_RANGE_PRESET_LABELS } from "../../shared/dateRangePresetLabels";
 import { formatDate } from "../../shared/format";
 
 /** One thing a filter pill can narrow the report by. */
@@ -55,16 +52,6 @@ export const FILTER_LABELS: Readonly<Record<FilterKind, string>> = {
 export function isRemovable(kind: FilterKind): boolean {
   return kind !== "dateRange";
 }
-
-/** The label of each date-range preset, in the reader's words. */
-export const PRESET_LABELS: Readonly<Record<DateRangePreset, string>> = {
-  this_week: "This week",
-  last_week: "Last week",
-  last_30_days: "Last 30 days",
-  this_month: "This month",
-  last_month: "Last month",
-  this_quarter: "This quarter",
-};
 
 /** A person or project the value editors can offer. */
 export interface FilterValueOption {
@@ -199,7 +186,10 @@ export function describeValue(
         return "";
       }
       if (range.preset !== "custom") {
-        return PRESET_LABELS[range.preset];
+        // The labels are the shared copy module's — ONE vocabulary, so
+        // this surface and the dashboard's period control name the same
+        // window the same way (FR-091).
+        return DATE_RANGE_PRESET_LABELS[range.preset];
       }
       return `${formatDate(range.start, context.timezone)} – ${formatDate(
         range.end,

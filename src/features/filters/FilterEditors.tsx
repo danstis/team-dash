@@ -123,7 +123,7 @@ function DateRangeEditor({
       {custom ? (
         <div className="td-filter-editor__dates">
           <label>
-            From
+            From{" "}
             <input
               type="date"
               value={start}
@@ -133,7 +133,7 @@ function DateRangeEditor({
             />
           </label>
           <label>
-            To
+            To{" "}
             <input
               type="date"
               value={end}
@@ -143,9 +143,10 @@ function DateRangeEditor({
             />
           </label>
           {invalid ? (
-            <p className="td-filter-editor__hint" role="status">
+            // A native output announces this status without an added ARIA role.
+            <output className="td-filter-editor__hint">
               Choose a start date that is on or before the end date.
-            </p>
+            </output>
           ) : null}
           <div className="td-filter-editor__actions">
             <button type="button" onClick={onCancel}>
@@ -186,11 +187,10 @@ function MultiEditor({
 }: Readonly<FilterEditorProps>): ReactElement {
   const isPerson = kind === "person";
   const options = isPerson ? users : projects;
-  const initial = isPerson
-    ? Array.isArray(criteria.assigneeGids)
-      ? criteria.assigneeGids
-      : []
-    : (criteria.projectGids ?? []);
+  let initial: readonly string[] = criteria.projectGids ?? [];
+  if (isPerson) {
+    initial = Array.isArray(criteria.assigneeGids) ? criteria.assigneeGids : [];
+  }
   const [selected, setSelected] = useState<readonly string[]>(initial);
   const [unassigned, setUnassigned] = useState(
     isPerson && criteria.assigneeGids === "unassigned",
@@ -273,11 +273,12 @@ function MultiEditor({
           </label>
         ))}
         {visible.length === 0 ? (
-          <p className="td-filter-editor__hint" role="status">
+          // A native output announces this status without an added ARIA role.
+          <output className="td-filter-editor__hint">
             {query.trim() === ""
               ? `No ${noun} in the cached data yet. Refresh to load them.`
               : `No ${noun} match “${query}”.`}
-          </p>
+          </output>
         ) : null}
       </fieldset>
       <div className="td-filter-editor__actions">

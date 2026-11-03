@@ -153,9 +153,9 @@ describe("FilterPillBar", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog.tagName).toBe("DIALOG");
     expect(dialog).toHaveAttribute("open");
-    expect(screen.getByLabelText("Last 30 days")).toHaveFocus();
+    expect(screen.getByLabelText("This week")).toHaveFocus();
 
-    fireEvent.keyDown(screen.getByLabelText("Last 30 days"), {
+    fireEvent.keyDown(screen.getByLabelText("This week"), {
       key: "Escape",
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -175,6 +175,23 @@ describe("FilterPillBar", () => {
     expect(latest.assigneeGids).toBeUndefined();
     const add = screen.getByRole("button", { name: /Add filter/ });
     await waitFor(() => expect(add).toHaveFocus());
+  });
+
+  it("outside press on an existing filter keeps its value and restores pill focus", async () => {
+    render(<Harness />);
+    fireEvent.click(
+      within(openMenu()).getByRole("menuitem", { name: "Person" }),
+    );
+    fireEvent.click(screen.getByLabelText("Ana"));
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    const pill = screen.getByRole("button", { name: /Person: Ana/ });
+    fireEvent.click(pill);
+    fireEvent.click(screen.getByLabelText("Ben"));
+    fireEvent.pointerDown(document.body);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(latest.assigneeGids).toEqual(["u1"]);
+    await waitFor(() => expect(pill).toHaveFocus());
   });
 
   it("announces filter outcomes with a native status output", () => {

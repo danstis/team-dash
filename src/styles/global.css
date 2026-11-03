@@ -1108,7 +1108,10 @@ a[data-testid="nav-settings"]:hover {
 .td-filterbar__panel {
   width: 18rem;
   max-width: calc(100vw - 2 * var(--td-space-4));
+  margin: 0;
   padding: var(--td-space-3);
+  color: var(--td-color-text-primary);
+  font: inherit;
 }
 
 .td-filter-editor__choices {
@@ -1180,6 +1183,7 @@ a[data-testid="nav-settings"]:hover {
   margin-top: var(--td-space-3);
 }
 .td-filter-editor__hint {
+  display: block;
   margin: var(--td-space-2) 0 0;
   font-size: var(--td-font-size-sm);
   color: var(--td-color-text-secondary);

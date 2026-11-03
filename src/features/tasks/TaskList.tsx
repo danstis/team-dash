@@ -45,12 +45,12 @@ export function TaskList({
   criteria: controlledCriteria,
   onClearAll,
 }: Readonly<TaskListProps>): ReactElement {
-  const [ownCriteria, setCriteria] = useState<FilterCriteria>({});
+  const [ownCriteria, setOwnCriteria] = useState<FilterCriteria>({});
   const controlled = controlledCriteria !== undefined;
   const criteria = controlledCriteria ?? ownCriteria;
   const clearAll = controlled
     ? (onClearAll ?? ((): void => undefined))
-    : () => setCriteria({});
+    : () => setOwnCriteria({});
   // A controlled list's date window is applied by the caller.
   const tableCriteria: FilterCriteria = controlled
     ? { ...criteria, dateRange: undefined }
@@ -70,7 +70,7 @@ export function TaskList({
       {controlled ? null : (
         <FilterBar
           criteria={criteria}
-          onChange={setCriteria}
+          onChange={setOwnCriteria}
           users={users}
           projects={projects}
           now={now}

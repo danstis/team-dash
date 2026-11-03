@@ -133,26 +133,29 @@ export function FilterPillBar({
     if (open === null) {
       return undefined;
     }
+    const returnTo =
+      open.type === "editor" && activeKinds(criteria).includes(open.kind)
+        ? open.kind
+        : "add";
     const onPointerDown = (event: PointerEvent): void => {
       if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(null);
+        close(returnTo);
+      }
+    };
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (open.type === "editor" && event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        close(returnTo);
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown, true);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [open]);
-
-  const onPanelKeyDown = (
-    event: KeyboardEvent,
-    returnTo: FilterKind | "add",
-  ): void => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      close(returnTo);
-    }
-  };
+  }, [open, criteria, close]);
 
   const commit = (next: FilterCriteria, kind: FilterKind): void => {
     onChange(next);
@@ -170,14 +173,11 @@ export function FilterPillBar({
     kind: FilterKind,
     returnTo: FilterKind | "add",
   ): ReactElement => (
-    <div
+    <dialog
+      open
       className="td-filterbar__panel"
-      role="dialog"
       aria-label={`${FILTER_LABELS[kind]} filter`}
       id={panelId}
-      onKeyDown={(event) => {
-        onPanelKeyDown(event, returnTo);
-      }}
     >
       <FilterEditor
         kind={kind}
@@ -193,7 +193,7 @@ export function FilterPillBar({
           close(returnTo);
         }}
       />
-    </div>
+    </dialog>
   );
 
   // Focus the first control of a panel or menu when it opens.
@@ -223,6 +223,9 @@ export function FilterPillBar({
       close("add");
     }
   };
+
+  const addControls =
+    open === null ? undefined : { menu: menuId, editor: panelId }[open.type];
 
   return (
     <section
@@ -294,13 +297,7 @@ export function FilterPillBar({
                 className="td-filterbar__add"
                 aria-haspopup="menu"
                 aria-expanded={open !== null && open.type === "menu"}
-                aria-controls={
-                  open === null
-                    ? undefined
-                    : open.type === "menu"
-                      ? menuId
-                      : panelId
-                }
+                aria-controls={addControls}
                 ref={addRef}
                 onClick={() => {
                   setOpen(open?.type === "menu" ? null : { type: "menu" });
@@ -360,9 +357,8 @@ export function FilterPillBar({
       {trailing !== undefined ? (
         <div className="td-filterbar__trailing">{trailing}</div>
       ) : null}
-      <p className="td-visually-hidden" role="status">
-        {announcement}
-      </p>
+      {/* The native output has an implicit status role for filter outcomes. */}
+      <output className="td-visually-hidden">{announcement}</output>
     </section>
   );
 }

@@ -211,7 +211,7 @@ Composable, all fields optional/combinable (FR-047/FR-048):
 - `blockedOnly: boolean`
 - `stalledOnly: boolean`
 
-`DateRangePreset = 'this_week' | 'last_week' | 'last_30_days' | 'this_month' | 'last_month' | 'this_quarter'` (FR-032), weeks starting Monday (FR-031), evaluated under the active `TimezoneSetting`.
+`DateRangePreset = 'this_week' | 'last_week' | 'last_30_days' | 'last_90_days' | 'this_month' | 'last_month' | 'this_quarter' | 'last_quarter' | 'last_6_months' | 'last_12_months' | 'last_calendar_year' | 'this_year' | 'all_time'` (FR-032, FR-091), weeks starting Monday (FR-031), evaluated under the active `TimezoneSetting`. The `all_time` preset has no lower bound: `DateRange.start` carries the open bound `OPEN_DATE_RANGE_START` until the caller bounds the range by the data in hand.
 
 ### MetricResult\<TSeries\>
 

@@ -78,6 +78,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { FilterCriteria, ISODateTime } from "../../../src/domain/types";
+import { dateRangePresetLabel } from "../../../src/shared/dateRangePresetLabels";
 import { ActiveFiltersList } from "../../../src/features/tasks/ActiveFiltersList";
 import { FilterBar } from "../../../src/features/tasks/FilterBar";
 import {
@@ -295,6 +296,34 @@ describe("BSOD-315 (T066) — the task list filters, combines and clears", () =>
     expect(screen.getByTestId("task-table-summary")).toHaveTextContent(
       "Showing 3 of 5 tasks",
     );
+  });
+
+  it("explains the difference between no date filter and All time", () => {
+    renderTaskList();
+
+    const options = within(screen.getByTestId("filter-date-range-preset"));
+    expect(
+      options.getByRole("option", { name: /Any time.*undated.*future/i }),
+    ).toHaveValue("");
+    expect(
+      options.getByRole("option", {
+        name: `${dateRangePresetLabel("all_time")} (due through today)`,
+      }),
+    ).toHaveValue("all_time");
+  });
+
+  it("describes an open-start All time filter without exposing its sentinel date", () => {
+    renderTaskList();
+
+    fireEvent.change(screen.getByTestId("filter-date-range-preset"), {
+      target: { value: "all_time" },
+    });
+
+    expect(activeFilterChips()).toHaveLength(1);
+    expect(activeFilterChips()[0]).toHaveTextContent(
+      `Due date: ${dateRangePresetLabel("all_time")} – 15 Mar 2026`,
+    );
+    expect(activeFilterChips()[0]).not.toHaveTextContent("1000");
   });
 
   it("combines the date-range filter with the assignee filter", () => {

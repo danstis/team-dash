@@ -51,18 +51,42 @@ export type ISODateTime = string & {
 };
 
 /**
- * The fixed set of date-range presets the filter UI offers per FR-032.
- * Weeks start on Monday (FR-031) and the range is evaluated under the
- * active `TimezoneSetting`. A literal `FilterCriteria.dateRange.preset`
+ * The fixed set of date-range presets the filter UI offers per FR-032 and
+ * FR-091. Weeks start on Monday (FR-031) and the range is evaluated under
+ * the active `TimezoneSetting`. A literal `FilterCriteria.dateRange.preset`
  * may also be `'custom'` to indicate a user-entered start/end pair.
+ *
+ * The vocabulary is ONE list, shared by every surface that offers a date
+ * range (the dashboard's reporting period and the task list's date-range
+ * filter). Its periods are:
+ *
+ * - `this_week` / `last_week`: the current / previous ISO week (Mon..Sun).
+ * - `last_30_days` / `last_90_days`: the trailing 30 / 90 calendar days
+ *   ending on the anchor's date.
+ * - `this_month` / `last_month`: the current / previous calendar month.
+ * - `this_quarter` / `last_quarter`: the current / previous calendar
+ *   quarter.
+ * - `last_6_months` / `last_12_months`: the six / twelve complete
+ *   calendar months ending with the previous month.
+ * - `last_calendar_year`: the previous calendar year, in full.
+ * - `this_year`: the current calendar year, in full.
+ * - `all_time`: everything the report holds — a range with no lower
+ *   bound (see `OPEN_DATE_RANGE_START`).
  */
 export type DateRangePreset =
   | "this_week"
   | "last_week"
   | "last_30_days"
+  | "last_90_days"
   | "this_month"
   | "last_month"
-  | "this_quarter";
+  | "this_quarter"
+  | "last_quarter"
+  | "last_6_months"
+  | "last_12_months"
+  | "last_calendar_year"
+  | "this_year"
+  | "all_time";
 
 /**
  * Runtime enumeration of every supported `DateRangePreset`, exposed so the
@@ -73,15 +97,44 @@ export const DATE_RANGE_PRESETS: readonly DateRangePreset[] = [
   "this_week",
   "last_week",
   "last_30_days",
+  "last_90_days",
   "this_month",
   "last_month",
   "this_quarter",
+  "last_quarter",
+  "last_6_months",
+  "last_12_months",
+  "last_calendar_year",
+  "this_year",
+  "all_time",
 ] as const;
+
+/**
+ * The open lower bound of an unbounded date range — the `all_time`
+ * preset (FR-091).
+ *
+ * `DateRange.start` is a required `ISODate`, so an open range needs a
+ * value to compare against. This is that value: every calendar date the
+ * app can hold compares after it, so an open range needs no special case
+ * in a membership test. It is a COMPARISON bound, never an arithmetic
+ * input — a metric that walks a range (buckets, daily points) must be
+ * given a range bounded by the data in hand, which
+ * `resolveDateRangePreset` takes as an argument for exactly that reason.
+ *
+ * The year is 1000 rather than 1 because the platform `Date` maps years
+ * 0-99 into the 1900s, which would make date arithmetic on an earlier
+ * sentinel silently wrong; 1000 is the earliest year this codebase
+ * represents exactly.
+ */
+export const OPEN_DATE_RANGE_START: ISODate = "1000-01-01" as ISODate;
 
 /**
  * A user-entered or preset-resolved date range. `preset === 'custom'`
  * denotes a free-form start/end pair; any other preset value is one of
  * `DATE_RANGE_PRESETS`.
+ *
+ * `start` is `OPEN_DATE_RANGE_START` for an open-ended (`all_time`)
+ * range that no caller has bounded against the data in hand.
  */
 export interface DateRange {
   start: ISODate;

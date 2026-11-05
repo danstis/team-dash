@@ -51,7 +51,12 @@
 import type { ReactElement } from "react";
 
 import { hasActiveFilters } from "../../domain/filtering/filters";
-import type { FilterCriteria, TimezoneSetting } from "../../domain/types";
+import {
+  OPEN_DATE_RANGE_START,
+  type FilterCriteria,
+  type TimezoneSetting,
+} from "../../domain/types";
+import { dateRangePresetLabel } from "../../shared/dateRangePresetLabels";
 import { formatDate } from "../../shared/format";
 import type { FilterOption } from "./FilterBar";
 
@@ -135,9 +140,10 @@ function nameFor(options: readonly FilterOption[], gid: string): string {
 }
 
 /**
- * Describes the date-range criterion as "1 Mar 2026 – 31 Mar 2026". A
- * custom range says so, so the user can tell a range they typed from
- * one the app resolved.
+ * Describes the date-range criterion as "1 Mar 2026 – 31 Mar 2026".
+ * An open start uses the shared "All time" label instead of exposing
+ * its comparison sentinel. A custom range says so, so the user can
+ * tell a range they typed from one the app resolved.
  */
 function describeDateRange(
   criteria: FilterCriteria,
@@ -147,7 +153,10 @@ function describeDateRange(
   if (range === undefined) {
     return null;
   }
-  const start = formatDate(range.start, timezone);
+  const start =
+    range.start === OPEN_DATE_RANGE_START
+      ? dateRangePresetLabel("all_time")
+      : formatDate(range.start, timezone);
   const end = formatDate(range.end, timezone);
   const suffix = range.preset === "custom" ? " (custom range)" : "";
   return {

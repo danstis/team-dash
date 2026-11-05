@@ -50,6 +50,14 @@
  *    the view the chart shows, and the group selector splits the
  *    metric (FR-060, FR-061).
  *
+ * 7. A task created in one bucket and completed in a later one is
+ *    counted in the added series of its creation bucket and in the
+ *    completed series of its completion bucket, and nowhere else
+ *    (FR-056 / FR-057 — the two measures are independent scans, each
+ *    keyed on its own date). The chart's own points carry that
+ *    guarantee, and each point's drill-down lists that measure's tasks
+ *    only (FR-062).
+ *
  * Test-first discipline
  * ---------------------
  * Per Constitution Principle III this file lands with the failing test
@@ -78,6 +86,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -96,6 +105,7 @@ import {
 } from "../../../src/app/workspace-context";
 import { db } from "../../../src/data/db/schema";
 import { refreshOrchestrator } from "../../../src/data/refresh/refresh-orchestrator";
+import { toIsoDate } from "../../../src/domain/datetime";
 import { smallDatasetWorkspaceGid } from "../../../fixtures/asana/small-dataset/data";
 
 /* -------------------------------------------------------------------------- */
@@ -131,9 +141,42 @@ const TASK_ALPHA_GID = "task-alpha";
 /** The seeded task's gid — unassigned, unestimated, completed. */
 const TASK_BETA_GID = "task-beta";
 
+/**
+ * The seeded task's gid — created four days ago and closed today. It
+ * is the task the reporting dashboard was asked about: it must appear
+ * in the added series on its creation day and in the completed series
+ * on the day it was closed.
+ */
+const TASK_CLOSED_TODAY_GID = "task-closed-today";
+
+/**
+ * The seeded task's gid — created on the same day as the task above
+ * and still open. It belongs in the added series only, so it proves
+ * that the completed series' drill-down lists the completed measure's
+ * tasks and nobody else's.
+ */
+const TASK_STILL_OPEN_GID = "task-still-open";
+
+/**
+ * The seeded task's gid — created before the reporting window and
+ * closed inside it. It belongs in the completed series only, so it
+ * pins the third shape of the reconciliation: a task the window keeps
+ * because of its completion, never counted as added.
+ */
+const TASK_CLOSED_TODAY_OUTSIDE_GID = "task-closed-today-created-earlier";
+
 /** An ISO instant `days` days before the test run. */
 function daysAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString();
+}
+
+/**
+ * The calendar date the app's timezone basis calls `days` days ago —
+ * the same basis the metric buckets under, so the test names the
+ * buckets the chart actually draws.
+ */
+function localDate(days: number): string {
+  return toIsoDate(new Date(Date.now() - days * 86_400_000), "local");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -295,6 +338,263 @@ async function seedCommittedRefresh(): Promise<void> {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Cross-bucket seeding                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Seeds the cache with the scenario the reporting dashboard was asked
+ * about: two tasks created on the same day four days ago, one of them
+ * closed today. Nothing else is in scope, so every figure the chart
+ * draws is attributable to these two tasks.
+ */
+async function seedCrossBucketTasks(): Promise<void> {
+  await db.projects.put({
+    gid: PROJECT_GID,
+    name: "Web App",
+    workspaceGid: smallDatasetWorkspaceGid,
+    asanaTeamGid: TEAM_GID,
+    portfolioGids: [PORTFOLIO_GID],
+    archived: false,
+  });
+  await db.portfolios.put({
+    gid: PORTFOLIO_GID,
+    name: "Customer Platform",
+    workspaceGid: smallDatasetWorkspaceGid,
+    projectGids: [PROJECT_GID],
+  });
+  await db.users.put({
+    gid: USER_GID,
+    name: "Alex Kim",
+    email: null,
+    workspaceGid: smallDatasetWorkspaceGid,
+  });
+  await db.tasks.bulkPut([
+    {
+      gid: TASK_CLOSED_TODAY_GID,
+      name: "Close the reporting gap",
+      assigneeGid: USER_GID,
+      projectGids: [PROJECT_GID],
+      parentTaskGid: null,
+      resourceSubtype: "default_task",
+      createdAt: daysAgo(4),
+      modifiedAt: daysAgo(0),
+      completedAt: daysAgo(0),
+      dueAt: null,
+      priorityOptionId: null,
+      estimatedMinutes: 30,
+      actualMinutes: null,
+      dependsOnTaskGids: [],
+      lastSeenInScopeAt: daysAgo(0),
+      outOfScopeReason: null,
+    },
+    {
+      gid: TASK_STILL_OPEN_GID,
+      name: "Keep the reporting honest",
+      assigneeGid: USER_GID,
+      projectGids: [PROJECT_GID],
+      parentTaskGid: null,
+      resourceSubtype: "default_task",
+      createdAt: daysAgo(4),
+      modifiedAt: daysAgo(4),
+      completedAt: null,
+      dueAt: null,
+      priorityOptionId: null,
+      estimatedMinutes: 45,
+      actualMinutes: null,
+      dependsOnTaskGids: [],
+      lastSeenInScopeAt: daysAgo(0),
+      outOfScopeReason: null,
+    },
+  ]);
+  await db.refreshSessions.put({
+    id: "cross-bucket-session",
+    workspaceGid: smallDatasetWorkspaceGid,
+    startedAt: daysAgo(0),
+    finishedAt: daysAgo(0),
+    status: "succeeded",
+    itemsRetrieved: 2,
+    errorDetail: null,
+    syncMode: "full",
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reconciliation seeding                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Seeds the cache with the three shapes a task can have against the
+ * reporting window: added and completed inside it, added inside it and
+ * still open, and completed inside it but created before it. The table
+ * lists all three once; the chart's two series count them twice
+ * between them.
+ */
+async function seedReconciledTasks(): Promise<void> {
+  await db.projects.put({
+    gid: PROJECT_GID,
+    name: "Web App",
+    workspaceGid: smallDatasetWorkspaceGid,
+    asanaTeamGid: TEAM_GID,
+    portfolioGids: [PORTFOLIO_GID],
+    archived: false,
+  });
+  await db.portfolios.put({
+    gid: PORTFOLIO_GID,
+    name: "Customer Platform",
+    workspaceGid: smallDatasetWorkspaceGid,
+    projectGids: [PROJECT_GID],
+  });
+  await db.users.put({
+    gid: USER_GID,
+    name: "Alex Kim",
+    email: null,
+    workspaceGid: smallDatasetWorkspaceGid,
+  });
+  await db.tasks.bulkPut([
+    {
+      gid: TASK_CLOSED_TODAY_GID,
+      name: "Close the reporting gap",
+      assigneeGid: USER_GID,
+      projectGids: [PROJECT_GID],
+      parentTaskGid: null,
+      resourceSubtype: "default_task",
+      createdAt: daysAgo(4),
+      modifiedAt: daysAgo(0),
+      completedAt: daysAgo(0),
+      dueAt: null,
+      priorityOptionId: null,
+      estimatedMinutes: 30,
+      actualMinutes: null,
+      dependsOnTaskGids: [],
+      lastSeenInScopeAt: daysAgo(0),
+      outOfScopeReason: null,
+    },
+    {
+      gid: TASK_STILL_OPEN_GID,
+      name: "Keep the reporting honest",
+      assigneeGid: USER_GID,
+      projectGids: [PROJECT_GID],
+      parentTaskGid: null,
+      resourceSubtype: "default_task",
+      createdAt: daysAgo(4),
+      modifiedAt: daysAgo(4),
+      completedAt: null,
+      dueAt: null,
+      priorityOptionId: null,
+      estimatedMinutes: 45,
+      actualMinutes: null,
+      dependsOnTaskGids: [],
+      lastSeenInScopeAt: daysAgo(0),
+      outOfScopeReason: null,
+    },
+    {
+      gid: TASK_CLOSED_TODAY_OUTSIDE_GID,
+      name: "Carry the old work over",
+      assigneeGid: USER_GID,
+      projectGids: [PROJECT_GID],
+      parentTaskGid: null,
+      resourceSubtype: "default_task",
+      createdAt: daysAgo(40),
+      modifiedAt: daysAgo(0),
+      completedAt: daysAgo(0),
+      dueAt: null,
+      priorityOptionId: null,
+      estimatedMinutes: 60,
+      actualMinutes: null,
+      dependsOnTaskGids: [],
+      lastSeenInScopeAt: daysAgo(0),
+      outOfScopeReason: null,
+    },
+  ]);
+  await db.refreshSessions.put({
+    id: "reconciled-session",
+    workspaceGid: smallDatasetWorkspaceGid,
+    startedAt: daysAgo(0),
+    finishedAt: daysAgo(0),
+    status: "succeeded",
+    itemsRetrieved: 3,
+    errorDetail: null,
+    syncMode: "full",
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Chart readers                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The figure the chart states for one measure of one bucket, as the
+ * chart's own tabular alternative states it.
+ */
+function figureFor(
+  bucketStart: string,
+  measure: "created" | "completed",
+): string {
+  const cell = document.querySelector(
+    `[data-testid="work-added-completed-row"][data-bucket-start="${bucketStart}"] ` +
+      `[data-testid="work-added-completed-figure"][data-measure="${measure}"]`,
+  );
+  if (cell === null) {
+    throw new Error(`No ${measure} figure for bucket ${bucketStart}`);
+  }
+  return (
+    cell.querySelector('[data-testid="work-added-completed-value"]')
+      ?.textContent ?? ""
+  );
+}
+
+/** The chart's bucket dates, in the order the chart draws them. */
+function bucketDates(): readonly string[] {
+  return [
+    ...document.querySelectorAll('[data-testid="work-added-completed-row"]'),
+  ].map((row) => row.getAttribute("data-bucket-start") ?? "");
+}
+
+/**
+ * The vertical position of one plotted point of a series, in pixels. A
+ * circle carries its centre in `cy`, a square its top edge in `y` and
+ * its height — so the square's centre is half its height further down.
+ */
+function pointY(testId: string, index: number): number {
+  const point = document.querySelectorAll(`[data-testid="${testId}"]`)[index];
+  if (point === undefined) {
+    throw new Error(`No ${testId} point at index ${index}`);
+  }
+  const cy = point.getAttribute("cy");
+  if (cy !== null) {
+    return Number(cy);
+  }
+  return (
+    Number(point.getAttribute("y")) + Number(point.getAttribute("height")) / 2
+  );
+}
+
+/**
+ * The vertical position of the zero baseline, in pixels. In SVG the y
+ * axis grows downwards, so a point above the baseline has a smaller y.
+ */
+function zeroLineY(): number {
+  const line = document.querySelector(
+    ".td-work-added-completed__zero .recharts-reference-line-line",
+  );
+  if (line === null) {
+    throw new Error("The chart draws no zero baseline");
+  }
+  return Number(line.getAttribute("y1"));
+}
+
+/**
+ * The task gids the drill-down panel currently lists — an empty list
+ * when the panel shows its empty state, which is what a zero figure
+ * opens.
+ */
+function drillDownTaskGids(): readonly string[] {
+  return [...screen.queryAllByTestId("drill-down-panel-task")].map(
+    (task) => task.getAttribute("data-task-gid") ?? "",
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Tests                                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -350,9 +650,12 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
       await screen.findByTestId("data-quality-summary"),
     ).toBeInTheDocument();
 
-    // US3 — the filterable task list and its table.
-    expect(await screen.findByTestId("filter-bar")).toBeInTheDocument();
-    expect(screen.getByTestId("active-filters-list")).toBeInTheDocument();
+    // US3 — one pill bar holds every filter; the reporting window is
+    // always a pill. The task list and its table follow.
+    expect(await screen.findByTestId("filter-pill-bar")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Date range:/ }),
+    ).toBeInTheDocument();
     const table = await screen.findByTestId("task-table");
     expect(table).toBeInTheDocument();
     expect(screen.getAllByTestId("task-row")).toHaveLength(2);
@@ -458,6 +761,40 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
     });
   });
 
+  it("keeps the count/effort choice across an interaction", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    await screen.findByTestId("work-added-completed-chart");
+
+    // FR-061 — the reader moves to the effort view …
+    fireEvent.click(screen.getByRole("radio", { name: /estimated effort/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("work-added-completed-summary"),
+      ).toHaveTextContent(/estimated effort added and completed/i);
+    });
+
+    // … and the choice survives the next interaction: the grouping
+    // dimension changes, the dashboard re-renders, and the chart is
+    // still showing the effort view the reader picked.
+    fireEvent.change(screen.getByTestId("group-by-selector"), {
+      target: { value: "project" },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("work-added-completed-summary"),
+      ).toHaveTextContent(/split by project/i);
+    });
+    expect(
+      screen.getByTestId("work-added-completed-summary"),
+    ).toHaveTextContent(/estimated effort added and completed/i);
+    expect(
+      screen.getByRole("radio", { name: /estimated effort/i }),
+    ).toBeChecked();
+  });
+
   it("runs a refresh from the empty dashboard and moves on to the populated views", async () => {
     const handlesRef = renderDashboard();
     await openTheGate(handlesRef);
@@ -493,6 +830,214 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
         "fresh",
       );
     });
+  });
+
+  it("counts a task in the added series on the day it was created and in the completed series on the day it was closed", async () => {
+    await seedCrossBucketTasks();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    await screen.findByTestId("work-added-completed-chart", undefined, {
+      timeout: 5000,
+    });
+
+    const createdOn = localDate(4);
+    const closedOn = localDate(0);
+
+    // The figures the chart states: two tasks were added four days
+    // ago, and one of them was closed today (FR-056 / FR-057 — the two
+    // measures are independent scans, each keyed on its own date).
+    expect(figureFor(createdOn, "created")).toBe("2");
+    expect(figureFor(createdOn, "completed")).toBe("0");
+    expect(figureFor(closedOn, "created")).toBe("0");
+    expect(figureFor(closedOn, "completed")).toBe("1");
+
+    // The plotted series say the same thing: the added measure sits
+    // above the baseline on the creation day and on the baseline on
+    // the closing day; the completed measure is the other way round.
+    // A task closed today must not appear in the added series of
+    // today.
+    const dates = bucketDates();
+    const createdIndex = dates.indexOf(createdOn);
+    const closedIndex = dates.indexOf(closedOn);
+    expect(createdIndex).toBeGreaterThanOrEqual(0);
+    expect(closedIndex).toBeGreaterThanOrEqual(0);
+
+    const zero = zeroLineY();
+    expect(
+      pointY("work-added-completed-point-added", createdIndex),
+    ).toBeLessThan(zero - 1);
+    expect(
+      Math.abs(pointY("work-added-completed-point-added", closedIndex) - zero),
+    ).toBeLessThan(1);
+    expect(
+      Math.abs(
+        pointY("work-added-completed-point-completed", createdIndex) - zero,
+      ),
+    ).toBeLessThan(1);
+    expect(
+      pointY("work-added-completed-point-completed", closedIndex),
+    ).toBeGreaterThan(zero + 1);
+
+    // The drill-down of the added point lists the tasks created that
+    // day (FR-062).
+    fireEvent.click(
+      document.querySelectorAll(
+        '[data-testid="work-added-completed-point-added"]',
+      )[createdIndex] as Element,
+    );
+    await screen.findByTestId("drill-down-panel", undefined, {
+      timeout: 5000,
+    });
+    expect(screen.getByTestId("drill-down-panel-title")).toHaveTextContent(
+      /items added/i,
+    );
+    expect(drillDownTaskGids()).toEqual([
+      TASK_CLOSED_TODAY_GID,
+      TASK_STILL_OPEN_GID,
+    ]);
+
+    // The drill-down of the completed point lists the task closed
+    // today only — the task that is still open was never completed.
+    fireEvent.click(
+      document.querySelectorAll(
+        '[data-testid="work-added-completed-point-completed"]',
+      )[closedIndex] as Element,
+    );
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("drill-down-panel-title")).toHaveTextContent(
+          /items completed/i,
+        );
+      },
+      { timeout: 5000 },
+    );
+    expect(drillDownTaskGids()).toEqual([TASK_CLOSED_TODAY_GID]);
+
+    // And the added point of the closing day is a zero figure: it
+    // opens the panel with no task behind it, because the task closed
+    // today was not added today.
+    fireEvent.click(
+      document.querySelectorAll(
+        '[data-testid="work-added-completed-point-added"]',
+      )[closedIndex] as Element,
+    );
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("drill-down-panel-title")).toHaveTextContent(
+          /items added/i,
+        );
+      },
+      { timeout: 5000 },
+    );
+    expect(screen.getByTestId("drill-down-panel-empty")).toBeInTheDocument();
+    expect(drillDownTaskGids()).toEqual([]);
+  });
+
+  it("shows the no-results state when a filter matches nothing in the period", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    await screen.findByTestId("task-table");
+    expect(screen.getAllByTestId("task-row")).toHaveLength(2);
+
+    // A filter that matches nothing in the period — neither seeded task
+    // has a due date, so neither is overdue.
+    fireEvent.click(screen.getByRole("button", { name: /Add filter/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Overdue" }));
+    fireEvent.click(screen.getByLabelText("Overdue"));
+
+    // The reader gets the explanation and the way out, not an empty
+    // table reading "Showing 0 of 0 tasks".
+    const state = await screen.findByTestId("no-results-state");
+    expect(screen.queryByTestId("task-table")).not.toBeInTheDocument();
+    expect(state).toHaveTextContent(/no tasks match these filters/i);
+    expect(
+      within(state).getByTestId("active-filters-clear-all"),
+    ).toBeInTheDocument();
+
+    // And clearing it brings the table back.
+    fireEvent.click(within(state).getByTestId("active-filters-clear-all"));
+    await waitFor(() => {
+      expect(screen.getByTestId("task-table")).toBeInTheDocument();
+    });
+    expect(screen.getAllByTestId("task-row")).toHaveLength(2);
+  });
+
+  it("lists in the task table exactly the tasks the chart's two series count", async () => {
+    await seedReconciledTasks();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    await screen.findByTestId("task-table");
+
+    // The table lists each task of the window once — the one added and
+    // completed inside it, the one added and still open, and the one
+    // completed inside it but created before it.
+    const tableGids = [
+      ...document.querySelectorAll('[data-testid="task-row"]'),
+    ].map((row) => row.getAttribute("data-task-gid") ?? "");
+    expect(new Set(tableGids)).toEqual(
+      new Set([
+        TASK_CLOSED_TODAY_GID,
+        TASK_STILL_OPEN_GID,
+        TASK_CLOSED_TODAY_OUTSIDE_GID,
+      ]),
+    );
+
+    const dates = bucketDates();
+    const createdIndex = dates.indexOf(localDate(4));
+    const closedIndex = dates.indexOf(localDate(0));
+    expect(createdIndex).toBeGreaterThanOrEqual(0);
+    expect(closedIndex).toBeGreaterThanOrEqual(0);
+
+    // The added series counts the tasks added in the creation bucket …
+    fireEvent.click(
+      document.querySelectorAll(
+        '[data-testid="work-added-completed-point-added"]',
+      )[createdIndex] as Element,
+    );
+    await screen.findByTestId("drill-down-panel", undefined, {
+      timeout: 5000,
+    });
+    const addedGids = drillDownTaskGids();
+    expect(new Set(addedGids)).toEqual(
+      new Set([TASK_CLOSED_TODAY_GID, TASK_STILL_OPEN_GID]),
+    );
+
+    // … and the completed series counts the tasks completed in the
+    // closing bucket. Between them they count every task of the table
+    // — and the task that is in both is counted by both.
+    fireEvent.click(
+      document.querySelectorAll(
+        '[data-testid="work-added-completed-point-completed"]',
+      )[closedIndex] as Element,
+    );
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("drill-down-panel-title")).toHaveTextContent(
+          /items completed/i,
+        );
+      },
+      { timeout: 5000 },
+    );
+    const completedGids = drillDownTaskGids();
+    expect(new Set(completedGids)).toEqual(
+      new Set([TASK_CLOSED_TODAY_GID, TASK_CLOSED_TODAY_OUTSIDE_GID]),
+    );
+    expect(new Set([...addedGids, ...completedGids])).toEqual(
+      new Set(tableGids),
+    );
+
+    // The table therefore holds three tasks where the chart's two
+    // figures hold four — and the copy says so, so the reader is not
+    // left to conclude that one of the two is wrong.
+    expect(figureFor(localDate(4), "created")).toBe("2");
+    expect(figureFor(localDate(0), "completed")).toBe("2");
+    expect(
+      screen.getByTestId("dashboard-reconciliation-note"),
+    ).toHaveTextContent(/counted in both series of the chart/i);
   });
 
   it("shows a failed refresh outcome from the post-refresh empty state", async () => {

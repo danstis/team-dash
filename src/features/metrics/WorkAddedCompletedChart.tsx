@@ -1,6 +1,6 @@
 /**
- * BSOD-319 (T076) — `WorkAddedCompletedChart`, the P1 "work added vs
- * work completed" chart (US4).
+ * BSOD-319 (T076) / BSOD-783 (T-UI2) — `WorkAddedCompletedChart`, the
+ * P1 "work added vs work completed" chart (US4).
  *
  * Spec / contract references
  * --------------------------
@@ -10,7 +10,10 @@
  * - FR-058 (spec.md): the effort sums leave out the tasks that carry no
  *   estimate, and the exclusion is disclosed rather than hidden.
  * - FR-059 (spec.md): the created and the completed measure are charted
- *   over the time buckets of the selected range.
+ *   over the time buckets of the selected range. The requirement is
+ *   that the measures are charted over the buckets — it does not
+ *   mandate a chart form, so this module's form is a presentation
+ *   choice, not a contract change.
  * - FR-060 (spec.md): the metric can be split by group — team member,
  *   team, project, portfolio, priority.
  * - FR-061 (spec.md): the item-count view and the estimated-effort view
@@ -22,11 +25,26 @@
  *   operable from the keyboard, and is paired with a tabular
  *   alternative.
  *
+ * The two chart forms
+ * -------------------
+ * - **The workspace-level view is a mirrored line diagram.** The
+ *   added series is drawn above the zero baseline and the completed
+ *   series below it, so the two measures read as opposing pressure on
+ *   one scale, and a third line — the trend of the net work change
+ *   across the period — rides up or down over them. The point of the
+ *   figure is one question: are we getting through more work than we
+ *   are adding, or is the work always growing?
+ * - **The grouped view keeps the grouped bars.** With a grouping
+ *   dimension in force there are many series, and a story that defines
+ *   how to draw N mirrored pairs legibly has not landed yet. The
+ *   grouped view therefore keeps the form it had (BSOD-319) until
+ *   that story lands.
+ *
  * What this module owns
  * ---------------------
  * The *presentation* of the work-added / work-completed metric: the
- * bars, the legend, the summary line, the exclusion disclosure and the
- * data table that stands in for the chart.
+ * chart surface, the legend, the summary line, the exclusion
+ * disclosure and the data table that stands in for the chart.
  *
  * What this module deliberately does NOT own
  * ------------------------------------------
@@ -35,6 +53,10 @@
  *   module renders the result it is handed and never counts a task of
  *   its own. A chart that counted by hand could agree with the domain
  *   on one figure and drift on the next.
+ * - The trend. The running net of (added − completed) and the straight
+ *   line fitted through it are a *view* derivation over the buckets the
+ *   metric already returns; `net-work-trend.ts` owns the arithmetic and
+ *   the metric's contract is unchanged.
  * - The controls. The count↔effort switch and the group selector live
  *   in `ChartControls` (T080 / BSOD-320); this chart is a *controlled*
  *   surface, so the caller owns the view state and hands it down. See
@@ -62,12 +84,18 @@
  * Honesty
  * -------
  * - The two views are never combined: the chart shows the count view
- *   or the effort view, and says which one it is showing.
+ *   or the effort view, and says which one it is showing. The trend is
+ *   recomputed in the unit of the active view.
+ * - The trend line is the **net work change over the period**, not the
+ *   workspace's outstanding work: the running net starts at zero at the
+ *   beginning of the window and may go negative. The copy says "net
+ *   work change" for that reason; the outstanding-work figure is the
+ *   backlog metric (BSOD-322).
  * - The tasks left out of the effort sums are disclosed under the
  *   chart, because a sum that silently drops tasks is a figure the
  *   reader cannot check (FR-058).
  * - The drill-down set behind every figure travels with the figure, so
- *   the panel can show the exact tasks the bar stands for (FR-062).
+ *   the panel can show the exact tasks the figure stands for (FR-062).
  *
  * Accessibility
  * -------------
@@ -75,10 +103,13 @@
  *   it shows, and the data table below it is the tabular alternative
  *   (FR-088).
  * - The table is the keyboard path: every figure carries a drill-down
- *   action, so the drill-down works without a pointer. The bars are
- *   clickable too, as a shortcut for the mouse.
- * - The two measures are told apart by their outline as well as by
- *   their colour, so the chart is readable without colour (FR-088).
+ *   action, so the drill-down works without a pointer. The points of
+ *   the two series are clickable too, as a shortcut for the mouse.
+ * - Red and green are a colour-vision pairing, so the two series are
+ *   told apart without colour: they sit on opposite sides of the zero
+ *   line, they carry different line styles (solid / dashed) and
+ *   different marker shapes (circle / square), and the trend line
+ *   carries a third style of its own (dotted).
  *
  * Boundary
  * --------
@@ -87,11 +118,14 @@
  * shared formatters and Recharts. It performs no I/O and makes no
  * network call.
  */
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -100,6 +134,7 @@ import {
   type TooltipValueType,
 } from "recharts";
 
+import { diffInDaysInclusive } from "../../domain/datetime";
 import {
   NO_ESTIMATE_COMPLETED_REASON,
   NO_ESTIMATE_CREATED_REASON,
@@ -110,6 +145,12 @@ import {
 } from "../../domain/metrics/workAddedCompleted";
 import type { ISODate, MetricResult } from "../../domain/types";
 import { formatDate, formatDuration } from "../../shared/format";
+import {
+  FLAT_RATE_EPSILON,
+  computeNetTrend,
+  type NetTrend,
+  type NetTrendDirection,
+} from "./net-work-trend";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                       */
@@ -148,7 +189,7 @@ export interface WorkAddedCompletedChartGroup {
  * The figure the user drilled into (FR-062). It names the group, the
  * bucket, the measure and the view, and it carries the exact task list
  * the figure stands for, so the drill-down panel shows the same tasks
- * the bar stands for.
+ * the figure stands for.
  */
 export interface WorkAddedCompletedDrillDownRequest {
   /** The group the figure belongs to — `undefined` for the whole workspace. */
@@ -224,8 +265,15 @@ const INITIAL_DIMENSION = { width: 720, height: 320 };
  */
 const PALETTE_SLOTS = 8;
 
-/** The margin around the plot area. */
+/** The margin around the plot area of the grouped bars. */
 const CHART_MARGIN = { top: 8, right: 8, bottom: 8, left: 8 };
+
+/**
+ * The margin around the plot area of the mirrored line diagram. It
+ * leaves room above the plot for the value axis' label, which names
+ * the unit and says what the two halves mean.
+ */
+const LINE_CHART_MARGIN = { top: 28, right: 16, bottom: 8, left: 8 };
 
 /** The width of the value axis, in pixels. */
 const VALUE_AXIS_WIDTH = 56;
@@ -240,6 +288,15 @@ const AXIS_DATE_FORMAT = new Intl.DateTimeFormat("en-AU", {
   month: "short",
   timeZone: "UTC",
 });
+
+/** The name of the added series, as the legend and the tooltip show it. */
+const ADDED_SERIES_NAME = "items added";
+
+/** The name of the completed series, as the legend and the tooltip show it. */
+const COMPLETED_SERIES_NAME = "items completed";
+
+/** The name of the trend line, as the legend and the tooltip show it. */
+const TREND_SERIES_NAME = "net work change trend";
 
 /* -------------------------------------------------------------------------- */
 /* Internals                                                                   */
@@ -275,12 +332,57 @@ interface ChartSeries {
  */
 type ChartRow = Record<string, string | number>;
 
+/**
+ * One row of the mirrored line diagram: the added figure above the
+ * zero line, the completed figure below it (as a negative number) and
+ * the fitted trend line at that point of the period.
+ */
+interface MirroredRow {
+  /** The compact label of the bucket, as the time axis shows it. */
+  readonly bucket: string;
+  /** The first calendar date of the bucket (inclusive). */
+  readonly bucketStart: ISODate;
+  /** The last calendar date of the bucket (inclusive). */
+  readonly bucketEnd: ISODate;
+  /** The added figure of the bucket, above the zero line. */
+  readonly added: number;
+  /** The completed figure of the bucket, below the zero line. */
+  readonly completed: number;
+  /** The fitted trend line at this point of the period. */
+  readonly trend: number;
+}
+
 /** A group key and the way it should be shown. */
 interface GroupName {
   /** The text to show. */
   readonly text: string;
   /** Whether the text is a raw identifier that should be set in mono. */
   readonly raw: boolean;
+}
+
+/**
+ * One point of one of the two series of the mirrored diagram, and the
+ * drill-down it stands for.
+ */
+interface SeriesPointProps {
+  /** The horizontal position of the point, in pixels. */
+  readonly cx?: number;
+  /** The vertical position of the point, in pixels. */
+  readonly cy?: number;
+  /** The row the point stands for. */
+  readonly payload?: MirroredRow;
+  /** The shape the point is drawn with. */
+  readonly shape: "circle" | "square";
+  /** The test id the point carries. */
+  readonly testId?: string;
+  /** Whether the point can be drilled into. */
+  readonly drillable: boolean;
+  /** The radius of a round point, in pixels. */
+  readonly radius?: number;
+  /** The hover marker lets pointer clicks reach the point beneath it. */
+  readonly style?: CSSProperties;
+  /** Called when the point is clicked. */
+  readonly onSelect?: (row: MirroredRow) => void;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -302,6 +404,51 @@ const COLUMN_NAMES: Readonly<
 > = {
   count: { created: "Items added", completed: "Items completed" },
   effort: { created: "Effort added", completed: "Effort completed" },
+};
+
+/**
+ * The names the two series carry in the legend and the tooltip, per
+ * view. They name the unit, so the two views are never read as the
+ * same numbers (FR-061).
+ */
+const SERIES_NAMES: Readonly<
+  Record<
+    WorkAddedCompletedView,
+    { readonly added: string; readonly completed: string }
+  >
+> = {
+  count: { added: ADDED_SERIES_NAME, completed: COMPLETED_SERIES_NAME },
+  effort: { added: "effort added", completed: "effort completed" },
+};
+
+/**
+ * The unit of the active view, as the axis label and the summary name
+ * it (FR-061).
+ */
+const UNIT_NAMES: Readonly<Record<WorkAddedCompletedView, string>> = {
+  count: "items",
+  effort: "estimated effort",
+};
+
+/**
+ * What the trend means for the period, in plain words. The capacity
+ * reading must not depend on the reader interpreting the geometry, so
+ * the summary states it.
+ */
+const TREND_READINGS: Readonly<Record<NetTrendDirection, string>> = {
+  rising:
+    "work is accumulating — more is being added than completed, so the net is rising",
+  falling: "completed is outpacing added, so the net is falling",
+  flat: "added and completed are balancing out, so the net is flat",
+};
+
+/**
+ * The direction of the trend as one word, for the legend.
+ */
+const TREND_DIRECTION_WORDS: Readonly<Record<NetTrendDirection, string>> = {
+  rising: "rising",
+  falling: "falling",
+  flat: "flat",
 };
 
 /** The human name of each grouping dimension (FR-060). */
@@ -374,6 +521,76 @@ function formatFigure(view: WorkAddedCompletedView, value: number): string {
   return view === "count" ? String(value) : formatDuration(value);
 }
 
+/** Preserve the sign of values below the mirrored chart's zero line. */
+function formatAxisTick(view: WorkAddedCompletedView, value: number): string {
+  const magnitude = formatFigure(view, Math.abs(value));
+  return value < 0 ? `−${magnitude}` : magnitude;
+}
+
+/**
+ * A number with its sign, to one decimal place: `+2` / `−0.5`.
+ *
+ * The minus sign is the typographic one (U+2212), so the figure reads
+ * as a number rather than as a hyphen.
+ */
+function formatSignedNumber(value: number): string {
+  const magnitude = Math.abs(value).toLocaleString("en-AU", {
+    maximumFractionDigits: 1,
+  });
+  if (Math.abs(value) < FLAT_RATE_EPSILON) {
+    return magnitude;
+  }
+  return `${value < 0 ? "−" : "+"}${magnitude}`;
+}
+
+/**
+ * A duration with its sign, to one decimal place: `+1 h 30 min` /
+ * `−30 min`. The duration format is the app's own (`formatDuration`),
+ * so the figure is written the way the rest of the app writes it.
+ */
+function formatSignedDuration(minutes: number): string {
+  const text = formatDuration(minutes, { maximumFractionDigits: 1 });
+  const body = text.startsWith("-") ? `−${text.slice(1)}` : text;
+  if (Math.abs(minutes) < FLAT_RATE_EPSILON) {
+    return body;
+  }
+  return minutes > 0 ? `+${body}` : body;
+}
+
+/** A figure with its sign, in the unit of the active view. */
+function formatSignedFigure(
+  view: WorkAddedCompletedView,
+  value: number,
+): string {
+  if (view === "count") {
+    return formatSignedNumber(value);
+  }
+  return formatSignedDuration(value);
+}
+
+/**
+ * The unit of a figure, in the item-count view: one item is "item",
+ * any other number is "items". The effort view carries its own unit
+ * (the duration format), so it needs no word.
+ */
+function countUnit(value: number, noun: string): string {
+  return Math.abs(value) === 1 ? ` ${noun}` : ` ${noun}s`;
+}
+
+/**
+ * A figure with its sign and its unit, in the unit of the active view:
+ * `+3 items` in the item-count view, `−2 h` in the effort view.
+ */
+function formatTrendFigure(
+  view: WorkAddedCompletedView,
+  value: number,
+): string {
+  if (view === "count") {
+    return `${formatSignedNumber(value)}${countUnit(value, "item")}`;
+  }
+  return formatSignedDuration(value);
+}
+
 /**
  * The tooltip's value, which Recharts hands over as a number, a string
  * or an array of them.
@@ -386,6 +603,22 @@ function toNumber(value: TooltipValueType | undefined): number {
     return Number(value);
   }
   return Array.isArray(value) ? Number(value[0]) : 0;
+}
+
+/**
+ * The tooltip's figure. The completed series is plotted below the zero
+ * line, so its plotted value is negative — the figure the reader sees
+ * is its magnitude.
+ */
+function formatTooltipValue(
+  view: WorkAddedCompletedView,
+  name: string | number | undefined,
+  value: number,
+): string {
+  if (name === TREND_SERIES_NAME) {
+    return formatSignedFigure(view, value);
+  }
+  return formatFigure(view, Math.abs(value));
 }
 
 /**
@@ -487,6 +720,157 @@ function buildRows(
 }
 
 /**
+ * The rows of the mirrored line diagram, and the trend behind them.
+ *
+ * The added figure is drawn as it is (above the zero line) and the
+ * completed figure is drawn as a negative number (below the zero
+ * line). The trend is the running net of (added − completed) with the
+ * least-squares line fitted through it, both in the unit of the active
+ * view.
+ */
+function buildMirroredRows(
+  buckets: readonly ChartBucket[],
+  result: MetricResult<WorkAddedCompletedSeries>,
+  view: WorkAddedCompletedView,
+): { readonly rows: readonly MirroredRow[]; readonly trend: NetTrend } {
+  const bucketOf = (bucket: ChartBucket) =>
+    result.series.buckets.find(
+      (candidate) => candidate.bucketStart === bucket.bucketStart,
+    );
+
+  const diffs = buckets.map((bucket) => {
+    const source = bucketOf(bucket);
+    if (source === undefined) {
+      return 0;
+    }
+    return (
+      figureOf(source, "created", view) - figureOf(source, "completed", view)
+    );
+  });
+  const trend = computeNetTrend(diffs);
+
+  const rows = buckets.map((bucket, index): MirroredRow => {
+    const source = bucketOf(bucket);
+    const added = source === undefined ? 0 : figureOf(source, "created", view);
+    const completed =
+      source === undefined ? 0 : figureOf(source, "completed", view);
+    return {
+      bucket: axisLabel(bucket.bucketStart),
+      bucketStart: bucket.bucketStart,
+      bucketEnd: bucket.bucketEnd,
+      added,
+      completed: -completed,
+      trend: trend.fitted[index] ?? 0,
+    };
+  });
+
+  return { rows, trend };
+}
+
+/**
+ * The range of the value axis: the same distance above the zero line
+ * as below it, so the two halves of the diagram read as one scale.
+ * The trend line shares the axis, so its figures are inside the range
+ * too and nothing is clipped.
+ *
+ * The range is a whole number of ticks either side of the zero line
+ * (two steps out, one step per tick), so the axis reads −4, −2, 0, 2,
+ * 4 rather than a set of fractions.
+ */
+function mirroredDomain(
+  rows: readonly MirroredRow[],
+  view: WorkAddedCompletedView,
+): [number, number] {
+  const reach = rows.reduce(
+    (widest, row) =>
+      Math.max(
+        widest,
+        Math.abs(row.added),
+        Math.abs(row.completed),
+        Math.abs(row.trend),
+      ),
+    0,
+  );
+  const step = axisStep(view, Math.max(1, reach / 2));
+  const bound = step * 2;
+  return [-bound, bound];
+}
+
+/**
+ * The step between two value-axis ticks, in the unit of the active
+ * view: a whole number of items, or a whole number of minutes.
+ */
+function axisStep(view: WorkAddedCompletedView, threshold: number): number {
+  if (view === "count") {
+    return niceCountStep(threshold);
+  }
+  return niceMinuteStep(threshold);
+}
+
+/**
+ * The smallest round number of items at or above the threshold: 1, 2
+ * or 5 times a power of ten.
+ */
+function niceCountStep(threshold: number): number {
+  if (threshold <= 1) {
+    return 1;
+  }
+  const magnitude = 10 ** Math.floor(Math.log10(threshold));
+  for (const factor of [1, 2, 5]) {
+    const candidate = factor * magnitude;
+    if (candidate >= threshold) {
+      return candidate;
+    }
+  }
+  return 10 * magnitude;
+}
+
+/**
+ * The smallest round number of minutes at or above the threshold. The
+ * steps are the ones a reader counts time in — a quarter of an hour,
+ * half an hour, an hour, two hours — so the axis reads in hours and
+ * minutes rather than in odd numbers of minutes.
+ */
+const MINUTE_STEPS: readonly number[] = [
+  1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 360, 480, 720, 1440, 2880,
+];
+
+function niceMinuteStep(threshold: number): number {
+  const step = MINUTE_STEPS.find((candidate) => candidate >= threshold);
+  if (step !== undefined) {
+    return step;
+  }
+  return Math.ceil(threshold / 1440) * 1440;
+}
+
+/**
+ * The denominator of the trend's rate: the length of one bucket, in
+ * the reader's words. Daily buckets are "per day", weekly buckets are
+ * "per week", and anything else is "per period" — the copy never
+ * claims a unit the buckets do not have.
+ */
+function bucketStepName(buckets: readonly ChartBucket[]): string {
+  if (buckets.length === 0) {
+    return "period";
+  }
+  const days = buckets.reduce(
+    (widest, bucket) =>
+      Math.max(
+        widest,
+        diffInDaysInclusive(bucket.bucketStart, bucket.bucketEnd),
+      ),
+    0,
+  );
+  if (days === 1) {
+    return "day";
+  }
+  if (days === 7) {
+    return "week";
+  }
+  return "period";
+}
+
+/**
  * The name of a series as the legend shows it: the measure, and the
  * group it belongs to when the chart is split.
  */
@@ -585,38 +969,58 @@ function joinList(items: readonly string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${last}`;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Component                                                                   */
-/* -------------------------------------------------------------------------- */
-
-/**
- * The work-added / work-completed chart: the bars, the legend, the
- * summary, the exclusion disclosure and the data table that stands in
- * for the chart.
- */
-export function WorkAddedCompletedChart({
-  groups,
-  view,
-  groupBy,
-  onDrillDown,
-  groupLabels = {},
-}: Readonly<WorkAddedCompletedChartProps>): ReactElement {
-  const buckets = collectBuckets(groups);
-  const series = buildSeries(groups);
-  const rows = buildRows(buckets, groups, series, view);
-
-  const hasActivity = groups.some((group) =>
+/** Whether any group contributes a created or completed item. */
+function hasChartActivity(
+  groups: readonly WorkAddedCompletedChartGroup[],
+): boolean {
+  return groups.some((group) =>
     group.result.series.buckets.some(
       (bucket) => bucket.createdCount > 0 || bucket.completedCount > 0,
     ),
   );
+}
 
+/** The programmatic description of the current chart form and unit. */
+function chartLabel(
+  view: WorkAddedCompletedView,
+  isGrouped: boolean,
+  step: string,
+): string {
+  const figure = view === "count" ? "number of items" : "estimated effort";
+  if (isGrouped) {
+    return `Bar chart of the ${figure} added and completed per period.`;
+  }
+  return `Line chart of the ${figure} added (above the zero line) and completed (below the zero line) per ${step}, with the net work change trend.`;
+}
+
+/** The strings shared by the chart, legend, summary, and table. */
+function chartCopy({
+  buckets,
+  groups,
+  groupBy,
+  groupLabels,
+  isGrouped,
+  trend,
+  view,
+}: {
+  readonly buckets: readonly ChartBucket[];
+  readonly groups: readonly WorkAddedCompletedChartGroup[];
+  readonly groupBy: WorkAddedCompletedGroupBy | undefined;
+  readonly groupLabels: Readonly<Record<string, string>>;
+  readonly isGrouped: boolean;
+  readonly trend: NetTrend | null;
+  readonly view: WorkAddedCompletedView;
+}): {
+  readonly summary: string;
+  readonly chartLabel: string;
+  readonly tableCaption: string;
+  readonly step: string;
+} {
   const lastBucket = buckets.at(-1);
   const period =
     lastBucket === undefined
       ? ""
       : `${periodLabel(buckets[0])} – ${periodLabel(lastBucket)}`;
-
   const split =
     groupBy === undefined || groups.length === 0
       ? ""
@@ -628,23 +1032,161 @@ export function WorkAddedCompletedChart({
           )
           .filter((name) => name !== "")
           .join(", ")}.`;
-
   const during = period === "" ? "" : ` for ${period}`;
-  const summary = `${
+  const baseSummary = `${
     view === "count"
       ? "Showing the number of items added and completed"
       : "Showing the estimated effort added and completed"
   }${during}.`;
+  const step = bucketStepName(buckets);
+  const trendReading =
+    trend === null
+      ? ""
+      : ` Net work change over the period: ${TREND_READINGS[trend.direction]}.` +
+        ` Net trend: ${formatTrendFigure(view, trend.slope)} per ${step}.` +
+        ` Net work change at the end of the period: ${formatTrendFigure(view, trend.endValue)}.`;
 
-  const chartLabel =
-    view === "count"
-      ? "Bar chart of the number of items added and completed per period."
-      : "Bar chart of the estimated effort added and completed per period.";
+  return {
+    summary: `${baseSummary}${trendReading}${split}`,
+    chartLabel: chartLabel(view, isGrouped, step),
+    tableCaption:
+      view === "count"
+        ? "Items added and completed"
+        : "Estimated effort added and completed",
+    step,
+  };
+}
 
-  const tableCaption =
-    view === "count"
-      ? "Items added and completed"
-      : "Estimated effort added and completed";
+/* -------------------------------------------------------------------------- */
+/* Components                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One point of one of the two series of the mirrored diagram.
+ *
+ * The marker shape is the series' second, non-colour distinction: the
+ * added series is drawn with circles, the completed series with
+ * squares. The point is clickable when there is somewhere to drill
+ * down to.
+ */
+function SeriesPoint({
+  cx,
+  cy,
+  payload,
+  shape,
+  testId,
+  drillable,
+  radius = 4,
+  style,
+  onSelect,
+}: Readonly<SeriesPointProps>): ReactElement | null {
+  if (cx === undefined || cy === undefined) {
+    return null;
+  }
+  const handleClick = (): void => {
+    if (payload === undefined || onSelect === undefined) {
+      return;
+    }
+    onSelect(payload);
+  };
+  const className = `td-work-added-completed__point td-work-added-completed__point--${
+    shape === "circle" ? "added" : "completed"
+  }${drillable ? " td-work-added-completed__point--drillable" : ""}`;
+  if (shape === "circle") {
+    return (
+      <circle
+        className={className}
+        data-testid={testId}
+        cx={cx}
+        cy={cy}
+        r={radius}
+        style={style}
+        onClick={handleClick}
+      />
+    );
+  }
+  const half = radius;
+  return (
+    <rect
+      className={className}
+      data-testid={testId}
+      x={cx - half}
+      y={cy - half}
+      width={half * 2}
+      height={half * 2}
+      style={style}
+      onClick={handleClick}
+    />
+  );
+}
+
+/** The mirrored value axis names its unit and the meaning of each half. */
+function ValueAxisLabel({
+  view,
+}: Readonly<{ view: WorkAddedCompletedView }>): ReactElement {
+  return (
+    <text
+      className="td-work-added-completed__axis-label"
+      x={LINE_CHART_MARGIN.left}
+      y={LINE_CHART_MARGIN.top - 8}
+      textAnchor="start"
+    >
+      {UNIT_NAMES[view]} — added above, completed below
+    </text>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Component                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The work-added / work-completed chart: the mirrored line diagram (or
+ * the grouped bars), the legend, the summary, the exclusion disclosure
+ * and the data table that stands in for the chart.
+ */
+export function WorkAddedCompletedChart({
+  groups,
+  view,
+  groupBy,
+  onDrillDown,
+  groupLabels = {},
+}: Readonly<WorkAddedCompletedChartProps>): ReactElement {
+  const buckets = collectBuckets(groups);
+
+  /**
+   * Whether the chart is split into several series. The mirrored line
+   * diagram is the workspace-level figure; the grouped view keeps the
+   * grouped bars until a story defines how to draw N mirrored pairs.
+   */
+  const isGrouped = groupBy !== undefined || groups.length > 1;
+
+  const series = isGrouped ? buildSeries(groups) : [];
+  const rows = isGrouped ? buildRows(buckets, groups, series, view) : [];
+
+  const workspace = groups[0];
+  const mirrored =
+    isGrouped || workspace === undefined
+      ? null
+      : buildMirroredRows(buckets, workspace.result, view);
+  const mirroredRows = mirrored?.rows ?? [];
+  const trend = mirrored?.trend ?? null;
+
+  const hasActivity = hasChartActivity(groups);
+  const {
+    summary,
+    chartLabel: label,
+    tableCaption,
+    step,
+  } = chartCopy({
+    buckets,
+    groups,
+    groupBy,
+    groupLabels,
+    isGrouped,
+    trend,
+    view,
+  });
 
   /**
    * The drill-down request for one figure — the group, the bucket, the
@@ -664,6 +1206,31 @@ export function WorkAddedCompletedChart({
     taskGids: contributingGids(result, measure, bucket.bucketStart),
   });
 
+  /**
+   * The drill-down a click on a point of the mirrored diagram emits:
+   * the bucket the point stands for, and the measure of the series the
+   * point belongs to.
+   */
+  const drillDownPoint =
+    (measure: WorkAddedCompletedMeasure) =>
+    (row: MirroredRow): void => {
+      if (onDrillDown === undefined) {
+        return;
+      }
+      const result = workspace?.result;
+      if (result === undefined) {
+        return;
+      }
+      onDrillDown(
+        drillDownRequest(
+          undefined,
+          measure,
+          { bucketStart: row.bucketStart, bucketEnd: row.bucketEnd },
+          result,
+        ),
+      );
+    };
+
   return (
     <section
       className="td-work-added-completed"
@@ -676,7 +1243,6 @@ export function WorkAddedCompletedChart({
         data-testid="work-added-completed-summary"
       >
         {summary}
-        {split}
       </p>
 
       {hasActivity ? (
@@ -687,109 +1253,291 @@ export function WorkAddedCompletedChart({
               height={CHART_HEIGHT}
               initialDimension={INITIAL_DIMENSION}
             >
-              <BarChart
-                data={rows}
-                margin={CHART_MARGIN}
-                accessibilityLayer={false}
-                role="img"
-                aria-label={chartLabel}
-              >
-                <CartesianGrid
-                  className="td-work-added-completed__grid"
-                  vertical={false}
-                />
-                <XAxis
-                  className="td-work-added-completed__axis"
-                  dataKey="bucket"
-                  tickLine={false}
-                />
-                <YAxis
-                  className="td-work-added-completed__axis"
-                  tickLine={false}
-                  width={VALUE_AXIS_WIDTH}
-                />
-                <Tooltip
-                  formatter={(value) => formatFigure(view, toNumber(value))}
-                />
-                {series.map((item) => (
-                  <Bar
-                    key={item.dataKey}
-                    dataKey={item.dataKey}
-                    name={item.name}
-                    className={`td-work-added-completed__series td-work-added-completed__series--slot-${item.slot} td-work-added-completed__measure--${item.measure}`}
-                    isAnimationActive={false}
-                    onClick={(entry: BarRectangleItem) => {
-                      if (onDrillDown === undefined) {
-                        return;
-                      }
-                      const payload = entry.payload as
-                        | { bucketStart?: ISODate; bucketEnd?: ISODate }
-                        | undefined;
-                      const bucketStart = payload?.bucketStart;
-                      if (bucketStart === undefined) {
-                        return;
-                      }
-                      const group = groups[item.groupIndex];
-                      onDrillDown(
-                        drillDownRequest(
-                          item.groupKey,
-                          item.measure,
-                          {
-                            bucketStart,
-                            bucketEnd: payload?.bucketEnd ?? bucketStart,
-                          },
-                          group?.result ?? groups[0].result,
-                        ),
-                      );
-                    }}
+              {isGrouped ? (
+                <BarChart
+                  data={rows as readonly ChartRow[]}
+                  margin={CHART_MARGIN}
+                  accessibilityLayer={false}
+                  role="img"
+                  aria-label={label}
+                >
+                  <CartesianGrid
+                    className="td-work-added-completed__grid"
+                    vertical={false}
                   />
-                ))}
-              </BarChart>
+                  <XAxis
+                    className="td-work-added-completed__axis"
+                    dataKey="bucket"
+                    tickLine={false}
+                  />
+                  <YAxis
+                    className="td-work-added-completed__axis"
+                    tickLine={false}
+                    width={VALUE_AXIS_WIDTH}
+                  />
+                  <Tooltip
+                    formatter={(value) => formatFigure(view, toNumber(value))}
+                  />
+                  {series.map((item) => (
+                    <Bar
+                      key={item.dataKey}
+                      dataKey={item.dataKey}
+                      name={item.name}
+                      className={`td-work-added-completed__series td-work-added-completed__series--slot-${item.slot} td-work-added-completed__measure--${item.measure}`}
+                      isAnimationActive={false}
+                      onClick={(entry: BarRectangleItem) => {
+                        if (onDrillDown === undefined) {
+                          return;
+                        }
+                        const payload = entry.payload as
+                          | { bucketStart?: ISODate; bucketEnd?: ISODate }
+                          | undefined;
+                        const bucketStart = payload?.bucketStart;
+                        if (bucketStart === undefined) {
+                          return;
+                        }
+                        const group = groups[item.groupIndex];
+                        if (group === undefined) {
+                          return;
+                        }
+                        onDrillDown(
+                          drillDownRequest(
+                            item.groupKey,
+                            item.measure,
+                            {
+                              bucketStart,
+                              bucketEnd: payload?.bucketEnd ?? bucketStart,
+                            },
+                            group.result,
+                          ),
+                        );
+                      }}
+                    />
+                  ))}
+                </BarChart>
+              ) : (
+                <LineChart
+                  data={mirroredRows}
+                  margin={LINE_CHART_MARGIN}
+                  accessibilityLayer={false}
+                  role="img"
+                  aria-label={label}
+                >
+                  <CartesianGrid
+                    className="td-work-added-completed__grid"
+                    vertical={false}
+                  />
+                  <XAxis
+                    className="td-work-added-completed__axis"
+                    dataKey="bucket"
+                    tickLine={false}
+                  />
+                  <YAxis
+                    className="td-work-added-completed__axis"
+                    tickLine={false}
+                    width={VALUE_AXIS_WIDTH}
+                    domain={mirroredDomain(mirroredRows, view)}
+                    tickFormatter={(value: number) =>
+                      formatAxisTick(view, value)
+                    }
+                    label={{ content: <ValueAxisLabel view={view} /> }}
+                  />
+                  <ReferenceLine
+                    y={0}
+                    className="td-work-added-completed__zero"
+                    ifOverflow="extendDomain"
+                  />
+                  <Tooltip
+                    formatter={(value, name) =>
+                      formatTooltipValue(view, name, toNumber(value))
+                    }
+                  />
+                  <Line
+                    type="linear"
+                    dataKey="added"
+                    name={SERIES_NAMES[view].added}
+                    className="td-work-added-completed__line td-work-added-completed__line--added"
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                    dot={
+                      <SeriesPoint
+                        shape="circle"
+                        testId="work-added-completed-point-added"
+                        drillable={onDrillDown !== undefined}
+                        onSelect={drillDownPoint("created")}
+                      />
+                    }
+                    activeDot={
+                      <SeriesPoint
+                        shape="circle"
+                        drillable={false}
+                        radius={5}
+                        style={{ pointerEvents: "none" }}
+                      />
+                    }
+                  />
+                  <Line
+                    type="linear"
+                    dataKey="completed"
+                    name={SERIES_NAMES[view].completed}
+                    className="td-work-added-completed__line td-work-added-completed__line--completed"
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                    dot={
+                      <SeriesPoint
+                        shape="square"
+                        testId="work-added-completed-point-completed"
+                        drillable={onDrillDown !== undefined}
+                        onSelect={drillDownPoint("completed")}
+                      />
+                    }
+                    activeDot={
+                      <SeriesPoint
+                        shape="square"
+                        drillable={false}
+                        radius={5}
+                        style={{ pointerEvents: "none" }}
+                      />
+                    }
+                  />
+                  <Line
+                    type="linear"
+                    dataKey="trend"
+                    name={TREND_SERIES_NAME}
+                    className="td-work-added-completed__line td-work-added-completed__line--trend"
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                    dot={false}
+                    activeDot={false}
+                  />
+                </LineChart>
+              )}
             </ResponsiveContainer>
           </div>
 
-          <ul
-            className="td-work-added-completed__legend"
-            data-testid="work-added-completed-legend"
-          >
-            {series.map((item) => {
-              const label = seriesLabel(item, groupLabels);
-              return (
-                <li
-                  key={item.dataKey}
-                  className={`td-work-added-completed__legend-item td-work-added-completed__series--slot-${item.slot}`}
-                >
-                  <svg
-                    className={`td-work-added-completed__swatch td-work-added-completed__swatch--${item.measure}`}
-                    viewBox="0 0 16 12"
-                    aria-hidden="true"
-                    focusable="false"
+          {isGrouped ? (
+            <ul
+              className="td-work-added-completed__legend"
+              data-testid="work-added-completed-legend"
+            >
+              {series.map((item) => {
+                const label = seriesLabel(item, groupLabels);
+                return (
+                  <li
+                    key={item.dataKey}
+                    className={`td-work-added-completed__legend-item td-work-added-completed__series--slot-${item.slot}`}
                   >
-                    <rect
-                      className="td-work-added-completed__swatch-fill"
-                      x="0.5"
-                      y="0.5"
-                      width="15"
-                      height="11"
-                      rx="2"
-                    />
-                  </svg>
-                  {label.group === null ? (
-                    <span>{label.measure}</span>
-                  ) : (
-                    <span>
-                      {label.measure} —{" "}
-                      {label.group.raw ? (
-                        <code>{label.group.text}</code>
-                      ) : (
-                        label.group.text
-                      )}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                    <svg
+                      className={`td-work-added-completed__swatch td-work-added-completed__swatch--${item.measure}`}
+                      viewBox="0 0 16 12"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
+                      <rect
+                        className="td-work-added-completed__swatch-fill"
+                        x="0.5"
+                        y="0.5"
+                        width="15"
+                        height="11"
+                        rx="2"
+                      />
+                    </svg>
+                    {label.group === null ? (
+                      <span>{label.measure}</span>
+                    ) : (
+                      <span>
+                        {label.measure} —{" "}
+                        {label.group.raw ? (
+                          <code>{label.group.text}</code>
+                        ) : (
+                          label.group.text
+                        )}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <ul
+              className="td-work-added-completed__legend"
+              data-testid="work-added-completed-legend"
+            >
+              <li className="td-work-added-completed__legend-item td-work-added-completed__legend-item--added">
+                <svg
+                  className="td-work-added-completed__swatch td-work-added-completed__swatch--line"
+                  viewBox="0 0 24 12"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <line
+                    className="td-work-added-completed__swatch-line td-work-added-completed__swatch-line--added"
+                    x1="1"
+                    y1="6"
+                    x2="23"
+                    y2="6"
+                  />
+                  <circle
+                    className="td-work-added-completed__swatch-marker td-work-added-completed__swatch-marker--added"
+                    cx="12"
+                    cy="6"
+                    r="3.5"
+                  />
+                </svg>
+                <span>
+                  {SERIES_NAMES[view].added} — above the zero line (red)
+                </span>
+              </li>
+              <li className="td-work-added-completed__legend-item td-work-added-completed__legend-item--completed">
+                <svg
+                  className="td-work-added-completed__swatch td-work-added-completed__swatch--line"
+                  viewBox="0 0 24 12"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <line
+                    className="td-work-added-completed__swatch-line td-work-added-completed__swatch-line--completed"
+                    x1="1"
+                    y1="6"
+                    x2="23"
+                    y2="6"
+                  />
+                  <rect
+                    className="td-work-added-completed__swatch-marker td-work-added-completed__swatch-marker--completed"
+                    x="8.5"
+                    y="2.5"
+                    width="7"
+                    height="7"
+                  />
+                </svg>
+                <span>
+                  {SERIES_NAMES[view].completed} — below the zero line (green)
+                </span>
+              </li>
+              <li className="td-work-added-completed__legend-item td-work-added-completed__legend-item--trend">
+                <svg
+                  className="td-work-added-completed__swatch td-work-added-completed__swatch--line"
+                  viewBox="0 0 24 12"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <line
+                    className="td-work-added-completed__swatch-line td-work-added-completed__swatch-line--trend"
+                    x1="1"
+                    y1="6"
+                    x2="23"
+                    y2="6"
+                  />
+                </svg>
+                <span>
+                  {TREND_SERIES_NAME} —{" "}
+                  {trend === null
+                    ? ""
+                    : `${TREND_DIRECTION_WORDS[trend.direction]}, ${formatTrendFigure(view, trend.slope)} per ${step}`}
+                </span>
+              </li>
+            </ul>
+          )}
         </>
       ) : (
         <p

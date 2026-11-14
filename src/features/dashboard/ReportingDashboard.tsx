@@ -149,6 +149,9 @@ import { DataQualitySummary } from "../refresh/DataQualitySummary";
 import { EmptyDashboard } from "../refresh/EmptyDashboard";
 import { OutcomeBanner, propsFromOutcome } from "../refresh/RefreshControls";
 import { RefreshStatusPanel } from "../refresh/RefreshStatusPanel";
+import { FilterPillBar } from "../filters/FilterPillBar";
+import { clearRemovable, describeValue } from "../filters/filter-model";
+import { filterTasksForReport } from "../filters/reporting-scope";
 import type { FilterOption } from "../tasks/FilterBar";
 import { TaskDetailDrawer } from "../tasks/TaskDetailDrawer";
 import { TaskList } from "../tasks/TaskList";
@@ -170,9 +173,6 @@ import {
  * the two surfaces name the same window the same way.
  */
 const REPORTING_PRESET: DateRangePreset = "last_30_days";
-
-/** The label of the reporting period, in the reader's words. */
-const REPORTING_PERIOD_LABEL = "Last 30 days";
 
 /**
  * The timezone basis every date the dashboard shows is evaluated under
@@ -446,15 +446,55 @@ export function ReportingDashboard(): ReactElement {
   const [groupBy, setGroupBy] = useState<ChartGroupBy | undefined>(undefined);
 
   /**
+   * The report's filters: the one source the pill bar edits and the
+   * chart, the task table and the drill-downs all read. The date range
+   * is the reporting window and is always present; it starts as the
+   * default period.
+   */
+  const [criteria, setCriteria] = useState<FilterCriteria>(() => ({
+    dateRange: dateRange,
+  }));
+  const reportingRange = criteria.dateRange ?? dateRange;
+
+  /**
+   * The tasks the reporting window keeps — created or completed inside
+   * it, never matched on due date. The table narrows them by the other
+   * filters itself, so a filter that matches nothing reaches the
+   * table's no-results surface (with its explanation and its way out)
+   * instead of an empty table.
+   */
+  const windowTasks = useMemo(
+    () =>
+      filterTasksForReport(
+        metricTasks,
+        { dateRange: reportingRange },
+        {
+          timezone: TIMEZONE,
+          now: nowIso,
+        },
+      ),
+    [metricTasks, reportingRange, nowIso],
+  );
+
+  /**
    * The metric's results, mapped onto the chart's `groups` shape: one
    * entry per group when the metric is grouped, a single
    * workspace-level entry when it is not.
    */
   const metricGroups = useMemo<WorkAddedCompletedChartGroup[]>(() => {
-    const criteria: FilterCriteria = { dateRange };
+    // The metric buckets the window itself and applies every other
+    // filter through the shared domain predicate.
+    const metricCriteria: FilterCriteria = {
+      ...criteria,
+      dateRange: reportingRange,
+    };
     if (groupBy === undefined) {
       const result: MetricResult<WorkAddedCompletedSeries> =
-        calculateWorkAddedVsCompleted(metricTasks, criteria, metricContext);
+        calculateWorkAddedVsCompleted(
+          metricTasks,
+          metricCriteria,
+          metricContext,
+        );
       return [{ groupKey: undefined, result }];
     }
     const grouped: Record<
@@ -462,7 +502,7 @@ export function ReportingDashboard(): ReactElement {
       MetricResult<WorkAddedCompletedSeries>
     > = calculateWorkAddedVsCompleted(
       metricTasks,
-      criteria,
+      metricCriteria,
       metricContext,
       groupBy,
     );
@@ -470,7 +510,7 @@ export function ReportingDashboard(): ReactElement {
       groupKey,
       result,
     }));
-  }, [metricTasks, dateRange, metricContext, groupBy]);
+  }, [metricTasks, criteria, reportingRange, metricContext, groupBy]);
 
   /** The human names of the groups the chart is split by. */
   const groupLabels = useMemo(
@@ -610,7 +650,12 @@ export function ReportingDashboard(): ReactElement {
   const scopeLabel = `${projects.length} ${
     projects.length === 1 ? "project" : "projects"
   }`;
-  const scopeSummary = `${workspace.workspace?.name ?? "No workspace"} · ${scopeLabel} · ${REPORTING_PERIOD_LABEL}`;
+  const periodLabel = describeValue(
+    { dateRange: reportingRange },
+    "dateRange",
+    { users: userOptions, projects: projectOptions, timezone: TIMEZONE },
+  );
+  const scopeSummary = `${workspace.workspace?.name ?? "No workspace"} · ${scopeLabel} · ${periodLabel}`;
 
   /* ---------------------------------------------------------------- */
   /* The surface                                                      */
@@ -638,15 +683,27 @@ export function ReportingDashboard(): ReactElement {
       {isLoading && <LoadingState data-testid="dashboard-loading" />}
       {!isLoading && hasRefreshed && (
         <>
+          <FilterPillBar
+            criteria={criteria}
+            onChange={setCriteria}
+            users={userOptions}
+            projects={projectOptions}
+            now={now}
+            timezone={TIMEZONE}
+            trailing={
+              <>
+                <CountEffortToggle value={view} onChange={setView} />
+                <GroupBySelector value={groupBy} onChange={setGroupBy} />
+              </>
+            }
+          />
+
           <DataQualitySummary
             flags={dataQualityFlags}
             onSelectFlag={(flag): void => {
               setPanelSelection({ kind: "data_quality", flag });
             }}
           />
-
-          <CountEffortToggle value={view} onChange={setView} />
-          <GroupBySelector value={groupBy} onChange={setGroupBy} />
 
           <WorkAddedCompletedChart
             groups={metricGroups}
@@ -666,16 +723,32 @@ export function ReportingDashboard(): ReactElement {
               busy={isRefreshing}
             />
           ) : (
-            <TaskList
-              tasks={metricTasks}
-              users={userOptions}
-              projects={projectOptions}
-              now={now}
-              timezone={TIMEZONE}
-              onSelectTask={(taskGid): void => {
-                setSelectedTaskGid(taskGid);
-              }}
-            />
+            <>
+              {windowTasks.length > 0 ? (
+                <p
+                  className="td-dashboard__reconciliation"
+                  data-testid="dashboard-reconciliation-note"
+                >
+                  A task added and completed in this period is counted in both
+                  series of the chart above and is listed once in the table
+                  below.
+                </p>
+              ) : null}
+              <TaskList
+                tasks={windowTasks}
+                criteria={criteria}
+                onClearAll={() => {
+                  setCriteria(clearRemovable(criteria));
+                }}
+                users={userOptions}
+                projects={projectOptions}
+                now={now}
+                timezone={TIMEZONE}
+                onSelectTask={(taskGid): void => {
+                  setSelectedTaskGid(taskGid);
+                }}
+              />
+            </>
           )}
 
           {selectedTask !== null ? (

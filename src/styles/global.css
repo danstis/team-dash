@@ -395,6 +395,20 @@ a[data-testid="nav-settings"]:hover {
   gap: var(--td-space-3);
 }
 
+/* The reporting period control in the masthead: the reader picks the
+   window the report covers, and the scope line beside it states the
+   choice (DESIGN.md › The Masthead Rule). */
+.td-dashboard__period {
+  display: flex;
+  align-items: center;
+  gap: var(--td-space-2);
+}
+
+.td-dashboard__period-label {
+  color: var(--td-color-text-secondary);
+  font-size: var(--td-font-size-sm);
+}
+
 /* The freshness row of the masthead: the refresh status (the
    cached-versus-fresh label and the refresh action) sits under the
    title and the navigation, so a screenshot of the dashboard states

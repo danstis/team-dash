@@ -62,11 +62,11 @@ import type { ReactElement } from "react";
 import { resolveDateRangePreset, toIsoDate } from "../../domain/datetime";
 import {
   DATE_RANGE_PRESETS,
-  type DateRangePreset,
   type FilterCriteria,
   type ISODate,
   type TimezoneSetting,
 } from "../../domain/types";
+import { DATE_RANGE_PRESET_LABELS } from "../../shared/dateRangePresetLabels";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                       */
@@ -128,19 +128,14 @@ export interface FilterBarProps {
 /**
  * The label shown for each date-range preset. The literal stays a raw
  * enum in the option VALUE; the label is the plain-English phrase the
- * user reads (The Product Voice Rule).
+ * user reads (The Product Voice Rule). The labels live in the shared
+ * copy module so every surface that offers a date range names the same
+ * window the same way (FR-091).
  */
-const PRESET_LABELS: Readonly<Record<DateRangePreset, string>> = {
-  this_week: "This week",
-  last_week: "Last week",
-  last_30_days: "Last 30 days",
-  this_month: "This month",
-  last_month: "Last month",
-  this_quarter: "This quarter",
-};
+const PRESET_LABELS = DATE_RANGE_PRESET_LABELS;
 
 /** The label of the option that clears the date-range filter. */
-const ANY_TIME_LABEL = "Any time";
+const ANY_TIME_LABEL = "Any time (including undated and future tasks)";
 
 /** The label of the custom start/end range option. */
 const CUSTOM_RANGE_LABEL = "Custom range";
@@ -332,6 +327,7 @@ export function FilterBar({
           {DATE_RANGE_PRESETS.map((preset) => (
             <option key={preset} value={preset}>
               {PRESET_LABELS[preset]}
+              {preset === "all_time" ? " (due through today)" : ""}
             </option>
           ))}
           <option value="custom">{CUSTOM_RANGE_LABEL}</option>

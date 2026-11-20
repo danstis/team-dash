@@ -539,11 +539,9 @@ function drillDownButton(
   );
 }
 
-/** The number of bars the chart draws for one series. */
-function barCount(container: HTMLElement, seriesIndex: number): number {
-  const series = container.querySelectorAll(".recharts-bar")[seriesIndex];
-  expect(series).toBeDefined();
-  return series.querySelectorAll(".recharts-bar-rectangle").length;
+/** The number of points the chart draws for one series. */
+function pointCount(container: HTMLElement, testId: string): number {
+  return container.querySelectorAll(`[data-testid="${testId}"]`).length;
 }
 
 /** The tasks the drill-down list currently shows. */
@@ -577,9 +575,12 @@ describe("BSOD-319 (T076) — the work added / work completed chart", () => {
   it("draws the created and completed figure of every bucket", () => {
     const container = renderChart();
 
-    // FR-059 — one created bar and one completed bar per bucket, and
-    // the table states the same figures in text (FR-088).
-    expect(container.querySelectorAll(".recharts-bar")).toHaveLength(2);
+    // FR-059 — one created figure and one completed figure per
+    // bucket, and the table states the same figures in text (FR-088).
+    // The workspace-level figure is the mirrored line diagram: the
+    // added measure above the zero line, the completed measure below
+    // it, and the trend of the net work change across them.
+    expect(container.querySelectorAll(".recharts-line")).toHaveLength(3);
     for (const [bucketStart, count] of Object.entries(CREATED_COUNTS)) {
       expect(figureText(undefined, bucketStart, "created")).toBe(String(count));
     }
@@ -589,10 +590,15 @@ describe("BSOD-319 (T076) — the work added / work completed chart", () => {
       );
     }
 
-    // The bars themselves carry the same figures: a bucket with no
-    // figure of a measure draws no bar for it.
-    expect(barCount(container, 0)).toBe(3);
-    expect(barCount(container, 1)).toBe(4);
+    // The lines carry the same figures: one point per bucket, of each
+    // measure, around the explicit zero baseline.
+    expect(pointCount(container, "work-added-completed-point-added")).toBe(7);
+    expect(pointCount(container, "work-added-completed-point-completed")).toBe(
+      7,
+    );
+    expect(container.querySelectorAll(".recharts-reference-line")).toHaveLength(
+      1,
+    );
 
     // FR-088 — the chart is labelled, and the table beside it is the
     // textual alternative.
@@ -644,11 +650,10 @@ describe("BSOD-319 (T076) — the work added / work completed chart", () => {
       screen.getByTestId("work-added-completed-summary"),
     ).toHaveTextContent(/estimated effort/i);
 
-    // The bars follow the view: the completed bucket of 6 March has an
-    // item count but no effort, so it draws no bar in the effort view.
-    const container = document.body;
-    expect(barCount(container, 0)).toBe(3);
-    expect(barCount(container, 1)).toBe(3);
+    // The lines follow the view: the completed bucket of 6 March has
+    // an item count but no effort, and the effort view shows nothing
+    // for it.
+    expect(figureText(undefined, "2026-03-06", "completed")).toBe("0 min");
 
     // And back again.
     fireEvent.click(screen.getByLabelText("Items"));
@@ -746,5 +751,40 @@ describe("BSOD-319 (T076) — the work added / work completed chart", () => {
     expect(
       screen.getByTestId("work-added-completed-exclusion"),
     ).toHaveTextContent(/no estimate/i);
+  });
+
+  it("states the reading of the net work change over the period", () => {
+    renderChart();
+
+    // The net change of the seven buckets is +1, +1, +1, −1, −1, −1, 0,
+    // so the running net goes 1, 2, 3, 2, 1, 0, 0 and the fitted line
+    // falls by 0.3 items per day. The capacity answer must not depend
+    // on the reader interpreting the geometry.
+    const summary = screen.getByTestId("work-added-completed-summary");
+    expect(summary).toHaveTextContent(/net work change over the period/i);
+    expect(summary).toHaveTextContent(/the net is falling/i);
+    expect(summary).toHaveTextContent(/net trend: −0\.3 items per day/i);
+    expect(summary).toHaveTextContent(
+      /net work change at the end of the period: 0 items\./i,
+    );
+
+    // The legend names the same trend, with its direction and rate.
+    expect(screen.getByTestId("work-added-completed-legend")).toHaveTextContent(
+      /net work change trend — falling, −0\.3 items per day/i,
+    );
+  });
+
+  it("states the trend in the unit of the active view", () => {
+    renderChart({ initialView: "effort" });
+
+    // The effort net change of the seven buckets is +120, +60, 0, −120,
+    // 0, −90, 0 minutes, so the running net falls to −30 minutes by the
+    // end of the period.
+    const summary = screen.getByTestId("work-added-completed-summary");
+    expect(summary).toHaveTextContent(/the net is falling/i);
+    expect(summary).toHaveTextContent(/net trend: −[\d.]+ min per day/i);
+    expect(summary).toHaveTextContent(
+      /net work change at the end of the period: −30 min\./i,
+    );
   });
 });

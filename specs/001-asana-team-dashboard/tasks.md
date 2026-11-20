@@ -327,6 +327,15 @@ The three task-health calculators all live in `src/domain/metrics/taskHealth.ts`
 
 ---
 
+## Phase 16: The Work-Added / Work-Completed Chart, Redrawn
+
+**Purpose**: BSOD-783 — the reporting dashboard's headline metric is drawn as grouped bars, which answer "how many" but not "are we getting through more work than we are adding?". This phase redraws the workspace-level figure as a mirrored line diagram — the added measure above the zero line, the completed measure below it, and a fitted trend of the net work change across the period — so the capacity reading is available at a glance (FR-056–FR-062, FR-088).
+
+- [x] [BSOD-783] T-UI2 [US4] Redesign the work-added-vs-completed metric chart as a mirrored line diagram — write the failing tests first, then reimplement the chart surface
+- [x] [BSOD-783] T-UI3 [US4] Restore the reporting dashboard's no-results state and pin the task table ↔ chart reconciliation — write the failing tests in `tests/integration/dashboard/dashboard-shell.test.tsx` first: (a) drive the pill bar to a filter that matches nothing in the period and expect the no-results surface with its explanation and its Clear-all affordance, rather than an empty table reading "Showing 0 of 0 tasks"; (b) pin the reconciliation invariant — the task table lists exactly the tasks the chart's two series count, a task added and completed inside the window being one row in the table and one figure in each series — together with the copy that has to say so, because the table's row count is not the chart's total; confirm both fail for the intended reason; then hand the table the window-scoped list so it narrows the remaining filters itself, state the reconciliation under the chart, point the filter bar's openers at the panel or menu they open (`aria-controls`), record the non-modal editor behaviour in `DESIGN.md` as a chosen behaviour, and rebase onto `main` (vitest 5.1.0) with the suite re-verified against it (FR-043–FR-046, FR-056–FR-062, FR-085, FR-088, US4).
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

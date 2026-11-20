@@ -139,6 +139,15 @@
   --td-color-danger-border: #f0b8b8;
 
   /* ---- Chart tokens (future graphs — not consumed yet, see docstring) ---- */
+  /* The three series of the mirrored work chart (BSOD-783): the added
+     measure above the zero line, the completed measure below it and the
+     fitted net work change trend. They are chart-specific rather than
+     the status washes: a 1px line needs the 3:1 graphical-object floor
+     of WCAG 2.2 AA, and `--td-color-success-icon` (#0ca30c) only
+     reaches 3.27:1 on white — too thin for a line. Every value below is
+     checked against the chart surface it is drawn on (light #fcfcfb /
+     dark #1a1a19): light 6.4:1, 7.0:1 and 4.3:1; dark 6.3:1, 10.0:1 and
+     6.9:1. */
   --td-chart-surface: #fcfcfb;
   --td-chart-page: #f9f9f7;
   --td-chart-ink-primary: #0b0b0b;
@@ -154,6 +163,9 @@
   --td-chart-series-6: #008300; /* green */
   --td-chart-series-7: #4a3aa7; /* violet */
   --td-chart-series-8: #e34948; /* red */
+  --td-chart-series-added: #b3261e; /* red — the added measure */
+  --td-chart-series-completed: #166534; /* green — the completed measure */
+  --td-chart-series-trend: #2a78d6; /* blue — the net work change trend */
   --td-chart-sequential-100: #cde2fb;
   --td-chart-sequential-400: #3987e5;
   --td-chart-sequential-700: #0d366b;
@@ -226,6 +238,9 @@
     --td-chart-series-6: #008300;
     --td-chart-series-7: #9085e9;
     --td-chart-series-8: #e66767;
+    --td-chart-series-added: #f87171;
+    --td-chart-series-completed: #4ade80;
+    --td-chart-series-trend: #60a5fa;
     --td-chart-diverging-neutral: #383835;
   }
 }
@@ -287,5 +302,8 @@
   --td-chart-series-6: #008300;
   --td-chart-series-7: #9085e9;
   --td-chart-series-8: #e66767;
+  --td-chart-series-added: #f87171;
+  --td-chart-series-completed: #4ade80;
+  --td-chart-series-trend: #60a5fa;
   --td-chart-diverging-neutral: #383835;
 }

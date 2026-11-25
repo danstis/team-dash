@@ -326,6 +326,14 @@ Confirmation dialogs: raised surface, Hairline Strong border, 16px radius, 24px 
 
 A compact pill (999px radius, 4px × 12px, 0.875rem medium) on Surface with a Hairline border. Hover switches the border and text to Kiln Orange. It is a stand-in until full dashboard navigation lands.
 
+### Filter Bar
+
+One strip above the charts holds every report filter. "Add filter" opens a menu of the kinds not yet in use; choosing one opens its value editor, and the result becomes a pill beside the others. A pill is a 6px-radius chip (Paper fill, Hairline Strong border) with a click-to-edit label and a separate X to remove it. Each kind appears once. The date range is the reporting window: always present, editable, never removable. The menu and editors are bordered panels, not shadowed; only dialogs that interrupt carry a shadow. Single-choice editors commit on selection; multi-value editors (person, project) and the custom date range stage a draft and commit on Apply, so Escape and Cancel change nothing. The Count/Effort switch and Group by sit on a second row of the same bar, since they change how the chart is drawn rather than which tasks are in scope.
+
+The editors are **non-modal by choice**. They take focus when they open and hand it back to the pill that opened them when they close, but the report behind stays readable and operable, and a press outside the bar closes the editor without committing. A report is a surface the reader comes and goes from, not a task to be finished before the page returns; a modal editor would hide the very figures the filter is changing.
+
+The window matches on created and completed times only, never on due date, so the task table lists exactly the tasks the chart's two series count. It is a set reconciliation, not an arithmetic one: a task added and completed inside the window is one row in the table and one figure in each series, so the table's row count is not the chart's total. The dashboard says so under the chart, so a reader comparing the two numbers is not left to conclude that one of them is wrong.
+
 ## Interaction & Copy
 
 The visual system only holds up if behaviour matches it. These rules apply to every feature as it is wired up. Open findings against them are tracked in `docs/design/ux-findings.md`.

@@ -414,8 +414,14 @@ a[data-testid="nav-settings"]:hover {
 }
 
 .td-dashboard__period-label {
+  margin: 0;
+  white-space: nowrap;
   color: var(--td-color-text-secondary);
   font-size: var(--td-font-size-sm);
+}
+
+.td-dashboard__period-select {
+  width: auto;
 }
 
 /* The freshness row of the masthead: the refresh status (the

@@ -1205,4 +1205,120 @@ describe("BSOD-787 — the dashboard's reporting period", () => {
     expect(bucketStart <= oldestDate).toBe(true);
     expect(oldestDate <= addDays(bucketStart, 6)).toBe(true);
   });
+
+  /* ---------------------------------------------------------------- */
+  /* The reporting window has one source                              */
+  /* ---------------------------------------------------------------- */
+
+  /** The report's filter bar, with the date-range pill that names it. */
+  async function dateRangePill(): Promise<HTMLElement> {
+    return screen.findByRole("button", { name: /Date range:/ });
+  }
+
+  /**
+   * Picks a window in the report's filter bar — the date-range pill's
+   * own editor, the second surface that names the reporting window.
+   */
+  async function pickWindowInFilterBar(presetLabel: string): Promise<void> {
+    fireEvent.click(await dateRangePill());
+    fireEvent.click(await screen.findByLabelText(presetLabel));
+  }
+
+  it("names the reporting window in the filter bar's date-range pill", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    // The filter bar's date-range pill and the masthead name the SAME
+    // window: the report's filter bar carries no window of its own
+    // (FR-093).
+    expect(await dateRangePill()).toHaveTextContent("Last 90 days");
+  });
+
+  it("re-reads the report over the window the reader picks in the filter bar", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    const ninetyDayStart = await firstBucketStart();
+
+    await pickWindowInFilterBar("Last 30 days");
+
+    // The window the filter bar names is the window the report covers:
+    // the metric re-read over it, and the masthead states it (FR-093).
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent(
+      "Last 30 days",
+    );
+    expect((await firstBucketStart()) > ninetyDayStart).toBe(true);
+  });
+
+  it("bounds the all-time window the filter bar picks by the data in hand", async () => {
+    await seedCommittedRefresh();
+    // A task from well beyond the 90-day window: the all-time window
+    // has to reach it, and reach it no further back than the data.
+    const oldestCreatedAt = daysAgo(400);
+    await db.tasks.put({
+      gid: "task-oldest",
+      name: "Plan last year's roadmap",
+      assigneeGid: null,
+      projectGids: [PROJECT_GID],
+      parentTaskGid: null,
+      resourceSubtype: "default_task",
+      createdAt: oldestCreatedAt,
+      modifiedAt: oldestCreatedAt,
+      completedAt: null,
+      dueAt: null,
+      priorityOptionId: null,
+      estimatedMinutes: null,
+      actualMinutes: "unavailable",
+      dependsOnTaskGids: [],
+      lastSeenInScopeAt: daysAgo(2),
+      outOfScopeReason: null,
+    });
+
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    await pickWindowInFilterBar("All time");
+
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent("All time");
+    // The masthead's control shows the same window the filter bar
+    // named: one window, two surfaces (FR-093).
+    expect(await screen.findByTestId("reporting-period")).toHaveValue(
+      "all_time",
+    );
+
+    // The window opens at the oldest activity the cache holds — not at
+    // the open bound of the vocabulary, which would mean walking a
+    // thousand years of buckets (FR-091).
+    const oldestDate = toIsoDate(new Date(oldestCreatedAt), "local");
+    const bucketStart = (await firstBucketStart()) as ISODate;
+    expect(bucketStart <= oldestDate).toBe(true);
+    expect(oldestDate <= addDays(bucketStart, 6)).toBe(true);
+  });
+
+  it("names a window the reader typed in the filter bar", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    // The reader's own bounds, typed into the filter bar's date-range
+    // editor: the masthead's control names that window as what it is,
+    // and the masthead states the bounds (FR-032's custom range,
+    // FR-093's one window).
+    fireEvent.click(await dateRangePill());
+    fireEvent.click(await screen.findByLabelText("Custom range"));
+    fireEvent.change(screen.getByLabelText("From"), {
+      target: { value: "2026-02-01" },
+    });
+    fireEvent.change(screen.getByLabelText("To"), {
+      target: { value: "2026-03-01" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByTestId("reporting-period")).toHaveValue("custom");
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent(
+      "1 Feb 2026 – 1 Mar 2026",
+    );
+  });
 });

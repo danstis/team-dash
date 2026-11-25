@@ -1297,6 +1297,77 @@ describe("BSOD-787 — the dashboard's reporting period", () => {
     expect(oldestDate <= addDays(bucketStart, 6)).toBe(true);
   });
 
+  it.each(["apply", "clear"] as const)(
+    "keeps All time live after a Person filter edit (%s)",
+    async (action) => {
+      await seedCommittedRefresh();
+      const handlesRef = renderDashboard();
+      await openTheGate(handlesRef);
+
+      await selectReportingPeriod("all_time");
+      await dateRangePill();
+      fireEvent.click(screen.getByRole("button", { name: "Add filter" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Person" }));
+      fireEvent.click(screen.getByLabelText("Alex Kim"));
+      fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+      await screen.findByRole("button", { name: /Person: Alex Kim/ });
+
+      if (action === "clear") {
+        fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+        await waitFor(() => {
+          expect(screen.queryByRole("button", { name: /Person:/ })).toBeNull();
+        });
+      }
+
+      // A later cache update extends history beyond the concrete bound
+      // the filter bar received when Person was edited.
+      const olderCreatedAt = daysAgo(400);
+      await db.tasks.put({
+        gid: "task-arrived-later",
+        name: "Older history arrived later",
+        assigneeGid: USER_GID,
+        projectGids: [PROJECT_GID],
+        parentTaskGid: null,
+        resourceSubtype: "default_task",
+        createdAt: olderCreatedAt,
+        modifiedAt: olderCreatedAt,
+        completedAt: null,
+        dueAt: null,
+        priorityOptionId: null,
+        estimatedMinutes: null,
+        actualMinutes: "unavailable",
+        dependsOnTaskGids: [],
+        lastSeenInScopeAt: daysAgo(2),
+        outOfScopeReason: null,
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId("task-table").querySelector(
+            '[data-task-gid="task-arrived-later"]',
+          ),
+        ).not.toBeNull();
+      });
+      expect(screen.getByTestId("dashboard-scope")).toHaveTextContent(
+        "All time",
+      );
+      expect(await dateRangePill()).toHaveTextContent("All time");
+      expect(await screen.findByTestId("reporting-period")).toHaveValue(
+        "all_time",
+      );
+
+      const oldestDate = toIsoDate(new Date(olderCreatedAt), "local");
+      const bucketStart = (await firstBucketStart()) as ISODate;
+      expect(bucketStart <= oldestDate).toBe(true);
+      expect(oldestDate <= addDays(bucketStart, 6)).toBe(true);
+
+      // The editor still receives the concrete bound for a custom range.
+      fireEvent.click(await dateRangePill());
+      fireEvent.click(screen.getByLabelText("Custom range"));
+      expect(screen.getByLabelText("From")).toHaveValue(oldestDate);
+    },
+  );
+
   it("names a window the reader typed in the filter bar", async () => {
     await seedCommittedRefresh();
     const handlesRef = renderDashboard();

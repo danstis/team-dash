@@ -100,19 +100,17 @@
  * Snapshot backfill
  * -----------------
  * `commit()` is the documented single path that calls
- * `SnapshotRepository.backfillSnapshots()` (data-model.md, FR-026a,
- * FR-026b, FR-068). That coupling is established in T052 (BSOD-306) and
- * is wired here: the refresh's recorded snapshot rows are handed to the
- * `SnapshotRepository` INSIDE the commit transaction, so the derived
- * snapshot cache is written by its single writer, atomically with the
- * cache flush and the session transition. A failed, cancelled, or
- * partial refresh never reaches `commit()`, so it can never produce,
+ * `SnapshotRepository.backfillFromCache()` (data-model.md, FR-026a,
+ * FR-026b, FR-068). It derives rows from the committed in-scope cache
+ * and passes them to `backfillSnapshots`; explicitly staged rows override
+ * their dates. Both writes run inside the commit transaction. A failed,
+ * cancelled, or partial refresh never reaches `commit()`, so it cannot produce,
  * replace, or backfill a snapshot (FR-068).
  *
  * The `snapshots` store is therefore NOT flushed by the generic
  * per-store flush below — the `SnapshotRepository` owns that table. The
- * staging buffer still holds snapshot rows (the refresh records the
- * day's figures by staging them), and `commit()` hands them over.
+ * staging buffer may still hold explicit snapshot rows, which `commit()`
+ * hands over as overrides.
  */
 import { db } from "../schema";
 import type {
@@ -327,7 +325,10 @@ async function flushStoreRows<S extends FlushableStoreName>(
  * local calendar day replaces that day's snapshot instead of
  * duplicating it (FR-026a).
  */
-async function commitStagedSnapshots(session: RefreshSession): Promise<void> {
+async function commitStagedSnapshots(
+  session: RefreshSession,
+  commitNow: Date,
+): Promise<void> {
   const staged = currentBuffer.get("snapshots") ?? new Map();
   // One row per local calendar day. The staging buffer already dedupes
   // the compound key, so the last staged row for a day is the one that
@@ -359,7 +360,7 @@ async function commitStagedSnapshots(session: RefreshSession): Promise<void> {
   const derived = snapshotRepository.backfillFromCache(
     session.workspaceGid,
     session.id,
-    new Date(),
+    commitNow,
     rowsByWorkspace.get(session.workspaceGid),
   );
   rowsByWorkspace.delete(session.workspaceGid);
@@ -416,13 +417,15 @@ export interface RefreshStagingRepository {
   /**
    * Atomically flush the staging buffer to the live Dexie cache
    * stores AND transition the matching `RefreshSession` to
-   * `status: 'succeeded'` with a fresh `finishedAt` timestamp. The
+   * `status: 'succeeded'` with a fresh `finishedAt` timestamp, then
+   * derive snapshots from the newly committed in-scope cache. The
    * whole action is a single Dexie transaction; a mid-batch throw
    * rolls back every row (cache + session) so the system is never
    * left in a partial state.
    *
-   * The refresh's recorded snapshot rows are handed to the
-   * `SnapshotRepository` inside that same transaction, so the derived
+   * Explicitly staged snapshot rows override their dates. Both they and
+   * the derived rows are handed to the `SnapshotRepository` inside that
+   * same transaction, so the derived
    * snapshot cache is written by its single writer and lands (or rolls
    * back) with the rest of the refresh (FR-026a / FR-068).
    */
@@ -517,11 +520,12 @@ export const refreshStagingRepository: RefreshStagingRepository = {
     // flush" — and `refreshSessions` is always included even when no
     // session row was staged (the transition is a `get` + `put` on
     // the existing seeded row, not a `bulkPut` over a buffer).
-    // `tasks` + `snapshots` always participate: the backfill reads the
-    // task cache (after this commit's flush) and writes the snapshots.
+    // `tasks`, `projects`, and `snapshots` always participate: the backfill
+    // reads the in-scope cache after this commit's flush, then writes snapshots.
     const stores = new Set<RefreshStagingStoreName>([
       "refreshSessions",
       "tasks",
+      "projects",
       "snapshots",
     ]);
     for (const store of orderedStores(currentBuffer)) {
@@ -566,10 +570,11 @@ export const refreshStagingRepository: RefreshStagingRepository = {
           `refreshStagingRepository.commit: RefreshSession "${sessionId}" was not seeded; the orchestrator must insert a running session before staging starts`,
         );
       }
+      const commitNow = new Date();
       await db.refreshSessions.put({
         ...existingSession,
         status: "succeeded",
-        finishedAt: new Date().toISOString(),
+        finishedAt: commitNow.toISOString(),
       });
 
       // The derived snapshot cache (FR-026a / FR-026b / FR-068): the
@@ -581,7 +586,7 @@ export const refreshStagingRepository: RefreshStagingRepository = {
       // row (the table is keyed by `[workspaceGid+localCalendarDate]`),
       // so a second successful refresh on the same local calendar day
       // replaces that day's snapshot instead of duplicating it.
-      await commitStagedSnapshots(existingSession);
+      await commitStagedSnapshots(existingSession, commitNow);
     });
 
     // The staging buffer is dropped only after the transaction

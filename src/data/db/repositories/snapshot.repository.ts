@@ -27,10 +27,8 @@
  *    browser's local timezone is the default reporting basis (FR-029), and
  *    FR-030 applies the same basis to the snapshot-day boundary. The
  *    domain layer exposes the equivalent helper for the UI and metric
- *    layers (`src/domain/datetime` → `toIsoDate(date, "local")`); this
- *    module keeps its own copy because the storage layer must not import
- *    from `src/domain/**` (the boundary the sibling repositories
- *    document).
+ *    layers (`src/domain/datetime` → `toIsoDate(date, "local")`). This
+ *    module also uses that helper when deriving the metric's date range.
  *
  * Who may call this module
  * -------------------------
@@ -47,8 +45,8 @@
  * ------------------------------------------------
  * `backfillFromCache()` is the entry `commit()` uses: it reads the
  * workspace's in-scope cached tasks, calls `calculateBacklogDirection`
- * ONCE over the cached tasks' own span (earliest created day → today,
- * FR-026b), and hands the resulting points to `backfillSnapshots` as the
+ * ONCE from the earliest task or retained snapshot day through today
+ * (FR-026b / FR-027), and hands the points to `backfillSnapshots` as the
  * per-date `compute`. No figure is computed here. The call is
  * workspace-level and filter-independent (`{}`): a snapshot row carries
  * no team/project/assignee breakdown, so a user's active filter must
@@ -61,16 +59,17 @@
  * Boundary
  * --------
  * This module lives under `src/data/db/repositories/` and imports from
- * `src/data/db/schema.ts`, Dexie, and — since T085 — exactly one pure
- * domain module, `src/domain/metrics/backlog.ts` (the metric is the
- * single source of truth; domain never imports data, so there is no
- * cycle). It does not import from `src/app/**`, `src/features/**`, or
+ * `src/data/db/schema.ts`, sibling `cache.repository.ts`, Dexie, and
+ * the pure domain datetime and backlog metric modules. The metric is
+ * the single computation path; domain never imports data, so there is
+ * no cycle. It does not import from `src/app/**`, `src/features/**`, or
  * `src/shared/**`. The day-key helper below stays local.
  */
 import Dexie, { type Transaction } from "dexie";
 
 import { db } from "../schema";
 import type { Snapshot } from "../schema";
+import { cacheRepository } from "./cache.repository";
 import { toIsoDate, toIsoDateTime } from "../../../domain/datetime";
 import {
   calculateBacklogDirection,
@@ -78,18 +77,9 @@ import {
 } from "../../../domain/metrics/backlog";
 
 /**
- * The `SnapshotRepository` surface — the contract declared in
- * `specs/001-asana-team-dashboard/contracts/storage-repository.md`:
- *
- * ```
- * interface SnapshotRepository {
- *   getSnapshot(workspaceGid: string, date: ISODate): Promise<Snapshot | null>;
- *   backfillSnapshots(workspaceGid: string, dates: ISODate[], compute: (date: ISODate) => Snapshot): Promise<void>;
- *   // Only ever called from RefreshStagingRepository.commit(); never called
- *   // directly by UI code, so a snapshot can never exist without a
- *   // corresponding successful RefreshSession (FR-068).
- * }
- * ```
+ * The storage contract exposes `getSnapshot` and `backfillSnapshots`.
+ * T085 adds `backfillFromCache` for the commit path; it derives the
+ * metric points and passes them to the existing write primitive.
  */
 export interface SnapshotRepository {
   /**
@@ -263,15 +253,28 @@ export function createSnapshotRepository(): SnapshotRepository {
     ): Promise<void> {
       // The cached rows hold ISO-8601 wire strings; the domain brands
       // them, so the narrowing cast is the only bridge.
-      const tasks = (await db.tasks.toArray()).filter(
-        (task) => task.outOfScopeReason === null,
-      ) as unknown as BacklogTask[];
+      const tasks = (await cacheRepository.getInScopeTasks(
+        workspaceGid,
+      )) as unknown as BacklogTask[];
       const today = toIsoDate(now, "local");
-      const created = tasks.map((task) =>
-        toIsoDate(new Date(task.createdAt), "local"),
-      );
-      // ISO dates sort lexicographically; no tasks → just today.
-      const start = [...created, today].sort()[0] ?? today;
+      let start = today;
+      for (const task of tasks) {
+        const createdDay = toIsoDate(new Date(task.createdAt), "local");
+        if (createdDay < start) {
+          start = createdDay;
+        }
+      }
+      // Keep earlier cached days (FR-027), but recompute them from the
+      // current in-scope set when the former earliest task leaves scope.
+      const oldestSnapshot = await db.snapshots
+        .where("[workspaceGid+localCalendarDate]")
+        .between([workspaceGid, ""], [workspaceGid, "\uffff"])
+        .first();
+      if (oldestSnapshot && oldestSnapshot.localCalendarDate < start) {
+        // Snapshot keys are stored as YYYY-MM-DD strings; the domain
+        // brand is a compile-time marker for that same representation.
+        start = oldestSnapshot.localCalendarDate as typeof today;
+      }
       const computedAt = now.toISOString();
 
       const { series } = calculateBacklogDirection(

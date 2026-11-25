@@ -471,6 +471,9 @@ describe("T047 RefreshStagingRepository (contracts/storage-repository.md)", () =
       expect(snapshots.map((s) => s.localCalendarDate)).toEqual(
         expect.arrayContaining(["2026-07-30", "2026-07-31"]),
       );
+      expect(new Set(snapshots.map((s) => s.localCalendarDate)).size).toBe(
+        snapshots.length,
+      );
     });
 
     it("dependency staging preserves two opaque gid pairs that collide under delimiter concatenation", async () => {

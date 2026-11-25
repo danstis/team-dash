@@ -9,10 +9,10 @@
  * filter-independent, and only a successful commit derives anything
  * (FR-068).
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "../../src/data/db/schema";
-import type { RefreshSession, Task } from "../../src/data/db/schema";
+import type { Project, RefreshSession, Task } from "../../src/data/db/schema";
 import { refreshStagingRepository } from "../../src/data/db/repositories/refresh-staging.repository";
 import {
   localCalendarDateOf,
@@ -32,6 +32,33 @@ vi.mock("../../src/domain/metrics/backlog", async (importOriginal) => {
 const WORKSPACE_GID = "ws-t085";
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date(2026, 6, 31, 12, 0, 0);
+
+const PROJECTS: Project[] = [
+  {
+    gid: "p1",
+    name: "Active",
+    workspaceGid: WORKSPACE_GID,
+    asanaTeamGid: null,
+    portfolioGids: [],
+    archived: false,
+  },
+  {
+    gid: "archived",
+    name: "Archived",
+    workspaceGid: WORKSPACE_GID,
+    asanaTeamGid: null,
+    portfolioGids: [],
+    archived: true,
+  },
+  {
+    gid: "other",
+    name: "Other workspace",
+    workspaceGid: "ws-other",
+    asanaTeamGid: null,
+    portfolioGids: [],
+    archived: false,
+  },
+];
 
 function localNoon(daysAgo: number): string {
   return new Date(NOW.getTime() - daysAgo * DAY).toISOString();
@@ -90,6 +117,28 @@ const TASKS = [
   makeTask({ gid: "c", createdAt: localNoon(2) }),
   // no longer in scope — must not count
   makeTask({ gid: "d", outOfScopeReason: "deleted", estimatedMinutes: 999 }),
+  makeTask({
+    gid: "milestone",
+    resourceSubtype: "milestone",
+    createdAt: localNoon(5),
+    estimatedMinutes: 999,
+  }),
+  makeTask({
+    gid: "approval",
+    resourceSubtype: "approval",
+    estimatedMinutes: 999,
+  }),
+  makeTask({
+    gid: "archived-task",
+    projectGids: ["archived"],
+    estimatedMinutes: 999,
+  }),
+  makeTask({
+    gid: "other-workspace-task",
+    projectGids: ["other"],
+    estimatedMinutes: 999,
+  }),
+  makeTask({ gid: "orphan", projectGids: [], estimatedMinutes: 999 }),
 ];
 
 describe("T085 [US5] snapshot backfill wiring", () => {
@@ -99,11 +148,15 @@ describe("T085 [US5] snapshot backfill wiring", () => {
     vi.mocked(backlog.calculateBacklogDirection).mockClear();
     await Promise.all([
       db.tasks.clear(),
+      db.projects.clear(),
       db.snapshots.clear(),
       db.refreshSessions.clear(),
     ]);
+    await db.projects.bulkPut(PROJECTS);
     return () => vi.useRealTimers();
   });
+
+  afterEach(() => vi.restoreAllMocks());
 
   it("derives every snapshot row from calculateBacklogDirection on a successful commit", async () => {
     const backfillSpy = vi.spyOn(snapshotRepository, "backfillSnapshots");

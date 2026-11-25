@@ -43,29 +43,39 @@
  * never produce, replace, or backfill a snapshot: it never reaches
  * `commit()`.
  *
- * The `compute` callback
- * ----------------------
- * `backfillSnapshots` takes the computation as a callback so the storage
- * primitive stays a storage primitive: the FIGURES that go into a snapshot
- * row are derived by the metric layer
- * (`calculateBacklogDirection` — wired in by T085), not re-implemented
- * here. This row (T052) ships the primitive and the commit() coupling;
- * T085 replaces the computation with the metric's single path. Until then
- * the refresh pipeline records the day's figures itself and stages them,
- * and `commit()` hands them to this module.
+ * The metric is the sole computation path (T085)
+ * ------------------------------------------------
+ * `backfillFromCache()` is the entry `commit()` uses: it reads the
+ * workspace's in-scope cached tasks, calls `calculateBacklogDirection`
+ * ONCE over the cached tasks' own span (earliest created day → today,
+ * FR-026b), and hands the resulting points to `backfillSnapshots` as the
+ * per-date `compute`. No figure is computed here. The call is
+ * workspace-level and filter-independent (`{}`): a snapshot row carries
+ * no team/project/assignee breakdown, so a user's active filter must
+ * never leak into the shared cache.
+ *
+ * `backfillSnapshots` keeps its pinned `compute` signature
+ * (contracts/storage-repository.md), so the primitive stays a storage
+ * primitive and is still testable with a fake `compute`.
  *
  * Boundary
  * --------
- * This module lives under `src/data/db/repositories/` (peer to
- * `cache.repository.ts`, `credential.repository.ts`, and
- * `refresh-staging.repository.ts`) and imports only from `src/data/db/
- * schema.ts` plus Dexie itself. It does not import from `src/app/**`,
- * `src/features/**`, `src/domain/**`, or `src/shared/**`.
+ * This module lives under `src/data/db/repositories/` and imports from
+ * `src/data/db/schema.ts`, Dexie, and — since T085 — exactly one pure
+ * domain module, `src/domain/metrics/backlog.ts` (the metric is the
+ * single source of truth; domain never imports data, so there is no
+ * cycle). It does not import from `src/app/**`, `src/features/**`, or
+ * `src/shared/**`. The day-key helper below stays local.
  */
 import Dexie, { type Transaction } from "dexie";
 
 import { db } from "../schema";
 import type { Snapshot } from "../schema";
+import { toIsoDate, toIsoDateTime } from "../../../domain/datetime";
+import {
+  calculateBacklogDirection,
+  type BacklogTask,
+} from "../../../domain/metrics/backlog";
 
 /**
  * The `SnapshotRepository` surface — the contract declared in
@@ -108,6 +118,22 @@ export interface SnapshotRepository {
     workspaceGid: string,
     dates: readonly string[],
     compute: (date: string) => Snapshot | Promise<Snapshot>,
+  ): Promise<void>;
+
+  /**
+   * Derive the workspace's snapshot rows from the cached in-scope tasks
+   * via `calculateBacklogDirection` (the sole computation path) and
+   * store them through `backfillSnapshots`. Only `commit()` calls this.
+   *
+   * `overrides` are rows the refresh recorded explicitly (staged under
+   * `"snapshots"`); an override wins for its own date, every other day
+   * in the span is derived.
+   */
+  backfillFromCache(
+    workspaceGid: string,
+    computedFromRefreshId: string,
+    now: Date,
+    overrides?: ReadonlyMap<string, Snapshot>,
   ): Promise<void>;
 }
 
@@ -176,7 +202,7 @@ function assertRowMatchesRequest(
  * construct the surface without monkey-patching the shared singleton.
  */
 export function createSnapshotRepository(): SnapshotRepository {
-  return {
+  const repository: SnapshotRepository = {
     async getSnapshot(
       workspaceGid: string,
       date: string,
@@ -228,7 +254,66 @@ export function createSnapshotRepository(): SnapshotRepository {
 
       await db.transaction("rw", db.snapshots, write);
     },
+
+    async backfillFromCache(
+      workspaceGid,
+      computedFromRefreshId,
+      now,
+      overrides = new Map(),
+    ): Promise<void> {
+      // The cached rows hold ISO-8601 wire strings; the domain brands
+      // them, so the narrowing cast is the only bridge.
+      const tasks = (await db.tasks.toArray()).filter(
+        (task) => task.outOfScopeReason === null,
+      ) as unknown as BacklogTask[];
+      const today = toIsoDate(now, "local");
+      const created = tasks.map((task) =>
+        toIsoDate(new Date(task.createdAt), "local"),
+      );
+      // ISO dates sort lexicographically; no tasks → just today.
+      const start = [...created, today].sort()[0] ?? today;
+      const computedAt = now.toISOString();
+
+      const { series } = calculateBacklogDirection(
+        tasks,
+        {},
+        {
+          now: toIsoDateTime(now, "local"),
+          timezone: "local",
+          weekStart: "monday",
+          teamMapping: [],
+        },
+        { start, end: today },
+      );
+      const points = new Map<string, (typeof series.points)[number]>(
+        series.points.map((point) => [point.date, point]),
+      );
+      const dates = [...new Set([...points.keys(), ...overrides.keys()])];
+
+      await repository.backfillSnapshots(workspaceGid, dates, (date) => {
+        const override = overrides.get(date);
+        if (override !== undefined) {
+          return override;
+        }
+        const point = points.get(date);
+        if (point === undefined) {
+          throw new Error(
+            `snapshotRepository.backfillFromCache: no metric point for "${date}"`,
+          );
+        }
+        return {
+          workspaceGid,
+          localCalendarDate: date,
+          incompleteCount: point.incompleteCount,
+          incompleteEstimatedMinutes: point.incompleteEffortMinutes,
+          unestimatedIncompleteCount: point.unestimatedIncompleteCount,
+          computedFromRefreshId,
+          computedAt,
+        };
+      });
+    },
   };
+  return repository;
 }
 
 /**

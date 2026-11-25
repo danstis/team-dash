@@ -465,8 +465,12 @@ describe("T047 RefreshStagingRepository (contracts/storage-repository.md)", () =
       const dependencies = await db.dependencies.toArray();
       expect(dependencies).toHaveLength(2);
 
+      // T085: the two staged days plus the metric-derived day for "today"
+      // (the commit always derives the session workspace's snapshots).
       const snapshots = await db.snapshots.toArray();
-      expect(snapshots).toHaveLength(2);
+      expect(snapshots.map((s) => s.localCalendarDate)).toEqual(
+        expect.arrayContaining(["2026-07-30", "2026-07-31"]),
+      );
     });
 
     it("dependency staging preserves two opaque gid pairs that collide under delimiter concatenation", async () => {
@@ -534,7 +538,8 @@ describe("T047 RefreshStagingRepository (contracts/storage-repository.md)", () =
       const snapshots = await db.snapshots
         .orderBy("[workspaceGid+localCalendarDate]")
         .toArray();
-      expect(snapshots).toHaveLength(2);
+      // T085: + the metric-derived "today" row of the session workspace.
+      expect(snapshots).toHaveLength(3);
       expect(snapshots).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -860,7 +865,7 @@ describe("T047 RefreshStagingRepository (contracts/storage-repository.md)", () =
       const call = commitTransactions[0];
       const tables = call?.[1] as unknown as string[];
       expect(Array.from(tables).sort()).toEqual(
-        ["projects", "refreshSessions", "tasks"].sort(),
+        ["projects", "refreshSessions", "snapshots", "tasks"].sort(),
       );
 
       // The single transaction transitions the seeded session to

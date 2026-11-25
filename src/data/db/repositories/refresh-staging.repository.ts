@@ -93,7 +93,7 @@
  * `snapshot.repository.ts`) and imports only from
  * `src/data/db/schema.ts` and its sibling `snapshot.repository.ts`. It
  * does not import from `src/app/**`, `src/features/**`, `src/domain/**`,
- * or `src/shared/**` — the dependency-boundary lint rule in
+ * or `src/shared/**` (the metric is reached only through the sibling) — the dependency-boundary lint rule in
  * `eslint.config.js` enforces this by review convention without a
  * runtime exception.
  *
@@ -319,20 +319,16 @@ async function flushStoreRows<S extends FlushableStoreName>(
  * join that transaction, so the snapshot rows and the cache flush and
  * the session transition all land — or roll back — together.
  *
- * The staged rows are the figures the refresh recorded for the local
- * calendar days it wants snapshotted (the metric-backed computation of
- * those figures is T085's row). The table is keyed by
+ * The session workspace's rows are derived from the cached tasks by
+ * `calculateBacklogDirection` (T085); rows explicitly staged for a day
+ * override that day. The table is keyed by
  * `[workspaceGid+localCalendarDate]`, so a day that already has a row
  * is REPLACED by this one — a second successful refresh on the same
  * local calendar day replaces that day's snapshot instead of
  * duplicating it (FR-026a).
  */
-async function commitStagedSnapshots(): Promise<void> {
-  const staged = currentBuffer.get("snapshots");
-  if (staged === undefined || staged.size === 0) {
-    return;
-  }
-
+async function commitStagedSnapshots(session: RefreshSession): Promise<void> {
+  const staged = currentBuffer.get("snapshots") ?? new Map();
   // One row per local calendar day. The staging buffer already dedupes
   // the compound key, so the last staged row for a day is the one that
   // survives — the same "replace, never duplicate" rule the table's
@@ -356,8 +352,21 @@ async function commitStagedSnapshots(): Promise<void> {
     rowsByDate.set(row.localCalendarDate, row);
   }
 
-  await Promise.all(
-    Array.from(rowsByWorkspace, ([workspaceGid, rowsByDate]) =>
+  // The session's workspace is DERIVED from the cached tasks via the
+  // metric (T085, `calculateBacklogDirection` is the sole computation
+  // path); rows explicitly staged for it override their own date. A
+  // staged row for any other workspace is stored as given.
+  const derived = snapshotRepository.backfillFromCache(
+    session.workspaceGid,
+    session.id,
+    new Date(),
+    rowsByWorkspace.get(session.workspaceGid),
+  );
+  rowsByWorkspace.delete(session.workspaceGid);
+
+  await Promise.all([
+    derived,
+    ...Array.from(rowsByWorkspace, ([workspaceGid, rowsByDate]) =>
       snapshotRepository.backfillSnapshots(
         workspaceGid,
         Array.from(rowsByDate.keys()),
@@ -372,7 +381,7 @@ async function commitStagedSnapshots(): Promise<void> {
         },
       ),
     ),
-  );
+  ]);
 }
 
 /**
@@ -508,7 +517,13 @@ export const refreshStagingRepository: RefreshStagingRepository = {
     // flush" — and `refreshSessions` is always included even when no
     // session row was staged (the transition is a `get` + `put` on
     // the existing seeded row, not a `bulkPut` over a buffer).
-    const stores = new Set<RefreshStagingStoreName>(["refreshSessions"]);
+    // `tasks` + `snapshots` always participate: the backfill reads the
+    // task cache (after this commit's flush) and writes the snapshots.
+    const stores = new Set<RefreshStagingStoreName>([
+      "refreshSessions",
+      "tasks",
+      "snapshots",
+    ]);
     for (const store of orderedStores(currentBuffer)) {
       if (currentBuffer.get(store)?.size) {
         stores.add(store);
@@ -566,7 +581,7 @@ export const refreshStagingRepository: RefreshStagingRepository = {
       // row (the table is keyed by `[workspaceGid+localCalendarDate]`),
       // so a second successful refresh on the same local calendar day
       // replaces that day's snapshot instead of duplicating it.
-      await commitStagedSnapshots();
+      await commitStagedSnapshots(existingSession);
     });
 
     // The staging buffer is dropped only after the transaction

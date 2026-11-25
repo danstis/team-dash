@@ -347,6 +347,17 @@ export function BacklogDrillDown({
         data-testid="backlog-drill-down"
         aria-label={title}
       >
+        <h2 className="td-drill-down-panel__heading">{title}</h2>
+        {onClose !== undefined ? (
+          <button
+            type="button"
+            className="td-drill-down-panel__task-button"
+            data-testid="drill-down-panel-close"
+            onClick={onClose}
+          >
+            Close details
+          </button>
+        ) : null}
         <p
           className="td-backlog-drill-down__unavailable"
           data-testid="backlog-drill-down-unavailable"

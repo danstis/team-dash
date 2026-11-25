@@ -313,7 +313,7 @@ function boundedReportingRange(
   now: Date,
   timezone: TimezoneSetting,
 ): DateRange {
-  if (range.start !== OPEN_DATE_RANGE_START) {
+  if (range.preset !== "all_time" && range.start !== OPEN_DATE_RANGE_START) {
     return range;
   }
   const bound = earliestActivity ?? toIsoDate(now, timezone);

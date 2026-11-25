@@ -1343,9 +1343,9 @@ describe("BSOD-787 — the dashboard's reporting period", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByTestId("task-table").querySelector(
-            '[data-task-gid="task-arrived-later"]',
-          ),
+          screen
+            .getByTestId("task-table")
+            .querySelector('[data-task-gid="task-arrived-later"]'),
         ).not.toBeNull();
       });
       expect(screen.getByTestId("dashboard-scope")).toHaveTextContent(

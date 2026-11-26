@@ -69,6 +69,11 @@ interface SnapshotRepository {
   // Only ever called from RefreshStagingRepository.commit(); never called
   // directly by UI code, so a snapshot can never exist without a
   // corresponding successful RefreshSession (FR-068).
+  // backfillSnapshots is unchanged; commit() reaches it via
+  // backfillFromCache(workspaceGid, refreshId, now, overrides?), which derives
+  // every row with calculateBacklogDirection (filter {}, workspace-level,
+  // range = earliest cached task created-day → today) — sole computation path.
+  backfillFromCache(workspaceGid: string, computedFromRefreshId: string, now: Date, overrides?: ReadonlyMap<ISODate, Snapshot>): Promise<void>;
 }
 
 interface TeamMappingRepository {

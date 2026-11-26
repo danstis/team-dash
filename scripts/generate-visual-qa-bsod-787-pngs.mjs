@@ -32,68 +32,76 @@ const browser = await chromium.launch({
   executablePath: chromiumPath,
 });
 
-try {
-  for (const viewport of viewports) {
-    const context = await browser.newContext({
-      viewport,
-      deviceScaleFactor: 1,
-      colorScheme: "light",
-    });
+async function renderCapture(viewport, state) {
+  const context = await browser.newContext({
+    viewport,
+    deviceScaleFactor: 1,
+    colorScheme: "light",
+  });
+  try {
     const page = await context.newPage();
-    for (const state of states) {
-      const body = await readFile(
-        resolve(captureDir, `bsod-787-${state}.html`),
-        "utf8",
-      );
-      await page.setContent(
-        `<!doctype html><html lang="en-AU" data-theme="light"><head>` +
-          `<meta charset="utf-8"><style>${css}</style></head>` +
-          `<body>${body}</body></html>`,
-        { waitUntil: "load" },
-      );
-      const output = resolve(
-        outputDir,
-        `bsod-787-${viewport.name}-${state}.png`,
-      );
-      await page.screenshot({ path: output, fullPage: true });
+    const body = await readFile(
+      resolve(captureDir, `bsod-787-${state}.html`),
+      "utf8",
+    );
+    await page.setContent(
+      `<!doctype html><html lang="en-AU" data-theme="light"><head>` +
+        `<meta charset="utf-8"><style>${css}</style></head>` +
+        `<body>${body}</body></html>`,
+      { waitUntil: "load" },
+    );
+    const output = resolve(outputDir, `bsod-787-${viewport.name}-${state}.png`);
+    await page.screenshot({ path: output, fullPage: true });
 
-      const layout = await page.evaluate(() => {
-        const identity = document.querySelector(".td-dashboard__identity");
-        const period = document.querySelector(".td-dashboard__period");
-        const actions = document.querySelector(".td-dashboard__actions");
-        const select = document.querySelector(".td-dashboard__period-select");
-        const label = document.querySelector(".td-dashboard__period-label");
-        if (!identity || !period || !actions || !select || !label) {
-          throw new Error("The captured dashboard controls are incomplete");
-        }
-        const rectangles = [identity, period, actions].map((element) =>
-          element.getBoundingClientRect(),
-        );
-        const overlaps = rectangles.some((left, index) =>
-          rectangles
-            .slice(index + 1)
-            .some(
-              (right) =>
-                left.left < right.right &&
-                right.left < left.right &&
-                left.top < right.bottom &&
-                right.top < left.bottom,
-            ),
-        );
-        return {
-          horizontalOverflow:
-            document.documentElement.scrollWidth > window.innerWidth + 1,
-          headerOverlap: overlaps,
-          labelMargin: getComputedStyle(label).margin,
-          selectWidth: getComputedStyle(select).width,
-        };
-      });
-      process.stdout.write(`${output}: ${JSON.stringify(layout)}\n`);
-      if (layout.horizontalOverflow || layout.headerOverlap) {
-        throw new Error(`Layout defect in ${viewport.name} ${state}`);
+    const layout = await page.evaluate(() => {
+      const identity = document.querySelector(".td-dashboard__identity");
+      const period = document.querySelector(".td-dashboard__period");
+      const actions = document.querySelector(".td-dashboard__actions");
+      const select = document.querySelector(".td-dashboard__period-select");
+      const label = document.querySelector(".td-dashboard__period-label");
+      if (!identity || !period || !actions || !select || !label) {
+        throw new Error("The captured dashboard controls are incomplete");
       }
+      const rectangles = [identity, period, actions].map((element) =>
+        element.getBoundingClientRect(),
+      );
+      const overlaps = rectangles.some((left, index) =>
+        rectangles
+          .slice(index + 1)
+          .some(
+            (right) =>
+              left.left < right.right &&
+              right.left < left.right &&
+              left.top < right.bottom &&
+              right.top < left.bottom,
+          ),
+      );
+      return {
+        horizontalOverflow:
+          document.documentElement.scrollWidth > window.innerWidth + 1,
+        headerOverlap: overlaps,
+        labelMargin: getComputedStyle(label).margin,
+        selectWidth: getComputedStyle(select).width,
+      };
+    });
+    process.stdout.write(`${output}: ${JSON.stringify(layout)}\n`);
+    if (layout.horizontalOverflow || layout.headerOverlap) {
+      throw new Error(`Layout defect in ${viewport.name} ${state}`);
     }
+  } finally {
     await context.close();
+  }
+}
+
+try {
+  const results = await Promise.allSettled(
+    viewports.flatMap((viewport) =>
+      states.map((state) => renderCapture(viewport, state)),
+    ),
+  );
+  const failed = results.find((result) => result.status === "rejected");
+  if (failed) {
+    throw failed.reason;
   }
 } finally {
   await browser.close();

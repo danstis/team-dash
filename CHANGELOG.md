@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.10.0](https://github.com/danstis/team-dash/compare/v0.9.0...v0.10.0) (2026-11-27)
+
+
+### Features
+
+* **dashboard:** wire the reporting dashboard shell at / (BSOD-781) ([#349](https://github.com/danstis/team-dash/issues/349)) ([b08eefa](https://github.com/danstis/team-dash/commit/b08eefa4f4b8c5f45af5e6895e8f6ce4a46a1ff4))
+* **domain:** backlog metric red→green (BSOD-322) ([#348](https://github.com/danstis/team-dash/issues/348)) ([a1c10e6](https://github.com/danstis/team-dash/commit/a1c10e6213bf1354b5984a68a44d0f233e82d7ee))
+* **domain:** work added vs completed metric red→green (BSOD-318) ([#342](https://github.com/danstis/team-dash/issues/342)) ([019d947](https://github.com/danstis/team-dash/commit/019d94745bddc955e36f37ebb1cf77d93cfa627f))
+* **metrics:** drill-down panel red→green (BSOD-321) ([#346](https://github.com/danstis/team-dash/issues/346)) ([cff364a](https://github.com/danstis/team-dash/commit/cff364a2234d1ecf417738cfbe47665f6dd263dd))
+* **metrics:** redraw the work chart as a mirrored line diagram (BSOD-783) ([#350](https://github.com/danstis/team-dash/issues/350)) ([1520c34](https://github.com/danstis/team-dash/commit/1520c340e4d66369b1e4ff8b09610cef8f6ebed1))
+* **metrics:** shared chart controls red→green (BSOD-320) ([#345](https://github.com/danstis/team-dash/issues/345)) ([c98834a](https://github.com/danstis/team-dash/commit/c98834a8eaf04ea05478e90a62cd741f2559d00e))
+* **metrics:** work added vs completed chart red→green (BSOD-319) ([#344](https://github.com/danstis/team-dash/issues/344)) ([6c65b35](https://github.com/danstis/team-dash/commit/6c65b350f916faa042bef12b542974228196507d))
+* **snapshots:** derive snapshot backfill from calculateBacklogDirection (BSOD-323) ([#389](https://github.com/danstis/team-dash/issues/389)) ([de6d9c9](https://github.com/danstis/team-dash/commit/de6d9c9fc3fa1171dd653b47db97a29b46bb2553))
+
+
+### Bug fixes
+
+* **deps:** update dependency recharts to 3.11 ([#374](https://github.com/danstis/team-dash/issues/374)) ([ee2e110](https://github.com/danstis/team-dash/commit/ee2e110ec0bbd05a9ed1a31b37c0d32477e4c15a))
+
 ## [0.9.0](https://github.com/danstis/team-dash/compare/v0.8.0...v0.9.0) (2026-10-31)
 
 

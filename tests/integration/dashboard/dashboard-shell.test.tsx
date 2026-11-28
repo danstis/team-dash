@@ -105,7 +105,8 @@ import {
 } from "../../../src/app/workspace-context";
 import { db } from "../../../src/data/db/schema";
 import { refreshOrchestrator } from "../../../src/data/refresh/refresh-orchestrator";
-import { toIsoDate } from "../../../src/domain/datetime";
+import { addDays, toIsoDate } from "../../../src/domain/datetime";
+import type { ISODate } from "../../../src/domain/types";
 import { smallDatasetWorkspaceGid } from "../../../fixtures/asana/small-dataset/data";
 
 /* -------------------------------------------------------------------------- */
@@ -177,6 +178,20 @@ function daysAgo(days: number): string {
  */
 function localDate(days: number): string {
   return toIsoDate(new Date(Date.now() - days * 86_400_000), "local");
+}
+
+/**
+ * Pins the dashboard's reporting period to a preset.
+ *
+ * The window a test reasons about is STATED, not inherited: the
+ * dashboard opens on the last 90 days (FR-092), and a 90-day window
+ * buckets weekly, so a test that names a single day's bucket has to
+ * say which window it means — the metric reads the window the reader
+ * picked (FR-093).
+ */
+async function selectReportingPeriod(preset: string): Promise<void> {
+  const period = await screen.findByTestId("reporting-period");
+  fireEvent.change(period, { target: { value: preset } });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -841,6 +856,11 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
       timeout: 5000,
     });
 
+    // The figures below are per DAY, so the window is stated: over the
+    // last 30 days the metric buckets daily, and the two measures
+    // land on their own days.
+    await selectReportingPeriod("last_30_days");
+
     const createdOn = localDate(4);
     const closedOn = localDate(0);
 
@@ -972,6 +992,11 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
 
     await screen.findByTestId("task-table");
 
+    // The scenario is a window with a day in it: over the last 30 days
+    // the metric buckets daily, and the third task was created before
+    // the window (40 days ago) but completed inside it.
+    await selectReportingPeriod("last_30_days");
+
     // The table lists each task of the window once — the one added and
     // completed inside it, the one added and still open, and the one
     // completed inside it but created before it.
@@ -1071,6 +1096,300 @@ describe("BSOD-781 (T-UI1) — the live reporting dashboard on `/`", () => {
     expect(screen.getByTestId("empty-dashboard")).toHaveAttribute(
       "data-view-state",
       "empty",
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The reporting period (BSOD-787)                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The reporting period is the dashboard's own: the metric reports the
+ * window the reader picks, and the masthead states which window that
+ * is (FR-092). The period control sits in the masthead, so a
+ * screenshot of the dashboard stands on its own (DESIGN.md › The
+ * Masthead Rule).
+ */
+describe("BSOD-787 — the dashboard's reporting period", () => {
+  beforeEach(async () => {
+    await db.credentials.clear();
+    await db.workspaces.clear();
+    await db.refreshSessions.clear();
+    await db.projects.clear();
+    await db.portfolios.clear();
+    await db.users.clear();
+    await db.tasks.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  /** The first bucket of the chart's tabular alternative. */
+  async function firstBucketStart(): Promise<string> {
+    const rows = await screen.findAllByTestId("work-added-completed-row");
+    const row = rows.at(0) as HTMLElement;
+    return row.getAttribute("data-bucket-start") ?? "";
+  }
+
+  it("defaults the reporting period to the last 90 days and states it in the masthead", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    const period = await screen.findByTestId("reporting-period");
+    expect(period).toHaveValue("last_90_days");
+    // The Masthead Rule: the period the report covers is in the header.
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent(
+      "Last 90 days",
+    );
+  });
+
+  it("re-reads the metric over the window the reader picks", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    const period = await screen.findByTestId("reporting-period");
+    const ninetyDayStart = await firstBucketStart();
+
+    fireEvent.change(period, { target: { value: "last_30_days" } });
+
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent(
+      "Last 30 days",
+    );
+    // The metric now buckets the 30-day window, so its first bucket is
+    // later than the 90-day window's.
+    expect((await firstBucketStart()) > ninetyDayStart).toBe(true);
+  });
+
+  it("bounds the all-time period by the data in hand", async () => {
+    await seedCommittedRefresh();
+    // A task from well beyond the 90-day window: the all-time period
+    // has to reach it, and reach it no further back than the data.
+    const oldestCreatedAt = daysAgo(400);
+    await db.tasks.put({
+      gid: "task-oldest",
+      name: "Plan last year's roadmap",
+      assigneeGid: null,
+      projectGids: [PROJECT_GID],
+      parentTaskGid: null,
+      resourceSubtype: "default_task",
+      createdAt: oldestCreatedAt,
+      modifiedAt: oldestCreatedAt,
+      completedAt: null,
+      dueAt: null,
+      priorityOptionId: null,
+      estimatedMinutes: null,
+      actualMinutes: "unavailable",
+      dependsOnTaskGids: [],
+      lastSeenInScopeAt: daysAgo(2),
+      outOfScopeReason: null,
+    });
+
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    const period = await screen.findByTestId("reporting-period");
+    fireEvent.change(period, { target: { value: "all_time" } });
+
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent("All time");
+
+    // The period opens at the oldest activity the cache holds — not at
+    // the open bound of the vocabulary, which would mean walking a
+    // thousand years of buckets.
+    const oldestDate = toIsoDate(new Date(oldestCreatedAt), "local");
+    const bucketStart = (await firstBucketStart()) as ISODate;
+    expect(bucketStart <= oldestDate).toBe(true);
+    expect(oldestDate <= addDays(bucketStart, 6)).toBe(true);
+  });
+
+  /* ---------------------------------------------------------------- */
+  /* The reporting window has one source                              */
+  /* ---------------------------------------------------------------- */
+
+  /** The report's filter bar, with the date-range pill that names it. */
+  async function dateRangePill(): Promise<HTMLElement> {
+    return screen.findByRole("button", { name: /Date range:/ });
+  }
+
+  /**
+   * Picks a window in the report's filter bar — the date-range pill's
+   * own editor, the second surface that names the reporting window.
+   */
+  async function pickWindowInFilterBar(presetLabel: string): Promise<void> {
+    fireEvent.click(await dateRangePill());
+    fireEvent.click(await screen.findByLabelText(presetLabel));
+  }
+
+  it("names the reporting window in the filter bar's date-range pill", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    // The filter bar's date-range pill and the masthead name the SAME
+    // window: the report's filter bar carries no window of its own
+    // (FR-093).
+    expect(await dateRangePill()).toHaveTextContent("Last 90 days");
+  });
+
+  it("re-reads the report over the window the reader picks in the filter bar", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    const ninetyDayStart = await firstBucketStart();
+
+    await pickWindowInFilterBar("Last 30 days");
+
+    // The window the filter bar names is the window the report covers:
+    // the metric re-read over it, and the masthead states it (FR-093).
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent(
+      "Last 30 days",
+    );
+    expect((await firstBucketStart()) > ninetyDayStart).toBe(true);
+  });
+
+  it("bounds the all-time window the filter bar picks by the data in hand", async () => {
+    await seedCommittedRefresh();
+    // A task from well beyond the 90-day window: the all-time window
+    // has to reach it, and reach it no further back than the data.
+    const oldestCreatedAt = daysAgo(400);
+    await db.tasks.put({
+      gid: "task-oldest",
+      name: "Plan last year's roadmap",
+      assigneeGid: null,
+      projectGids: [PROJECT_GID],
+      parentTaskGid: null,
+      resourceSubtype: "default_task",
+      createdAt: oldestCreatedAt,
+      modifiedAt: oldestCreatedAt,
+      completedAt: null,
+      dueAt: null,
+      priorityOptionId: null,
+      estimatedMinutes: null,
+      actualMinutes: "unavailable",
+      dependsOnTaskGids: [],
+      lastSeenInScopeAt: daysAgo(2),
+      outOfScopeReason: null,
+    });
+
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    await pickWindowInFilterBar("All time");
+
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent("All time");
+    // The masthead's control shows the same window the filter bar
+    // named: one window, two surfaces (FR-093).
+    expect(await screen.findByTestId("reporting-period")).toHaveValue(
+      "all_time",
+    );
+
+    // The window opens at the oldest activity the cache holds — not at
+    // the open bound of the vocabulary, which would mean walking a
+    // thousand years of buckets (FR-091).
+    const oldestDate = toIsoDate(new Date(oldestCreatedAt), "local");
+    const bucketStart = (await firstBucketStart()) as ISODate;
+    expect(bucketStart <= oldestDate).toBe(true);
+    expect(oldestDate <= addDays(bucketStart, 6)).toBe(true);
+  });
+
+  it.each(["apply", "clear"] as const)(
+    "keeps All time live after a Person filter edit (%s)",
+    async (action) => {
+      await seedCommittedRefresh();
+      const handlesRef = renderDashboard();
+      await openTheGate(handlesRef);
+
+      await selectReportingPeriod("all_time");
+      await dateRangePill();
+      fireEvent.click(screen.getByRole("button", { name: "Add filter" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Person" }));
+      fireEvent.click(screen.getByLabelText("Alex Kim"));
+      fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+      await screen.findByRole("button", { name: /Person: Alex Kim/ });
+
+      if (action === "clear") {
+        fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+        await waitFor(() => {
+          expect(screen.queryByRole("button", { name: /Person:/ })).toBeNull();
+        });
+      }
+
+      // A later cache update extends history beyond the concrete bound
+      // the filter bar received when Person was edited.
+      const olderCreatedAt = daysAgo(400);
+      await db.tasks.put({
+        gid: "task-arrived-later",
+        name: "Older history arrived later",
+        assigneeGid: USER_GID,
+        projectGids: [PROJECT_GID],
+        parentTaskGid: null,
+        resourceSubtype: "default_task",
+        createdAt: olderCreatedAt,
+        modifiedAt: olderCreatedAt,
+        completedAt: null,
+        dueAt: null,
+        priorityOptionId: null,
+        estimatedMinutes: null,
+        actualMinutes: "unavailable",
+        dependsOnTaskGids: [],
+        lastSeenInScopeAt: daysAgo(2),
+        outOfScopeReason: null,
+      });
+
+      await waitFor(() => {
+        expect(
+          screen
+            .getByTestId("task-table")
+            .querySelector('[data-task-gid="task-arrived-later"]'),
+        ).not.toBeNull();
+      });
+      expect(screen.getByTestId("dashboard-scope")).toHaveTextContent(
+        "All time",
+      );
+      expect(await dateRangePill()).toHaveTextContent("All time");
+      expect(await screen.findByTestId("reporting-period")).toHaveValue(
+        "all_time",
+      );
+
+      const oldestDate = toIsoDate(new Date(olderCreatedAt), "local");
+      const bucketStart = (await firstBucketStart()) as ISODate;
+      expect(bucketStart <= oldestDate).toBe(true);
+      expect(oldestDate <= addDays(bucketStart, 6)).toBe(true);
+
+      // The editor still receives the concrete bound for a custom range.
+      fireEvent.click(await dateRangePill());
+      fireEvent.click(screen.getByLabelText("Custom range"));
+      expect(screen.getByLabelText("From")).toHaveValue(oldestDate);
+    },
+  );
+
+  it("names a window the reader typed in the filter bar", async () => {
+    await seedCommittedRefresh();
+    const handlesRef = renderDashboard();
+    await openTheGate(handlesRef);
+
+    // The reader's own bounds, typed into the filter bar's date-range
+    // editor: the masthead's control names that window as what it is,
+    // and the masthead states the bounds (FR-032's custom range,
+    // FR-093's one window).
+    fireEvent.click(await dateRangePill());
+    fireEvent.click(await screen.findByLabelText("Custom range"));
+    fireEvent.change(screen.getByLabelText("From"), {
+      target: { value: "2026-02-01" },
+    });
+    fireEvent.change(screen.getByLabelText("To"), {
+      target: { value: "2026-03-01" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByTestId("reporting-period")).toHaveValue("custom");
+    expect(screen.getByTestId("dashboard-scope")).toHaveTextContent(
+      "1 Feb 2026 – 1 Mar 2026",
     );
   });
 });

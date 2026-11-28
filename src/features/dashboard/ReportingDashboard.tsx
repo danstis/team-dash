@@ -46,8 +46,10 @@
  * - The freshness label. `RefreshStatusPanel` owns the
  *   cached-versus-fresh decision (FR-021); this surface mounts it and
  *   leaves the decision to it.
- * - The filters. `TaskList` owns its filter criteria (they are its
- *   state, not the dashboard's), so the task table filters itself.
+ * - The task table's own narrowing. The report's criteria live here —
+ *   the reporting window and the filters the pill bar edits — and the
+ *   table is handed the tasks already narrowed to the window, so it
+ *   narrows them by the remaining filters itself.
  *
  * ## How the dashboard reloads
  * ----------------------------
@@ -67,16 +69,27 @@
  *
  * ## The reporting period
  * ----------------------
- * The metric reports a period, so the dashboard owns one: the "last
- * 30 days" preset, resolved against the injected clock under the
- * app-wide timezone basis. The period is shown in the masthead, so a
- * screenshot of the dashboard states what it covers (DESIGN.md ›
- * Interaction & Copy › The Masthead Rule).
+ * The metric reports a period, so the dashboard owns one: the reader
+ * picks it from the shared preset vocabulary (FR-091) — it opens on the
+ * "last 90 days" preset — and the period is resolved against the
+ * injected clock under the app-wide timezone basis. The selected period
+ * is shown in the masthead, so a screenshot of the dashboard states
+ * what it covers (DESIGN.md › Interaction & Copy › The Masthead Rule).
  *
- * The task list's own filters are separate: `TaskList` owns its
- * criteria, so the table can be narrowed independently of the metric.
- * Sharing one period between the chart and the table is a follow-up
- * that lifts the criteria into the dashboard.
+ * The window has ONE source: the report's own filter criteria carry
+ * the date range, and both surfaces that name it — the masthead's
+ * period control and the filter bar's date-range pill — write into
+ * that one value and read it back. Neither can silently override the
+ * other (FR-093).
+ *
+ * The all-time period has no lower bound of its own, so the dashboard
+ * bounds it against the data in hand: the period opens at the oldest
+ * activity the cache holds, never at the vocabulary's open bound (which
+ * would mean walking a thousand years of buckets).
+ *
+ * The task list's own filters are separate: the dashboard hands the
+ * table the criteria it already narrowed to the window, so the table
+ * can be narrowed independently of the metric.
  *
  * Determinism
  * -----------
@@ -113,6 +126,7 @@ import { refreshOrchestrator } from "../../data/refresh/refresh-orchestrator";
 import {
   dateToIsoDateTime,
   resolveDateRangePreset,
+  toIsoDate,
 } from "../../domain/datetime";
 import {
   calculateWorkAddedVsCompleted,
@@ -123,10 +137,12 @@ import type {
   DateRange,
   DateRangePreset,
   FilterCriteria,
+  ISODate,
   MetricContext,
   MetricResult,
   TimezoneSetting,
 } from "../../domain/types";
+import { OPEN_DATE_RANGE_START } from "../../domain/types";
 import { formatDate } from "../../shared/format";
 import { useOnlineStatus } from "../../shared/hooks/useOnlineStatus";
 import { LoadingState } from "../../shared/states/LoadingState";
@@ -159,20 +175,23 @@ import {
   buildGroupLabels,
   deriveDataQualityFlags,
   deriveTeamMapping,
+  earliestActivityDate,
   toMetricTasks,
 } from "./dashboard-derivations";
+import { ReportingPeriodControl } from "./ReportingPeriodControl";
 
 /* -------------------------------------------------------------------------- */
 /* Constants                                                                   */
 /* -------------------------------------------------------------------------- */
 
 /**
- * The reporting period the metric covers. FR-059 requires the metric to
- * report a period, and the dashboard owns the one its users see first;
- * the label is the same phrase the filter bar offers for the preset, so
- * the two surfaces name the same window the same way.
+ * The reporting period the dashboard opens on (FR-092): the last 90
+ * days — the window the reporting is normally read over. The reader can
+ * pick another preset from the shared vocabulary (FR-091), and the
+ * label is the shared copy module's, so this surface and the task
+ * list's date-range filter name the same window the same way.
  */
-const REPORTING_PRESET: DateRangePreset = "last_30_days";
+const DEFAULT_REPORTING_PERIOD: DateRangePreset = "last_90_days";
 
 /**
  * The timezone basis every date the dashboard shows is evaluated under
@@ -256,6 +275,49 @@ function figureFor(
   return request.view === "count"
     ? bucket.completedCount
     : bucket.completedEffortMinutes;
+}
+
+/**
+ * The reporting window a preset names: the preset's own bounds,
+ * resolved against the injected clock under the app's timezone basis.
+ *
+ * The window is NOT bounded here — the all-time preset has no lower
+ * bound of its own, and the bound belongs to the data in hand, which
+ * only the dashboard knows (FR-091). `boundedReportingRange` closes it.
+ */
+function reportingRangeFor(
+  preset: DateRangePreset,
+  now: Date,
+  timezone: TimezoneSetting,
+): DateRange {
+  const { start, end } = resolveDateRangePreset(preset, now, timezone);
+  return { start, end, preset };
+}
+
+/**
+ * The window a metric may read: the chosen window with its open lower
+ * bound closed against the data in hand (FR-091).
+ *
+ * The all-time preset's lower bound is the vocabulary's open bound — a
+ * comparison value, never a date the report walks. A metric that
+ * buckets the window must never receive it: `generateBuckets` refuses
+ * an open-ended range, and a thousand-year scan is not a report. So
+ * the window opens at the oldest activity the cache holds instead; with
+ * no dated task in the cache there is no period to report, so it
+ * collapses to the anchor day. A bound dated after the anchor is
+ * clamped, so the window can never run backwards.
+ */
+function boundedReportingRange(
+  range: DateRange,
+  earliestActivity: ISODate | undefined,
+  now: Date,
+  timezone: TimezoneSetting,
+): DateRange {
+  if (range.preset !== "all_time" && range.start !== OPEN_DATE_RANGE_START) {
+    return range;
+  }
+  const bound = earliestActivity ?? toIsoDate(now, timezone);
+  return { ...range, start: bound > range.end ? range.end : bound };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -382,16 +444,6 @@ export function ReportingDashboard(): ReactElement {
   /** The clock as the domain's instant. */
   const nowIso = useMemo(() => dateToIsoDateTime(now), [now]);
 
-  /** The reporting period the metric buckets. */
-  const dateRange = useMemo<DateRange>(() => {
-    const { start, end } = resolveDateRangePreset(
-      REPORTING_PRESET,
-      now,
-      TIMEZONE,
-    );
-    return { start, end, preset: REPORTING_PRESET };
-  }, [now]);
-
   /**
    * The current project → reporting-team mapping (FR-044): the Asana
    * team that owns the project, unless the user has overridden it
@@ -423,6 +475,16 @@ export function ReportingDashboard(): ReactElement {
     [tasks, projects],
   );
 
+  /**
+   * The earliest activity the cache holds. The all-time period opens
+   * here rather than at the open bound of the vocabulary, so the metric
+   * never walks a range it has no data for (FR-091).
+   */
+  const earliestActivity = useMemo(
+    () => earliestActivityDate(metricTasks, TIMEZONE),
+    [metricTasks],
+  );
+
   /* ---------------------------------------------------------------- */
   /* The metric                                                       */
   /* ---------------------------------------------------------------- */
@@ -449,12 +511,54 @@ export function ReportingDashboard(): ReactElement {
    * The report's filters: the one source the pill bar edits and the
    * chart, the task table and the drill-downs all read. The date range
    * is the reporting window and is always present; it starts as the
-   * default period.
+   * default period (FR-092).
+   *
+   * The window has ONE source. The masthead's period control and the
+   * filter bar's date-range pill are two surfaces of the same value:
+   * each writes the window into these criteria, and each reads it back
+   * (FR-093), so neither can silently override the other.
    */
   const [criteria, setCriteria] = useState<FilterCriteria>(() => ({
-    dateRange: dateRange,
+    dateRange: reportingRangeFor(DEFAULT_REPORTING_PERIOD, now, TIMEZONE),
   }));
-  const reportingRange = criteria.dateRange ?? dateRange;
+
+  /**
+   * The window the metric, the chart and the table read: the chosen
+   * window with its open lower bound closed against the data in hand
+   * (FR-091).
+   */
+  const reportingRange = useMemo(
+    () =>
+      boundedReportingRange(
+        criteria.dateRange ??
+          reportingRangeFor(DEFAULT_REPORTING_PERIOD, now, TIMEZONE),
+        earliestActivity,
+        now,
+        TIMEZONE,
+      ),
+    [criteria.dateRange, earliestActivity, now],
+  );
+
+  /**
+   * The reporting period the reader picked, as the masthead's control
+   * offers it: the window's own preset, or "custom" when the reader
+   * typed their own bounds into the filter bar's date-range editor.
+   */
+  const period = reportingRange.preset;
+
+  /**
+   * The reader's choice of period, written back into the report's
+   * criteria — the same window the filter bar's date-range pill edits.
+   */
+  const selectPeriod = useCallback(
+    (preset: DateRangePreset): void => {
+      setCriteria((current) => ({
+        ...current,
+        dateRange: reportingRangeFor(preset, now, TIMEZONE),
+      }));
+    },
+    [now],
+  );
 
   /**
    * The tasks the reporting window keeps — created or completed inside
@@ -670,6 +774,7 @@ export function ReportingDashboard(): ReactElement {
             {scopeSummary}
           </p>
         </div>
+        <ReportingPeriodControl value={period} onChange={selectPeriod} />
         <nav className="td-dashboard__actions" aria-label="Dashboard">
           <Link to="/settings" data-testid="nav-settings">
             Settings
@@ -684,7 +789,7 @@ export function ReportingDashboard(): ReactElement {
       {!isLoading && hasRefreshed && (
         <>
           <FilterPillBar
-            criteria={criteria}
+            criteria={{ ...criteria, dateRange: reportingRange }}
             onChange={setCriteria}
             users={userOptions}
             projects={projectOptions}

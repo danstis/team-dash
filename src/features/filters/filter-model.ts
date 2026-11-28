@@ -13,10 +13,12 @@
  * `"no_priority"` never reach the text.
  */
 import type {
-  DateRangePreset,
+  DateRange,
   FilterCriteria,
   TimezoneSetting,
 } from "../../domain/types";
+import { OPEN_DATE_RANGE_START } from "../../domain/types";
+import { DATE_RANGE_PRESET_LABELS } from "../../shared/dateRangePresetLabels";
 import { formatDate } from "../../shared/format";
 
 /** One thing a filter pill can narrow the report by. */
@@ -55,16 +57,6 @@ export const FILTER_LABELS: Readonly<Record<FilterKind, string>> = {
 export function isRemovable(kind: FilterKind): boolean {
   return kind !== "dateRange";
 }
-
-/** The label of each date-range preset, in the reader's words. */
-export const PRESET_LABELS: Readonly<Record<DateRangePreset, string>> = {
-  this_week: "This week",
-  last_week: "Last week",
-  last_30_days: "Last 30 days",
-  this_month: "This month",
-  last_month: "Last month",
-  this_quarter: "This quarter",
-};
 
 /** A person or project the value editors can offer. */
 export interface FilterValueOption {
@@ -186,6 +178,32 @@ export interface DescribeContext {
   readonly timezone: TimezoneSetting;
 }
 
+function describeDateRange(
+  range: DateRange | undefined,
+  timezone: TimezoneSetting,
+): string {
+  if (range === undefined) {
+    return "";
+  }
+  if (range.start === OPEN_DATE_RANGE_START) {
+    // The open lower bound is a comparison value, never a date to
+    // print: the all-time window reads as "All time", not as the
+    // thousand-year sentinel it carries (FR-091). The same guard
+    // stands in the task list's active-filters summary.
+    return DATE_RANGE_PRESET_LABELS.all_time;
+  }
+  if (range.preset !== "custom") {
+    // The labels are the shared copy module's — ONE vocabulary, so
+    // this surface and the dashboard's period control name the same
+    // window the same way (FR-091).
+    return DATE_RANGE_PRESET_LABELS[range.preset];
+  }
+  return `${formatDate(range.start, timezone)} – ${formatDate(
+    range.end,
+    timezone,
+  )}`;
+}
+
 /** The value half of a pill ("Ana, Ben +1", "Last 30 days"). */
 export function describeValue(
   criteria: FilterCriteria,
@@ -193,19 +211,8 @@ export function describeValue(
   context: DescribeContext,
 ): string {
   switch (kind) {
-    case "dateRange": {
-      const range = criteria.dateRange;
-      if (range === undefined) {
-        return "";
-      }
-      if (range.preset !== "custom") {
-        return PRESET_LABELS[range.preset];
-      }
-      return `${formatDate(range.start, context.timezone)} – ${formatDate(
-        range.end,
-        context.timezone,
-      )}`;
-    }
+    case "dateRange":
+      return describeDateRange(criteria.dateRange, context.timezone);
     case "person":
       return criteria.assigneeGids === "unassigned"
         ? "Unassigned"

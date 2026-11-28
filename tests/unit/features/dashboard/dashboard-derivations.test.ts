@@ -5,6 +5,7 @@ import {
   buildGroupLabels,
   deriveDataQualityFlags,
   deriveTeamMapping,
+  earliestActivityDate,
   toMetricTasks,
 } from "../../../../src/features/dashboard/dashboard-derivations";
 
@@ -103,6 +104,43 @@ describe("dashboard cache derivations", () => {
     expect(toMetricTasks([task("t2")], [])).toMatchObject([
       { gid: "t2", dueAt: null, completedAt: null, portfolioGids: [] },
     ]);
+  });
+
+  it("has no earliest activity date when the task list is empty", () => {
+    expect(earliestActivityDate([], "utc")).toBeUndefined();
+  });
+
+  it("skips null creation and completion timestamps", () => {
+    // A malformed cached row can carry a null creation timestamp despite
+    // the schema type; the open-start bound must still be safe to derive.
+    const rows = toMetricTasks(
+      [
+        task("undated", { createdAt: null as unknown as string }),
+        task("dated", { createdAt: "2026-02-10T12:00:00.000Z" }),
+      ],
+      [],
+    );
+    expect(earliestActivityDate(rows, "utc")).toBe("2026-02-10");
+    expect(earliestActivityDate(rows.slice(0, 1), "utc")).toBeUndefined();
+  });
+
+  it("chooses the earlier creation or completion date regardless of basis", () => {
+    const rows = toMetricTasks(
+      [
+        task("created-first", {
+          createdAt: "2026-01-12T12:00:00.000Z",
+          completedAt: "2026-02-01T12:00:00.000Z",
+        }),
+        task("completed-first", {
+          createdAt: "2026-03-01T12:00:00.000Z",
+          completedAt: "2026-01-05T12:00:00.000Z",
+        }),
+      ],
+      [],
+    );
+    expect(earliestActivityDate(rows.slice(0, 1), "utc")).toBe("2026-01-12");
+    expect(earliestActivityDate(rows.slice(1), "utc")).toBe("2026-01-05");
+    expect(earliestActivityDate(rows, "utc")).toBe("2026-01-05");
   });
 
   it("labels each supported chart grouping from its corresponding lookup", () => {

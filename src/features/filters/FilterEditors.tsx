@@ -17,9 +17,9 @@ import {
   type ISODate,
   type TimezoneSetting,
 } from "../../domain/types";
+import { DATE_RANGE_PRESET_LABELS } from "../../shared/dateRangePresetLabels";
 import {
   FILTER_LABELS,
-  PRESET_LABELS,
   SINGLE_CHOICES,
   currentChoice,
   withChoice,
@@ -92,7 +92,7 @@ function DateRangeEditor({
   const choices = [
     ...DATE_RANGE_PRESETS.map((preset) => ({
       value: preset,
-      label: PRESET_LABELS[preset],
+      label: DATE_RANGE_PRESET_LABELS[preset],
     })),
     { value: "custom", label: "Custom range" },
   ];
